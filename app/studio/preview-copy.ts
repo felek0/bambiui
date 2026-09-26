@@ -9,7 +9,7 @@ type PreviewCopy = {
   button: {
     secondary: string; ghost: string; outline: string; delete: string; learnMore: string;
     small: string; medium: string; large: string; addItem: string; download: string;
-    saving: string; disabled: string;
+    saving: string; save: string; saved: string; disabled: string;
   };
   input: {
     email: string; receipts: string; search: string; searchPlaceholder: string;
@@ -40,7 +40,7 @@ export const previewCopy = {
     modes: { light: "Light", dark: "Dark" },
     tones: { neutral: "Neutral", primary: "Primary", success: "Success", warning: "Warning", danger: "Danger", info: "Info" },
     demo: { getStarted: "Get started", allSet: "All set", completed: (count) => `Demo action completed successfully (${count}).` },
-    button: { secondary: "Secondary", ghost: "Ghost", outline: "Outline", delete: "Delete", learnMore: "Learn more", small: "Small", medium: "Medium", large: "Large", addItem: "Add item", download: "Download", saving: "Saving", disabled: "Disabled" },
+    button: { secondary: "Secondary", ghost: "Ghost", outline: "Outline", delete: "Delete", learnMore: "Learn more", small: "Small", medium: "Medium", large: "Large", addItem: "Add item", download: "Download", saving: "Saving", save: "Save changes", saved: "Saved", disabled: "Disabled" },
     input: { email: "Email address", receipts: "We only use it for receipts.", search: "Search", searchPlaceholder: "Search components…", url: "Workspace URL", urlError: "Enter a full URL, including https://", readOnlyEmail: "Read-only workspace email", unavailable: "Unavailable" },
     card: { make: "Make something great", makeDescription: "Good design starts with a few thoughtful details.", explore: "Space to explore", exploreDescription: "Your next idea starts right here.", start: "Start", later: "Later", filled: "Filled, small", filledDescription: "A quieter surface for secondary content." },
     badge: { published: "Published", draft: "Draft", live: "Live" },

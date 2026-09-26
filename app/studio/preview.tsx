@@ -61,6 +61,22 @@ function DemoButton({
   );
 }
 
+function SaveButtonDemo({ copy }: { copy: PreviewCopy }) {
+  const [saving, setSaving] = useState(false);
+  const [saves, setSaves] = useState(0);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (timer.current !== null) clearTimeout(timer.current); }, []);
+
+  return <div className={styles.actionDemo} data-save-demo data-save-count={saves}>
+    <Button loading={saving} onClick={() => {
+      setSaving(true);
+      setSaves((count) => count + 1);
+      timer.current = setTimeout(() => { setSaving(false); timer.current = null; }, 1200);
+    }}>{saving ? copy.button.saving : saves ? copy.button.saved : copy.button.save}</Button>
+    <span className={styles.srOnly} role="status">{saving ? copy.button.saving : saves ? copy.button.saved : ""}</span>
+  </div>;
+}
+
 type ShowcaseId = Exclude<ComponentId, "text">;
 
 function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; copy: PreviewCopy }) {
@@ -95,6 +111,7 @@ function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; c
           <div className={styles.states}>
             <Button startIcon={<Icon name="download" />}>{copy.button.download}</Button>
             <Button loading>{copy.button.saving}</Button>
+            <SaveButtonDemo copy={copy} />
             <DemoButton copy={copy} disabled>{copy.button.disabled}</DemoButton>
           </div>
         </div>
@@ -105,6 +122,7 @@ function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; c
           <Input
             label={copy.input.email}
             type="email"
+            required
             placeholder="you@example.com"
             description={expanded ? copy.input.receipts : undefined}
           />
@@ -122,6 +140,7 @@ function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; c
                 label={copy.input.url}
                 type="url"
                 defaultValue="studio"
+                endIcon={<Icon name="link" />}
                 error={copy.input.urlError}
               />
               <Input
@@ -155,7 +174,7 @@ function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; c
           </Card>
           {expanded && (
             <>
-              <Card variant="elevated">
+              <Card variant="elevated" size="lg">
                 <Card.Icon>
                   <Icon name="plus" />
                 </Card.Icon>
@@ -165,6 +184,7 @@ function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; c
                     {copy.card.exploreDescription}
                   </Card.Description>
                 </Card.Header>
+                <Card.Content>Give your next idea a place to grow.</Card.Content>
                 <Card.Footer>
                   <Button size="sm">{copy.card.start}</Button>
                   <Button size="sm" variant="ghost">
@@ -199,7 +219,7 @@ function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; c
                   "info",
                 ] as const
               ).map((tone) => (
-                <Badge key={tone} variant={variant} tone={tone}>
+                <Badge key={tone} variant={variant} tone={tone} startIcon={variant === "outline" && tone === "info" ? <Icon name="spark" /> : undefined}>
                   {copy.tones[tone]}
                 </Badge>
               ))}
@@ -240,7 +260,9 @@ function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; c
                 defaultChecked
               />
               <Switch label={copy.switch.compact} size="sm" labelPosition="start" />
-              <Switch label={copy.input.unavailable} disabled />
+              <Switch label="Read-only setting" readOnly defaultChecked />
+              <Switch label="Needs attention" error="Turn this setting on to continue." />
+              <Switch label={copy.input.unavailable} disabled defaultChecked />
             </>
           )}
         </div>
@@ -253,13 +275,14 @@ function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; c
           <Checkbox label={copy.checkbox.loop} />
           {expanded && (
             <>
-              <Checkbox label={copy.checkbox.selectAll} indeterminate />
+              <Checkbox label={copy.checkbox.selectAll} size="lg" description="Includes every item in this list." indeterminate />
               <Checkbox
                 label={copy.checkbox.terms}
                 required
                 error={copy.checkbox.termsError}
               />
               <Checkbox label={copy.checkbox.smallPrint} size="sm" />
+              <Checkbox label="Read-only selection" readOnly defaultChecked />
               <Checkbox label={copy.input.unavailable} disabled defaultChecked />
             </>
           )}
@@ -615,6 +638,18 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
                     {variant === "heading" ? "A familiar heading style" : variant === "paragraph" ? "A clear paragraph gives each idea room to breathe." : variant === "label" ? "A helpful label" : variant === "caption" ? "The finer details, thoughtfully placed." : `A ${variant.toUpperCase()} that sets the tone`}
                   </Text>
                 </div>)}
+                <div>
+                  <span className={styles.foundationTextLabel}>Primary · large</span>
+                  <Text variant="h3" as="span" size="lg" tone="primary">An expressive heading</Text>
+                </div>
+                <div>
+                  <span className={styles.foundationTextLabel}>Info · small</span>
+                  <Text as="span" size="sm" tone="info">A little more context for this idea.</Text>
+                </div>
+                <div>
+                  <span className={styles.foundationTextLabel}>Danger · large</span>
+                  <Text variant="caption" as="span" size="lg" tone="danger">Something needs attention.</Text>
+                </div>
               </div>
             </section>
           </div>

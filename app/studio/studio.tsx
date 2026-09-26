@@ -10,7 +10,7 @@ import { Preview } from "./preview";
 import { DeveloperView } from "./developer";
 import { ColorBuilder, ContrastReport } from "./color-builder";
 import { mixColors, type PaletteMode } from "./color-engine";
-import { copy as t } from "./studio-copy";
+import { copy as t, tokenImpact } from "./studio-copy";
 import {
   componentIds,
   componentEditableTokenKeys,
@@ -66,6 +66,7 @@ function TokenControl({
   value,
   overridden,
   derivedOutline,
+  impact,
   onChange,
   onReset,
   onFinish,
@@ -74,6 +75,7 @@ function TokenControl({
   value: string | number;
   overridden?: boolean;
   derivedOutline?: string;
+  impact?: string;
   onChange: (value: string | number) => void;
   onReset: () => void;
   onFinish: () => void;
@@ -153,6 +155,7 @@ function TokenControl({
         <span>{isColor ? "HEX" : "px"}</span>
       </div>
       {derivedOutline && <p className="text-[11px] studio-text-secondary">{t.derivedOutline}: {derivedOutline}</p>}
+      {impact && <p className="text-[11px] studio-text-secondary">{impact}</p>}
       {!isColor && (
         <input
           onBlur={onFinish}
@@ -764,6 +767,7 @@ export default function Studio() {
                     key={`${workspaceRevision}-${activeTheme}-${selection}-${field.key}`}
                     field={field}
                     value={values[field.key as keyof typeof values]}
+                    impact={isGlobal ? undefined : tokenImpact(component, field.key as keyof ComponentTokens)}
                     derivedOutline={!isGlobal && component === "badge" && field.key === "border" && !Object.hasOwn(theme.components.badge, "border")
                       ? toCSSVariables(theme, activeTheme)["--badge-neutral-outline"] : undefined}
                     overridden={

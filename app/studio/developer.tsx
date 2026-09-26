@@ -400,7 +400,7 @@ export function DeveloperView({ selected, system, mode, cssOutput }: DeveloperVi
             ? copy.componentTokensDescription
             : copy.globalTokensDescription}
         </p>
-        {selected === "badge" && <p>Neutral outline uses <code>--badge-neutral-outline</code>, derived from Badge colors unless the border is overridden. <code>--badge-border</code> remains the neutral solid/subtle border alias.</p>}
+        {selected === "badge" && <p>Neutral outline uses <code>--badge-neutral-outline</code>, derived from Badge colors unless the border is overridden. <code>--badge-border</code> is exported for compatibility but not painted by the current Badge variants.</p>}
         {selected === "text" && <p>Only <code>--text-foreground</code> affects Text. Typography comes from shared <code>--ds-typography-*</code> tokens; unused legacy aliases remain in CSS/JSON backups.</p>}
         <ScrollRegion label={component ? copy.tokensRegion(component.name) : copy.globalTokenReference}>
           <table className={styles.table}>

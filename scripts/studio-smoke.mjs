@@ -218,6 +218,69 @@ try {
     assert.equal(await evaluate(`${q('[data-palette-builder]')}.open`),false);
     await capture('studio-desktop-light');
   });
+  await check('expanded specimens expose states and read-only choices resist pointer and keyboard input',async()=>{
+    try {
+      for(const [id,label] of [['switch','Read-only setting'],['checkbox','Read-only selection']]) {
+        await navigate('design',id);
+        await stableCamera();
+        const specimen=`[data-specimen="${id}"]`;
+        const control=`${specimen} [role="${id}"][aria-readonly="true"]`;
+        assert.equal(await evaluate(`document.querySelectorAll(${JSON.stringify(control)}).length`),1,`${id} read-only control`);
+        assert.equal(await evaluate(`${q(control)}.getAttribute('aria-checked')`),'true');
+        assert.equal(await evaluate(`${q(control)}.closest('label')?.textContent.trim()`),label);
+        await click(q(control));
+        assert.equal(await evaluate(`${q(control)}.getAttribute('aria-checked')`),'true',`${id} pointer click must not toggle`);
+        await evaluate(`${q(control)}.focus({preventScroll:true})`);
+        assert.equal(await evaluate(`document.activeElement===${q(control)}`),true,`${id} should be keyboard focusable`);
+        await key(' ','Space');
+        assert.equal(await evaluate(`${q(control)}.getAttribute('aria-checked')`),'true',`${id} Space must not toggle`);
+        await key('Enter');
+        assert.equal(await evaluate(`${q(control)}.getAttribute('aria-checked')`),'true',`${id} Enter must not toggle`);
+        assert.equal(await evaluate(`${q(`${specimen} [role="${id}"][aria-disabled="true"]`)}.getAttribute('aria-checked')`),'true',`${id} disabled checked state`);
+      }
+      assert.equal(await evaluate(`${q('[data-specimen="switch"] [role="switch"][aria-invalid="true"]')}?.getAttribute('aria-checked')`),'false','switch error state');
+      assert.equal(await evaluate(`${q('[data-specimen="checkbox"] [role="checkbox"][aria-checked="mixed"]')}?.closest('[data-size]')?.dataset.size`),'lg','large indeterminate checkbox');
+      assert.ok(await evaluate(`${q('[data-specimen="checkbox"] [role="checkbox"][aria-checked="mixed"]')}?.getAttribute('aria-describedby')`),'indeterminate checkbox description');
+      assert.equal(await evaluate(`${q('[data-specimen="checkbox"] [role="checkbox"][aria-invalid="true"]')}?.getAttribute('aria-required')`),'true','required checkbox error');
+      await navigate('design','input');
+      await stableCamera();
+      const email='[data-specimen="input"] input[type="email"]';
+      assert.equal(await evaluate(`${q(email)}.required && !${q(email)}.checkValidity()`),true,'empty required email');
+      await fill(email,'not-an-email');
+      assert.equal(await evaluate(`${q(email)}.validity.typeMismatch && !${q(email)}.checkValidity()`),true,'invalid email');
+      assert.equal(await evaluate(`${q('[data-specimen="input"] input[type="url"][aria-invalid="true"]')}?.value`),'studio','URL error example');
+      assert.ok(await evaluate(`!!${q('[data-specimen="input"] input[type="url"] + [aria-hidden="true"]')}`),'URL end icon');
+      assert.equal(await evaluate(`${q('[data-specimen="input"] input:disabled')}?.closest('[data-size]')?.dataset.size`),'lg','disabled large input');
+      assert.ok(await evaluate(`!!${q('[data-specimen="card"] article[data-variant="elevated"][data-size="lg"] [class*="cardContent"]')}`),'large card content');
+      assert.ok(await evaluate(`!!${q('[data-specimen="badge"] [data-variant="outline"][data-tone="info"] [aria-hidden="true"]')}`),'info outline badge start icon');
+      for(const [tone,size] of [['primary','lg'],['info','sm'],['danger','lg']])
+        assert.ok(await evaluate(`!!${q(`[data-specimen="text"] [data-tone="${tone}"][data-size="${size}"]`)}`),`Text ${tone}/${size}`);
+    } finally {
+      if(await evaluate(`${q('[data-specimen="input"] input[type="email"]')}?.value`)) {
+        await stableCamera();
+        await click(q('[data-specimen="input"] input[type="email"]'));
+        await send('Input.dispatchKeyEvent',{type:'keyDown',key:'a',code:'KeyA',modifiers:4,commands:['selectAll']});
+        await send('Input.dispatchKeyEvent',{type:'keyUp',key:'a',code:'KeyA',modifiers:4});
+        await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8});
+        await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8});
+        await wait(`${q('[data-specimen="input"] input[type="email"]')}.value === ''`);
+      }
+      await navigate('design','button');
+    }
+  });
+  await check('loading action keeps focus and blocks repeated activation',async()=>{
+    await navigate('design','button');
+    await stableCamera();
+    const demo='[data-save-demo]';
+    await click(q(`${demo} button`));
+    await wait(`${q(`${demo} button`)}.getAttribute('aria-busy') === 'true'`);
+    assert.equal(await evaluate(`${q(demo)}.dataset.saveCount`),'1');
+    assert.ok(await evaluate(`document.activeElement === ${q(`${demo} button`)}`),'button retains focus while busy');
+    await click(q(`${demo} button`));
+    assert.equal(await evaluate(`${q(demo)}.dataset.saveCount`),'1','busy click cannot invoke handler again');
+    await wait(`${q(`${demo} button`)}.getAttribute('aria-busy') !== 'true'`);
+    assert.equal(await evaluate(`${q(`${demo} button`)}.textContent.trim()`),'Saved');
+  });
   await check('header theme controls preview, inspector and Develop without changing the other theme',async()=>{
     await click(named(themeControl + ' button','Dark'));
     assert.ok(await evaluate(`${q('.editor-title')}.textContent.includes('Dark')`));

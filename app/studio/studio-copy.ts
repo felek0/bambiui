@@ -1,3 +1,41 @@
+import type { ComponentId, ComponentTokens } from "./tokens";
+
+const tokenImpacts: Partial<Record<ComponentId, Partial<Record<keyof ComponentTokens, string>>>> = {
+    button: {
+        background: "Primary fill and derived hover/pressed fills; other variants use global roles.",
+        foreground: "Primary text; other variants use global roles.",
+        border: "Primary stroke; outline uses the global border.",
+        paddingX: "Link and icon-only variants replace horizontal padding.",
+        paddingY: "Icon-only buttons replace vertical padding.",
+    },
+    input: { border: "Normal and read-only borders; invalid uses the global danger color." },
+    switch: {
+        background: "Checked track only; unchecked uses global muted.",
+        foreground: "Checked thumb only; unchecked uses global foreground.",
+        border: "Checked track only; unchecked and invalid use global colors.",
+    },
+    checkbox: {
+        background: "Checked box only; unchecked uses global muted.",
+        foreground: "Checked mark only; unchecked uses global foreground.",
+        border: "Checked box only; unchecked and invalid use global colors.",
+    },
+    badge: {
+        background: "Neutral solid ink and outline surface; subtle colors are derived from it.",
+        foreground: "Neutral tone fill and derived text; semantic tones use global roles.",
+        border: "An explicit override changes neutral outline; semantic outlines are derived from global roles.",
+    },
+    card: {
+        background: "Outlined and elevated; filled uses global muted.",
+        foreground: "Outlined and elevated; filled uses global foreground.",
+        border: "Outlined only; elevated and filled borders are transparent.",
+    },
+    text: { foreground: "Neutral tone only; semantic tones use derived global text colors." },
+};
+
+export function tokenImpact(component: ComponentId, key: keyof ComponentTokens): string | undefined {
+    return tokenImpacts[component]?.[key];
+}
+
 export const copy = {
     loading: "Loading local draft…", saved: "Saved locally", draft: "Local draft", unsaved: "Not saved",
     loadError: "Your saved draft could not be loaded. A fresh workspace is ready; export a backup before leaving.",
