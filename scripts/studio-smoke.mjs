@@ -573,10 +573,12 @@ try {
     assert.ok(await evaluate(`getComputedStyle(${q('[data-foundation="colors"] h2 a')}).backgroundColor!=='rgba(0, 0, 0, 0)'`));
     assert.equal(await evaluate(`${q('#color-scale-role')}.value`),'success');
     assert.ok(await evaluate(`!!${q('#scale-success-500')} && !!${q('#token-background')} && !${q('#token-radius')}`));
+    await wait(`document.activeElement?.id === 'scale-success-500'`);
     await click(q('[data-foundation="spacing"] a[class*="spacingSample"]'));
     await route('design','spacing');
     assert.ok(await evaluate(`getComputedStyle(${q('[data-foundation="spacing"] h2 a')}).backgroundColor!=='rgba(0, 0, 0, 0)'`));
     assert.ok(await evaluate(`!!${q('#token-radius')} && !${q('#token-background')} && !${q('#scale-primary-500')}`));
+    await wait(`document.activeElement?.id === 'token-radius'`);
     await delay(450);
     await capture('studio-spacing');
     await navigate('design','text');
@@ -690,6 +692,33 @@ try {
       await send('Emulation.setDeviceMetricsOverride',{width:375,height:812,deviceScaleFactor:1,mobile:false});
     }
   });
+  await check('Undo and redo group edits and restore both themes after a palette preset',async()=>{
+    await send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
+    await navigate('design','spacing');
+    assert.ok(await evaluate(`${q('#token-editor')}.textContent.includes('SHARED · BOTH THEMES')`));
+    const before = await stored();
+    await fill('#token-radius','18');
+    await fill('#token-radius','20');
+    assert.equal((await stored()).themes.dark.global.radius,20);
+    await click(q('[aria-label="Undo change"]'));
+    assert.equal((await stored()).themes.light.global.radius,before.themes.light.global.radius);
+    assert.equal((await stored()).themes.dark.global.radius,before.themes.dark.global.radius);
+    await click(q('[aria-label="Redo change"]'));
+    assert.equal((await stored()).themes.light.global.radius,20);
+    await click(q('[aria-label="Undo change"]'));
+    assert.deepEqual(await stored(),before);
+    await navigate('design','colors');
+    if(!await evaluate(`${q('[data-palette-builder]')}.open`)) await click(q('[data-palette-builder] > summary'));
+    await click(q('[aria-label="Apply Ocean to both themes"]'));
+    assert.equal((await stored()).themes.dark.source,'#247db3');
+    await click(q('[aria-label="Undo change"]'));
+    assert.deepEqual(await stored(),before);
+    await click(q('[aria-label="Redo change"]'));
+    assert.equal((await stored()).themes.light.source,'#247db3');
+    assert.equal((await stored()).themes.dark.source,'#247db3');
+    await click(q('[aria-label="Undo change"]'));
+    assert.deepEqual(await stored(),before);
+  });
   await check('JSON re-import restores both sources; old v3 files without foundations normalize',async()=>{
 
     await send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
@@ -710,6 +739,10 @@ try {
       await wait(`${q('#token-radius')}.value === ${JSON.stringify(String(backup.themes.light.global.radius))}`);
       assert.deepEqual(await stored(),backup);
       assert.deepEqual(Object.keys(backup).sort(),['name','themes','version']);
+      await click(q('[aria-label="Undo change"]'));
+      assert.equal((await stored()).themes.light.global.radius,19);
+      await click(q('[aria-label="Redo change"]'));
+      assert.deepEqual(await stored(),backup);
       await reload();
       assert.deepEqual(await stored(),backup);
       const oldV3=structuredClone(backup);

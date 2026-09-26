@@ -68,6 +68,7 @@ function TokenControl({
   derivedOutline,
   onChange,
   onReset,
+  onFinish,
 }: {
   field: TokenField;
   value: string | number;
@@ -75,6 +76,7 @@ function TokenControl({
   derivedOutline?: string;
   onChange: (value: string | number) => void;
   onReset: () => void;
+  onFinish: () => void;
 }) {
   const label = t.tokenLabels[field.key];
   const [draft, setDraft] = useState<string | null>(null);
@@ -115,7 +117,9 @@ function TokenControl({
           </span>
         )}
       </div>
-      <div className="token-input">
+      <div className="token-input" onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) onFinish();
+      }}>
         {isColor && (
           <input
             type="color"
@@ -151,6 +155,7 @@ function TokenControl({
       {derivedOutline && <p className="text-[11px] studio-text-secondary">{t.derivedOutline}: {derivedOutline}</p>}
       {!isColor && (
         <input
+          onBlur={onFinish}
           className="token-range"
           type="range"
           aria-label={t.slider(label)}
@@ -174,20 +179,23 @@ function TokenControl({
   );
 }
 
-function ScaleStopControl({ role, stop, value, overridden, onChange, onReset }: {
+function ScaleStopControl({ role, stop, value, overridden, onChange, onReset, onFinish }: {
   role: ColorScaleRole;
   stop: ColorScaleStop;
   value: string;
   overridden: boolean;
   onChange: (value: string) => void;
   onReset: () => void;
+  onFinish: () => void;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const label = `${role} ${stop}`;
   const valid = /^#[0-9a-f]{6}$/i.test(draft ?? value);
   return <div className="scale-stop-control">
     <label htmlFor={`scale-${role}-${stop}`}>{label}</label>
-    <div className="scale-stop-input">
+    <div className="scale-stop-input" onBlurCapture={(event) => {
+      if (!event.currentTarget.contains(event.relatedTarget)) onFinish();
+    }}>
       <input type="color" aria-label={`${label} color picker`} value={value} onChange={(event) => { setDraft(null); onChange(event.target.value); }} />
       <input id={`scale-${role}-${stop}`} type="text" value={draft ?? value} spellCheck={false} aria-invalid={!valid}
         onChange={(event) => { setDraft(event.target.value); if (/^#[0-9a-f]{6}$/i.test(event.target.value)) onChange(event.target.value); }}
@@ -198,11 +206,12 @@ function ScaleStopControl({ role, stop, value, overridden, onChange, onReset }: 
   </div>;
 }
 
-function TypographyControl({ variant, field, value, onChange }: {
+function TypographyControl({ variant, field, value, onChange, onFinish }: {
   variant: TypographyVariant;
   field: (typeof typographyFields)[number];
   value: number;
   onChange: (value: number) => void;
+  onFinish: () => void;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const number = Number(draft ?? value);
@@ -214,7 +223,7 @@ function TypographyControl({ variant, field, value, onChange }: {
       <input id={`typography-${variant}-${field.key}`} type="number" step="any" min={field.min} max={field.max} value={draft ?? value}
         aria-label={label} aria-invalid={!valid}
         onChange={(event) => { setDraft(event.target.value); const next = Number(event.target.value); if (event.target.value.trim() && Number.isFinite(next) && next >= field.min && next <= field.max) onChange(next); }}
-        onBlur={() => setDraft(null)} />
+        onBlur={() => { setDraft(null); onFinish(); }} />
       <span>{field.unit || "—"}</span>
     </div>
     {!valid && <span className="studio-text-danger">Use a value from {field.min} to {field.max}.</span>}
@@ -235,6 +244,20 @@ export default function Studio() {
   const [query, setQuery] = useState("");
   const [activeTheme, setActiveTheme] = useState<PaletteMode>("light");
   const [scaleRole, setScaleRole] = useState<ColorScaleRole>("primary");
+  const [editTarget, setEditTarget] = useState<{ selection: "colors" | "spacing"; inputId: string } | null>(null);
+
+  useEffect(() => {
+    if (!ready || view !== "design" || !editTarget || selection !== editTarget.selection) return;
+    const frame = requestAnimationFrame(() => {
+      const input = document.getElementById(editTarget.inputId);
+      if (input instanceof HTMLElement) {
+        input.focus({ preventScroll: true });
+        input.scrollIntoView({ block: "center" });
+      }
+      setEditTarget(null);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [ready, view, selection, editTarget, scaleRole]);
 
   const [status, setStatus] = useState<"loading" | "saved" | "draft" | "unsaved">("loading");
   const [notice, setNotice] = useState<"" | "loadError" | "storageError" | "imported" | "importError">("");
@@ -242,6 +265,9 @@ export default function Studio() {
   const [format, setFormat] = useState<"css" | "json">("css");
   const [copyStatus, setCopyStatus] = useState("");
   const importRef = useRef<HTMLInputElement>(null);
+  const history = useRef<{ undo: DesignSystem[]; redo: DesignSystem[]; group: string | null }>({ undo: [], redo: [], group: null });
+  const currentSystem = useRef(system);
+  const [historyCounts, setHistoryCounts] = useState({ undo: 0, redo: 0 });
 
   useEffect(() => {
     let cancelled = false;
@@ -250,7 +276,11 @@ export default function Studio() {
       if (cancelled) return;
       try {
         const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) setSystem(parseDesignSystem(saved));
+        if (saved) {
+          const loaded = parseDesignSystem(saved);
+          currentSystem.current = loaded;
+          setSystem(loaded);
+        }
         setStatus(saved ? "saved" : "draft");
       } catch {
         setStatus("draft");
@@ -263,8 +293,23 @@ export default function Studio() {
     };
   }, []);
 
-  function update(next: DesignSystem) {
+  function finishEdit() {
+    history.current.group = null;
+  }
+
+  function update(next: DesignSystem, group?: string, record = true) {
+    if (JSON.stringify(currentSystem.current) === JSON.stringify(next)) return;
+    if (record) {
+      if (!group || history.current.group !== group) {
+        history.current.undo.push(currentSystem.current);
+        if (history.current.undo.length > 50) history.current.undo.shift();
+      }
+      history.current.redo = [];
+      history.current.group = group ?? null;
+    }
+    currentSystem.current = next;
     setSystem(next);
+    setHistoryCounts({ undo: history.current.undo.length, redo: history.current.redo.length });
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       setStatus("saved");
@@ -274,6 +319,15 @@ export default function Studio() {
     }
   }
 
+  function travel(direction: "undo" | "redo") {
+    const from = history.current[direction];
+    const previous = from.pop();
+    if (!previous) return;
+    history.current[direction === "undo" ? "redo" : "undo"].push(currentSystem.current);
+    finishEdit();
+    update(previous, undefined, false);
+    setWorkspaceRevision((revision) => revision + 1);
+  }
 
   const theme = system.themes[activeTheme];
   const previewColors = {
@@ -295,13 +349,13 @@ export default function Studio() {
   const cssOutput = useMemo(() => exportCSS({ themes: system.themes }), [system.themes]);
   const output = format === "css" ? cssOutput : JSON.stringify(system, null, 2);
 
-  function updateTheme(next: ThemeTokens, mode: PaletteMode = activeTheme) {
-    update(shareNonColorTokens({ ...system, themes: { ...system.themes, [mode]: next } }, mode));
+  function updateTheme(next: ThemeTokens, mode: PaletteMode = activeTheme, group?: string) {
+    update(shareNonColorTokens({ ...system, themes: { ...system.themes, [mode]: next } }, mode), group);
   }
 
   function setToken(key: keyof TokenValues, value: string | number) {
     if (isGlobal)
-      updateTheme({ ...theme, global: { ...theme.global, [key]: value } });
+      updateTheme({ ...theme, global: { ...theme.global, [key]: value } }, activeTheme, `global-${activeTheme}-${key}`);
     else
       updateTheme({
         ...theme,
@@ -309,14 +363,14 @@ export default function Studio() {
           ...theme.components,
           [component]: { ...theme.components[component], [key]: value },
         },
-      });
+      }, activeTheme, `component-${activeTheme}-${component}-${key}`);
   }
 
   function setScaleStop(stop: ColorScaleStop, value: string) {
     updateTheme({ ...theme, colorScales: {
       ...theme.colorScales,
       [scaleRole]: { ...theme.colorScales?.[scaleRole], [stop]: value },
-    } });
+    } }, activeTheme, `scale-${activeTheme}-${scaleRole}-${stop}`);
   }
 
   function resetScaleStop(stop: ColorScaleStop) {
@@ -329,7 +383,7 @@ export default function Studio() {
     updateTheme({ ...theme, typography: {
       ...theme.typography,
       [variant]: { ...resolveTypography(theme, variant), [field]: value },
-    } });
+    } }, activeTheme, `typography-${variant}-${field}`);
   }
 
   function resetToken(key: keyof ComponentTokens) {
@@ -384,8 +438,9 @@ export default function Studio() {
             disabled={!ready}
             value={system.name}
             onChange={(event) =>
-              update({ ...system, name: event.target.value })
+              update({ ...system, name: event.target.value }, "system-name")
             }
+            onBlur={finishEdit}
           />
         </div>
         <div className="header-workspace-controls">
@@ -404,6 +459,8 @@ export default function Studio() {
           {view === "design" && <a className="mobile-editor-link" href="#token-editor">{t.jumpToTokens} <Icon name="arrow" size={12} /></a>}
         </div>
         <div className="header-actions">
+          <Button iconOnly aria-label={t.undo} title={t.undo} disabled={!ready || historyCounts.undo === 0} onClick={() => travel("undo")}>↶</Button>
+          <Button iconOnly aria-label={t.redo} title={t.redo} disabled={!ready || historyCounts.redo === 0} onClick={() => travel("redo")}>↷</Button>
           <span className="save-status">
             <span
               className={`status-dot ${status === "unsaved" ? "warning" : ""}`}
@@ -628,7 +685,7 @@ export default function Studio() {
             )}
             <section hidden={view !== "design"} aria-label={t.design} className="workspace-panel workspace-panel--design preview-canvas">
               <div className="preview-frame">
-                <Preview selected={selection} system={system} mode={activeTheme} active={view === "design"} onSelectColorRole={setScaleRole} />
+                <Preview selected={selection} system={system} mode={activeTheme} active={view === "design"} onSelectColorRole={setScaleRole} onEditToken={(nextSelection, inputId) => setEditTarget({ selection: nextSelection, inputId })} />
               </div>
             </section>
             <section hidden={view !== "develop"} aria-label={t.develop} className="workspace-panel workspace-panel--develop">
@@ -659,6 +716,7 @@ export default function Studio() {
             <div>
               <h3>{selection === "colors" ? "Global colors" : selection === "spacing" ? "Global shape & spacing" : isGlobal ? t.foundations : t.componentTokens(t.componentNames[component])}</h3>
               <p>{isGlobal ? t.foundationsHint : t.inheritComponent}</p>
+              <p>{selection === "spacing" ? t.sharedThemes : selection === "colors" ? t.themeOnly(activeTheme) : t.mixedScope}</p>
             </div>
           </div>
           {ready && (
@@ -666,11 +724,12 @@ export default function Studio() {
               <ColorBuilder
                 key={workspaceRevision}
                 system={system}
-                onApply={(palette) => {
+                onFinish={finishEdit}
+                onApply={(palette, group) => {
                   update({ ...system, themes: {
                     light: { ...system.themes.light, source: palette.source, global: { ...system.themes.light.global, ...palette.light.tokens } },
                     dark: { ...system.themes.dark, source: palette.source, global: { ...system.themes.dark.global, ...palette.dark.tokens } },
-                  } });
+                  } }, group);
                 }}
               />
             </div>
@@ -681,14 +740,14 @@ export default function Studio() {
               {
                 type: "color",
                 heading: t.colors,
-                hint: String(colorFields.length),
+                hint: t.themeOnly(activeTheme),
                 className: "color-fields",
                 items: colorFields,
               },
               {
                 type: "number",
                 heading: t.shape,
-                hint: "PX",
+                hint: t.sharedThemes,
                 className: "number-fields",
                 items: numberFields,
               },
@@ -716,34 +775,35 @@ export default function Studio() {
                     onReset={() =>
                       resetToken(field.key as keyof ComponentTokens)
                     }
+                    onFinish={finishEdit}
                   />
                 ))}
               </div>
             </section>
           ))}
           {isGlobal && selection !== "spacing" && <section className="token-section foundation-editor" id="color-scales">
-            <div className="section-heading"><h3>Color scale</h3><span>50–1000</span></div>
+            <div className="section-heading"><h3>Color scale</h3><span>{t.themeOnly(activeTheme)}</span></div>
             <label htmlFor="color-scale-role">Color role</label>
             <select id="color-scale-role" value={scaleRole} onChange={(event) => setScaleRole(event.target.value as ColorScaleRole)}>
               {colorScaleRoles.map((role) => <option key={role} value={role}>{role}</option>)}
             </select>
-            <p>Stops follow the current {activeTheme} theme role until overridden.</p>
+            <p>Stops follow the current {activeTheme} theme role until overridden. Scale edits affect the reference and CSS export; component colors follow semantic roles.</p>
             <div className="scale-stop-list">
               {colorScaleStops.map((stop) => <ScaleStopControl key={`${workspaceRevision}-${activeTheme}-${scaleRole}-${stop}`} role={scaleRole} stop={stop}
                 value={resolveColorScale(theme, activeTheme, scaleRole)[stop]}
                 overridden={Object.hasOwn(theme.colorScales?.[scaleRole] ?? {}, stop)}
-                onChange={(value) => setScaleStop(stop, value)} onReset={() => resetScaleStop(stop)} />)}
+                onChange={(value) => setScaleStop(stop, value)} onReset={() => resetScaleStop(stop)} onFinish={finishEdit} />)}
             </div>
           </section>}
           {selection === "text" && !isGlobal && <section className="token-section foundation-editor" id="typography-tokens">
-            <div className="section-heading"><h3>Text styles</h3><span>PX / SCALE</span></div>
+            <div className="section-heading"><h3>Text styles</h3><span>{t.sharedThemes}</span></div>
             <p>Typography tokens are shared by both themes and every Text variant.</p>
             {typographyVariants.map((variant) => <details className="typography-variant" key={variant} open={variant === "heading" || variant === "h1" || undefined}>
               <summary>{variant === "heading" ? "Legacy heading" : variant.toUpperCase()}</summary>
               <div className="typography-controls">
                 {typographyFields.map((field) => <TypographyControl key={`${workspaceRevision}-${activeTheme}-${variant}-${field.key}`} variant={variant} field={field}
                   value={resolveTypography(theme, variant)[field.key]}
-                  onChange={(value) => setTypography(variant, field.key, value)} />)}
+                  onChange={(value) => setTypography(variant, field.key, value)} onFinish={finishEdit} />)}
                 <Button type="button" onClick={() => updateTheme({ ...theme, typography: { ...theme.typography, [variant]: { ...defaultTypography[variant] } } })}>
                   Reset {variant}
                 </Button>
@@ -758,7 +818,7 @@ export default function Studio() {
               if (
                 !window.confirm(
                   isGlobal
-                    ? selection === "colors" ? `Reset ${activeTheme} global colors? Shared dimensions and component overrides will be kept.`
+                    ? selection === "colors" ? `Reset ${activeTheme} global colors? Color scale and component overrides will be kept; shared dimensions will not change.`
                       : selection === "spacing" ? "Reset shared shape, spacing and sizing in both themes? Colors and component overrides will be kept."
                       : t.confirmGlobal(activeTheme === "light" ? t.light : t.dark)
                     : t.confirmComponent(activeTheme === "light" ? t.light : t.dark, t.componentNames[component]),

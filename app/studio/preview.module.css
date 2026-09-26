@@ -35,10 +35,28 @@
   align-items: center;
   gap: 3px;
   padding: 4px;
-  border: 1px solid var(--ds-border);
+  border: 1px solid var(--studio-color-border);
   border-radius: 8px;
-  background: var(--ds-background);
-  box-shadow: 0 3px 12px rgb(0 0 0 / 10%);
+  background: var(--studio-color-surface);
+  color: var(--studio-color-text);
+  color-scheme: light;
+  box-shadow: 0 3px 12px var(--studio-color-shadow);
+}
+
+.canvasHelp {
+  position: absolute;
+  z-index: 2;
+  left: 16px;
+  bottom: 16px;
+  max-width: calc(100% - 32px);
+  padding: 8px 10px;
+  border: 1px solid var(--studio-color-border);
+  border-radius: 8px;
+  background: var(--studio-color-surface);
+  color: var(--studio-color-text-secondary);
+  color-scheme: light;
+  box-shadow: 0 3px 12px var(--studio-color-shadow);
+  pointer-events: none;
 }
 
 .canvasControls button {
@@ -47,19 +65,21 @@
   padding: 4px 7px;
   border: 1px solid transparent;
   border-radius: 6px;
-  background: var(--ds-background);
-  color: var(--ds-foreground);
+  background: var(--studio-color-surface);
+  color: var(--studio-color-text);
   font: inherit;
   font-size: 11px;
   cursor: pointer;
 }
 
 .canvasControls button:hover:not(:disabled) {
-  border-color: var(--ds-border);
+  border-color: var(--studio-color-border-strong);
+  background: var(--studio-color-surface-hover);
 }
 
 .canvasControls button:disabled {
-  opacity: 0.45;
+  color: var(--studio-color-disabled-text);
+  background: var(--studio-color-disabled-surface);
   cursor: default;
 }
 
@@ -70,7 +90,11 @@
   font-variant-numeric: tabular-nums;
 }
 
-.canvasControls button:focus-visible,
+.canvasControls button:focus-visible {
+  outline: var(--studio-focus-ring);
+  outline-offset: var(--studio-focus-ring-offset);
+}
+
 .viewport:focus-visible {
   outline: 2px solid var(--ds-foreground);
   outline-offset: 2px;
@@ -501,7 +525,8 @@
     height: auto;
   }
 
-  .canvasControls {
+  .canvasControls,
+  .canvasHelp {
     display: none;
   }
 

@@ -326,12 +326,13 @@ function ThemePane({ theme, mode, children, copy }: {
   );
 }
 
-export function Preview({ selected, system, mode, active = true, onSelectColorRole }: {
+export function Preview({ selected, system, mode, active = true, onSelectColorRole, onEditToken }: {
   selected: "overview" | "colors" | "spacing" | ComponentId;
   system: DesignSystem;
   mode: PaletteMode;
   active?: boolean;
   onSelectColorRole?: (role: ColorScaleRole) => void;
+  onEditToken?: (selection: "colors" | "spacing", inputId: string) => void;
 }) {
   const copy = previewCopy;
   const router = useRouter();
@@ -504,6 +505,7 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
         <button type="button" onClick={fit}>Fit</button>
         <button type="button" onClick={() => changeZoom(1)}>Reset zoom</button>
       </div>
+      <p className={styles.canvasHelp} aria-hidden="true">Drag or scroll to pan · Ctrl/⌘ + scroll to zoom</p>
       <p id={helpId} className={styles.srOnly}>On desktop, drag empty space or use the mouse wheel to pan without bounds. Hold Control or Command while scrolling to zoom at the pointer; Shift and scroll pans horizontally. Focus the canvas and use arrow keys to pan, or use Fit and zoom buttons. On mobile, scroll the page normally. Select a heading or interact with a canvas unit to edit its tokens.</p>
       <div
         ref={viewport}
@@ -577,8 +579,8 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
                   {colorScaleRoles.map((role) => {
                     const scale = resolveColorScale(system.themes[mode], mode, role);
                     return <div className={styles.scaleRow} key={role}>
-                      <Link href="/colors" onClick={() => onSelectColorRole?.(role)}>{role}</Link>
-                      {colorScaleStops.map((stop) => <Link key={stop} href="/colors" onClick={() => onSelectColorRole?.(role)} className={styles.swatch} aria-label={`Edit ${role} ${stop} color: ${scale[stop]}`} title={`${role} ${stop}: ${scale[stop]}`} style={{ backgroundColor: scale[stop] }}><span className={styles.srOnly}>{role} {stop}: {scale[stop]}</span></Link>)}
+                      <Link href="/colors" onClick={() => { onSelectColorRole?.(role); onEditToken?.("colors", "color-scale-role"); }}>{role}</Link>
+                      {colorScaleStops.map((stop) => <Link key={stop} href="/colors" onClick={() => { onSelectColorRole?.(role); onEditToken?.("colors", `scale-${role}-${stop}`); }} className={styles.swatch} aria-label={`Edit ${role} ${stop} color: ${scale[stop]}`} title={`${role} ${stop}: ${scale[stop]}`} style={{ backgroundColor: scale[stop] }}><span className={styles.srOnly}>{role} {stop}: {scale[stop]}</span></Link>)}
                     </div>;
                   })}
                 </div>
@@ -588,7 +590,7 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
               <h2 id="canvas-spacing-title"><Link href="/spacing" aria-current={selected === "spacing" ? "page" : undefined}>Shape &amp; spacing</Link></h2>
               <p>Shared dimensions for both themes. Select a token to edit its global value.</p>
               <div className={styles.spacingSamples}>
-                {tokenFields.filter((field) => field.type === "number").map((field) => <Link key={field.key} href="/spacing" className={styles.spacingSample} data-spacing-token={field.key}>
+                {tokenFields.filter((field) => field.type === "number").map((field) => <Link key={field.key} href="/spacing" onClick={() => onEditToken?.("spacing", `token-${field.key}`)} className={styles.spacingSample} data-spacing-token={field.key}>
                   <span className={styles.spacingSampleHeader}><span>{field.label}</span><strong>{system.themes[mode].global[field.key]}px</strong></span>
                   <span className={styles.spacingVisual} aria-hidden="true">
                     {field.key === "radius" || field.key === "borderWidth" ? <span className={styles.shapeVisual} />

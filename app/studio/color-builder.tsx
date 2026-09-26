@@ -24,9 +24,10 @@ const ratioText = (ratio: number) => new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 }).format(Math.floor(ratio * 100) / 100);
 
-export function ColorBuilder({ system, onApply }: {
+export function ColorBuilder({ system, onApply, onFinish }: {
   system: DesignSystem;
-  onApply: (palette: GeneratedPalette) => void;
+  onApply: (palette: GeneratedPalette, group?: string) => void;
+  onFinish?: () => void;
 }) {
   const id = useId();
   const copy = colorBuilderCopy;
@@ -34,13 +35,13 @@ export function ColorBuilder({ system, onApply }: {
   const source = draft ?? system.themes.light.source;
   const valid = validHex(source);
 
-  function apply(next: string) {
+  function apply(next: string, group?: string) {
     if (!validHex(next)) {
       setDraft(next);
       return;
     }
     setDraft(null);
-    onApply(generatePalette(next));
+    onApply(generatePalette(next), group);
   }
 
   return (
@@ -51,19 +52,21 @@ export function ColorBuilder({ system, onApply }: {
       <div className={styles.sourceInput}>
         <input
           type="color"
+          onBlur={onFinish}
           aria-label={copy.picker}
           value={valid ? source : system.themes.light.source}
-          onChange={(event) => apply(event.target.value)}
+          onChange={(event) => apply(event.target.value, "palette-picker")}
         />
         <input
           id={`${id}-source`}
           type="text"
+          onBlur={onFinish}
           value={source}
           spellCheck={false}
           autoComplete="off"
           aria-invalid={!valid}
           aria-describedby={`${id}-help`}
-          onChange={(event) => apply(event.target.value)}
+          onChange={(event) => apply(event.target.value, "palette-source")}
         />
       </div>
       <p id={`${id}-help`}>{valid ? copy.validHex : copy.invalidHex}</p>
