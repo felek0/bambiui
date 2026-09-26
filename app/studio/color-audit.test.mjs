@@ -83,6 +83,27 @@ test("equal component overrides still fail without changing globals", () => {
   }
 });
 
+test("Text semantic tones audit their CSS on-subtle ink on the global background", () => {
+  for (const mode of modes) {
+    const theme = fresh(mode);
+    const checks = byId(theme, mode);
+    const v = toCSSVariables(theme, mode);
+    for (const tone of ["primary", "success", "warning", "danger", "info"]) {
+      const check = checks.get(`text.${tone}`);
+      pair(check, v[`--ds-${tone}-on-subtle`], theme.global.background);
+      assert.equal(check.component, "text");
+    }
+  }
+
+  const theme = fresh();
+  theme.global.background = "#777777";
+  theme.global.success = "#333333";
+  const ink = toCSSVariables(theme)["--ds-success-on-subtle"];
+  const check = byId(theme).get("text.success");
+  pair(check, ink, theme.global.background);
+  assert.equal(check.passes, false);
+});
+
 test("input readOnly retains its surface; filled card uses global ink and description", () => {
   const theme = fresh();
   theme.components.input = { foreground: "#ff0000", background: "#123456" };

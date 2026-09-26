@@ -79,6 +79,11 @@ export type ComponentTokens = Pick<
   (typeof componentTokenKeys)[number]
 >;
 
+/** Editable aliases consumed by the rendered component. Legacy Text aliases remain in CSS/JSON for compatibility. */
+export function componentEditableTokenKeys(id: ComponentId): readonly (keyof ComponentTokens)[] {
+  return id === "text" ? ["foreground"] : componentTokenKeys;
+}
+
 export type ColorScaleOverrides = Partial<Record<ColorScaleRole, Partial<Record<ColorScaleStop, string>>>>;
 
 export const typographyVariants = ["heading", "h1", "h2", "h3", "h4", "h5", "h6", "paragraph", "label", "caption"] as const;

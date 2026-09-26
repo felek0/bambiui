@@ -13,6 +13,7 @@ import {
   toCSSVariables,
   tokenFields,
   componentTokenKeys,
+  componentEditableTokenKeys,
   componentIds,
   type ThemeTokens,
   type ComponentId,
@@ -112,7 +113,7 @@ const reference: Record<ComponentId, { name: string; props: readonly PropRow[] }
     props: [
       ["variant", '"h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "heading" | "paragraph" | "label" | "caption"', '"paragraph"', "textVariant"],
       size,
-      ["tone", '"neutral" | "primary" | "secondary" | "success" | "warning" | "danger" | "info"', '"neutral"', "textTone"],
+      ["tone", '"neutral" | "primary" | "success" | "warning" | "danger" | "info"', '"neutral"', "textTone"],
       ["as", '"h1"–"h6" | "p" | "span"', "By variant", "textAs"],
       content, className,
       ["native attributes", "HTML attributes for the rendered element", "—", "textNative"],
@@ -304,7 +305,7 @@ function FoundationTokens({ theme, mode, variables, kind }: {
         <table className={styles.table}>
           <caption>{colors ? `${mode} component color aliases` : "Shared component numeric aliases"}</caption>
           <thead><tr><th scope="col">Component</th><th scope="col">CSS variable</th><th scope="col">Source</th><th scope="col">Resolved value</th></tr></thead>
-          <tbody>{componentIds.flatMap((id) => keys.map((key) => {
+          <tbody>{componentIds.flatMap((id) => keys.filter((key) => componentEditableTokenKeys(id).includes(key)).map((key) => {
             const name = cssName(key, `--${id}-`);
             const declaration = variables[name];
             const inherited = /^var\((--ds-[a-z-]+)\)$/.exec(declaration)?.[1];
@@ -350,10 +351,10 @@ export function DeveloperView({ selected, system, mode, cssOutput }: DeveloperVi
   const theme = system.themes[mode];
   const variables = useMemo(() => toCSSVariables(theme, mode), [theme, mode]);
   const prefix = selected === "overview" || selected === "colors" || selected === "spacing" ? "--ds-" : `--${selected}-`;
-  const editableNames = new Set((selected === "overview" ? tokenFields.map(({ key }) => key) : [...componentTokenKeys])
+  const editableNames = new Set((selected === "overview" ? tokenFields.map(({ key }) => key) : selected === "colors" || selected === "spacing" ? [...componentTokenKeys] : componentEditableTokenKeys(selected))
     .map((key) => `${prefix}${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`));
   const tokens = Object.entries(variables).filter(([name]) => editableNames.has(name));
-  const derived = Object.entries(variables).filter(([name]) => name.startsWith(prefix) && !editableNames.has(name));
+  const derived = Object.entries(variables).filter(([name]) => name.startsWith(prefix) && !editableNames.has(name) && !(selected === "text" && name.startsWith("--text-")));
 
   return (
     <div className={styles.root}>
@@ -399,6 +400,8 @@ export function DeveloperView({ selected, system, mode, cssOutput }: DeveloperVi
             ? copy.componentTokensDescription
             : copy.globalTokensDescription}
         </p>
+        {selected === "badge" && <p>Neutral outline uses <code>--badge-neutral-outline</code>, derived from Badge colors unless the border is overridden. <code>--badge-border</code> remains the neutral solid/subtle border alias.</p>}
+        {selected === "text" && <p>Only <code>--text-foreground</code> affects Text. Typography comes from shared <code>--ds-typography-*</code> tokens; unused legacy aliases remain in CSS/JSON backups.</p>}
         <ScrollRegion label={component ? copy.tokensRegion(component.name) : copy.globalTokenReference}>
           <table className={styles.table}>
             <caption>{component ? `${component.name} ${copy.baseTokenAliases}` : copy.globalCSSVariables}</caption>

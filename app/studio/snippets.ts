@@ -186,7 +186,7 @@ export function Example() {
       <Text>Paragraph text uses the default variant and size.</Text>
       <Text variant="paragraph" tone="info">An informative note.</Text>
       <Text variant="label" as="span">Visual label, not a form label</Text>
-      <Text variant="caption" as="span" tone="secondary">Updated today</Text>
+      <Text variant="caption" as="span" tone="primary">Updated today</Text>
     </>
   );
 }

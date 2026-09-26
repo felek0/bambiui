@@ -114,6 +114,9 @@ export function auditSystemColors(theme: ThemeTokens, mode: PaletteMode = "light
 
   const text = resolveComponent(theme, "text");
   add("text.foreground", "Text neutral on global surface", text.foreground, g.background, 4.5, "text");
+  for (const tone of ["primary", "success", "warning", "danger", "info"] as const) {
+    add(`text.${tone}`, `Text ${tone} on global surface`, v[`--ds-${tone}-on-subtle`], g.background, 4.5, "text");
+  }
 
   const card = resolveComponent(theme, "card");
   add("card.foreground", "Card outlined/elevated text", card.foreground, card.background, 4.5, "card");

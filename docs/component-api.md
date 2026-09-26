@@ -90,11 +90,11 @@ Typography values come from `--ds-typography-{variant}-{font-size,line-height,fo
   - Roles: `primary`, `secondary`, `success`, `warning`, `danger` and `info`, each with an `on*` foreground
   - Shape and spacing: `radius`, `paddingX`, `paddingY`, `gap`, `margin`, `fontSize`, `borderWidth`
   - Size scale: `controlHeightSm`, `controlHeightMd`, `controlHeightLg`
-- **Component tokens** (editable per component, exported as `--{component}-{token}`): `background`, `foreground`, `border`, `radius`, `paddingX`, `paddingY`, `gap`, `margin`, `fontSize`, `borderWidth`. They inherit from the global tokens until overridden.
+- **Component tokens** (exported as `--{component}-{token}`): `background`, `foreground`, `border`, `radius`, `paddingX`, `paddingY`, `gap`, `margin`, `fontSize`, `borderWidth`. They inherit from the global tokens until overridden. Text's inspector exposes only its consumed `foreground` override and shared typography styles; other Text aliases appear in export but do not drive its rendered styles.
 - **Derived roles** (`color-engine.ts`, emitted by `toCSSVariables(theme, mode)`): role hover, active, subtle, on-subtle, outline and focus colors; component-specific Button/Badge derivatives; Card description ink. Link Buttons use `--ds-primary-on-subtle` as readable text rather than assuming the primary fill meets 4.5:1 on a surface. Recomputed from current tokens, including overrides, not from the saved source. Invalid manual pairs are reported rather than silently rewritten.
 - **System constants** (not editable, `systemConstants` in `tokens.ts`): state opacity/offset, focus geometry, size/icon scale, spacing insets, elevation and motion. Both preview and CSS export consume the same map.
 - No hard-coded colors or sizes in component CSS. Values come from these layers. Variants and tones remap local custom properties (`--button-fill`, `--tone`). Filled Card uses global muted/foreground and a description derived from that surface. Badge neutral outline honors an explicit border override; semantic tones use role outlines.
-- CSS export includes both theme selectors and derived/system variables, not component markup or style rules.
+- CSS export includes both theme selectors, raw color scale stops, and derived/system variables, not component markup or style rules.
 - Adding a global token requires updating `TokenValues`, `defaultSystem`, `tokenFields`, the schema migration in `parseDesignSystem`, and `tokens.test.mjs`.
 
 ## 5. Accessibility checklist
@@ -111,7 +111,7 @@ Typography values come from `--ds-typography-{variant}-{font-size,line-height,fo
   - View switchers use Tabs.
   - Navigation lists use `aria-current`.
 - Do not convey information with color alone. Status dots get text or a visually hidden label.
-- Accessibility target: 4.5:1 for normal text and 3:1 where UI-boundary/focus contrast is required. Generated defaults pass 127 modeled pairs per theme; `color-audit.ts` follows current state variables. Preserved legacy values and arbitrary manual combinations may fail; report them explicitly. No blanket compliance claim from a passing palette or audit. Badge text/outline and filled-card descriptions must use the derivatives for their actual surfaces.
+- Accessibility target: 4.5:1 for normal text and 3:1 where UI-boundary/focus contrast is required. Generated defaults pass 133 modeled pairs per theme, including neutral and semantic Text tones; `color-audit.ts` checks finite modeled pairs against current CSS variables. Preserved legacy values and arbitrary manual combinations may fail; report them explicitly. No blanket compliance claim from a passing palette or audit. Badge text/outline and filled-card descriptions must use the derivatives for their actual surfaces.
 - Manual screen-reader and native browser-zoom acceptance is tracked in `docs/accessibility-checklist.md`.
 - Respect `prefers-reduced-motion`.
 

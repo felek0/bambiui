@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
 import {
-  componentIds, componentTokenKeys, defaultSystem, exportCSS, isComponentKey,
+  componentIds, componentTokenKeys, componentEditableTokenKeys, defaultSystem, exportCSS, isComponentKey,
   parseDesignSystem, resolveColorScale, resolveComponent, resolveTypography, shareNonColorTokens, STORAGE_KEY, systemConstants,
   toCSSVariables, tokenFields, colorScaleRoles, colorScaleStops, typographyVariants, typographyFields, defaultTypography,
 } from "./tokens.ts";
@@ -42,6 +42,13 @@ function deepFreeze(value) {
   }
   return Object.freeze(value);
 }
+
+test("Text exposes only the alias its CSS consumes while retaining legacy export aliases", () => {
+  assert.deepEqual(componentEditableTokenKeys("text"), ["foreground"]);
+  assert.deepEqual(componentEditableTokenKeys("badge"), componentTokenKeys);
+  const variables = toCSSVariables(defaultSystem.themes.light);
+  assert.equal(variables["--text-padding-x"], "var(--ds-padding-x)");
+});
 
 test("v3 defaults contain two generated, independent themes with historical geometry", () => {
   assert.equal(STORAGE_KEY, "bambiui.design-system.v1");

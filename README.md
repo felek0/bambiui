@@ -4,40 +4,40 @@ A local-first design system playground built with Next.js, Tailwind CSS v4, and 
 
 ## Design studio
 
-- Edit 27 global tokens independently in each light/dark design theme:
+- Edit 27 global tokens across light/dark design themes; only colors differ by theme:
   - Surface colors (background, foreground, muted, border)
   - Brand and status roles (primary, secondary, success, warning, danger and info, each with an on-color)
   - Radius, padding, gap, margin, font size and border width
-  - A shared `sm`/`md`/`lg` control height scale
+  - A shared `sm`/`md`/`lg` control height scale; shape, spacing, sizing, and typography are shared across themes
 - Components follow one API contract (`variant`, `size`, `tone`, `disabled`, `loading`, `label`, `description`, `error`, …). See [docs/component-api.md](docs/component-api.md).
-- Customize Button, Input, Card, Badge, Switch, and Checkbox independently. Component tokens inherit global values until overridden; reset an override to reconnect it.
-- **Design** view: explore component variants, sizes and states directly on a dotted canvas that follows the selected theme's background and foreground tokens. The dots are decorative and derived from those colors; the real Card component keeps its own surface. Choose Light or Dark next to the responsive width control; the inspector edits that theme. Editor chrome stays independent.
-- **Develop** view: start with copyable React usage for the selected component. Switch Light/Dark directly in its toolbar to inspect either theme's tokens. Expand props/defaults, token inheritance or derived colors only when needed. Overview opens the global token reference. Full-system CSS remains available; examples reference this project's components, not a published package.
-- Both views share the selected component and token inspector. Switching views or themes preserves mounted demo state; the compact mobile-width canvas setting is retained. On narrow screens, Edit tokens / Back to preview (or code) links connect the stacked workspace and inspector. The studio UI is English-only.
+- Customize Button, Input, Card, Badge, Switch, Checkbox, and Text. Component tokens inherit global values until overridden; Text uses its foreground override and shared typography styles. Reset an override to reconnect it.
+- **Design** view: explore component variants, sizes and states on a pan/zoom canvas that follows the selected theme's background and foreground tokens. Use Fit or zoom controls on desktop; on mobile, scroll the page normally. The dots are decorative and derived from those colors; the real Card component keeps its own surface. Choose Light or Dark in the header; the inspector edits the selected theme's colors and shared non-color values. Editor chrome stays independent.
+- **Develop** view: start with copyable React usage for the selected component. Switch Light/Dark in the header to inspect either theme's tokens. Expand props/defaults, token inheritance or derived colors only when needed. Overview opens the global token reference. Full-system CSS remains available; examples reference this project's components, not a published package.
+- Both views share the selected component and theme; the token inspector appears only in Design. Switching views or themes preserves mounted demo state. On narrow screens, Edit tokens / Back to preview links connect the stacked Design workspace and inspector. The studio UI is English-only.
 - Changes are saved in this browser using localStorage. No account, server storage, or cross-device sync is included.
-- Export both themes as CSS custom properties, including derived state colors and system constants, or as a version 3 JSON backup. Component markup and style rules are not included.
+- Export both themes as CSS custom properties, including raw color scales, derived state colors and system constants, or as a version 3 JSON backup. Component markup and style rules are not included.
 - Import a JSON backup to restore a system. Imports are validated before replacing your draft. Version 1/2 backups and saved drafts are upgraded to version 3: existing values and overrides are copied independently into both themes without recoloring. Version 1 additions use historical defaults. Regenerate a theme explicitly if you want new accessible colors.
 
-Select a component in the sidebar to edit its tokens, or choose **Global tokens** in the inspector to change the shared foundations. Changes apply immediately. Color inputs accept six-digit hex values; numeric controls use pixels.
+In Design, select a component in the sidebar to edit its tokens, or choose **Overview**, **Colors**, or **Shape & spacing** for global foundations. Changes apply immediately. Color inputs accept six-digit hex values; numeric controls use pixels.
 
 ## Themes and accessibility
 
-- Studio chrome has a single, light appearance with soft surfaces and decorative borders. The logo's `#e8673c` is the editor primary and the fresh design system's brand source. **Design** shows one preview at a time; choose **Light** or **Dark** beside the responsive control to target manual token editing in the inspector. Developer reference follows that target; exports always include both themes.
-- Manual token changes remain independent per theme. Choosing a color in the Color builder instead applies a generated light/dark pair together.
+- Studio chrome has a single, light appearance with soft surfaces and decorative borders. The logo's `#e8673c` is the editor primary and the fresh design system's brand source. **Design** shows one theme on the canvas at a time; choose **Light** or **Dark** in the header to target manual color editing in the inspector. Developer reference follows that target; exports always include both themes.
+- Manual color edits remain independent per theme; shape, spacing, sizing, and typography edits update both themes. Choosing a color in the Color builder applies a generated light/dark pair together.
 - CSS uses `:root, [data-ds-theme="light"]` and `[data-ds-theme="dark"]`. Apply the corresponding attribute to your consuming theme container.
 - Generated defaults now drive hover/pressed colors, badge subtle/outline roles, focus rings and filled-card text. Unchecked controls remain opaque; only disabled controls are dimmed. Decorative icons are excluded from accessible names, invalid token inputs retain a separate keyboard focus ring, and motion reduction disables component animation.
 
-The modeled default color audit passes **127 pairs per theme** (normal text 4.5:1, required boundaries/focus 3:1). Custom combinations and preserved legacy designs may fail and are highlighted in the inspector, not silently rewritten. Browser tests cover keyboard and accessibility-tree semantics, but are **not a screen-reader session or full WCAG certification**. Manual VoiceOver and native browser-zoom acceptance remain outstanding; see [docs/accessibility-checklist.md](docs/accessibility-checklist.md).
+The modeled default color audit passes **133 pairs per theme** (normal text 4.5:1, required boundaries/focus 3:1). Custom combinations and preserved legacy designs may fail and are highlighted in the inspector, not silently rewritten. Browser tests cover keyboard and accessibility-tree semantics, but are **not a screen-reader session or full WCAG certification**. Manual VoiceOver and native browser-zoom acceptance remain outstanding; see [docs/accessibility-checklist.md](docs/accessibility-checklist.md).
 
 ## Color builder
 
-In the inspector, choose **Global tokens** and expand **Color builder** (collapsed initially). Enter a valid six-digit brand color or choose a preset: both light and dark palettes apply immediately in one update. An incomplete/invalid value is not applied. The source and both themes' 17 generated global colors are updated together; dimensions and component overrides are preserved. Manual token editing still targets only the selected theme. Imported backups with distinct historical sources remain unchanged until you choose a new color.
+In the Design inspector, choose **Overview** or **Colors** and expand **Color builder** (collapsed initially). Enter a valid six-digit brand color or choose a preset: both light and dark palettes apply immediately in one update. An incomplete/invalid value is not applied. The source and both themes' 17 generated global colors are updated together; dimensions and component overrides are preserved. Manual color editing still targets only the selected theme; non-color edits are shared. Imported backups with distinct historical sources remain unchanged until you choose a new color.
 
 The dependency-free engine uses OKLCH scales and reduces chroma to fit the sRGB gamut. Primary and neutral colors follow the source; success, warning, danger and info keep semantic green, amber, red and blue families. An accessible light primary keeps the exact source color (including the logo color) with dark button ink when possible; otherwise a safe usage tone is generated. Links use a separately derived, contrast-safe primary text color. Each recipe includes 12-step scales and solid, on-solid, hover, active, subtle, on-subtle, outline and focus roles.
 
 Generated recipes check normal text at 4.5:1 and boundaries/focus at 3:1 on their specified surfaces, using final hex colors. A light primary fill with dark ink may meet the 3:1 button-boundary target without also meeting 4.5:1 as standalone text; use the derived `--ds-primary-on-subtle` for links. Raw scale stops do **not** guarantee arbitrary contrast pairs. The current-system report also checks modeled component mixes and enabled states, including overrides. It reports finite color pairs, **not full WCAG compliance**. The same derivation powers rendered interaction colors and exported CSS. Impossible manual color combinations retain their explicit values and produce warnings rather than a false compliance claim.
 
-Applied sources and both themes are included in JSON backups. Incomplete hex input stays in the open page only. CSS includes both themes’ current variables and derived states, not raw scales. Generate a separate reproducible recipe from the CLI when needed:
+Applied sources and both themes are included in JSON backups. Incomplete hex input stays in the open page only. CSS includes both themes’ current variables, raw scale stops and derived states. Generate a separate reproducible recipe from the CLI when needed:
 
 ```bash
 node --experimental-strip-types scripts/generate-palette.mjs '#e8673c'

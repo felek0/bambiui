@@ -13,6 +13,7 @@ import { mixColors, type PaletteMode } from "./color-engine";
 import { copy as t } from "./studio-copy";
 import {
   componentIds,
+  componentEditableTokenKeys,
   colorScaleRoles,
   colorScaleStops,
   typographyFields,
@@ -28,6 +29,7 @@ import {
   resolveComponent,
   STORAGE_KEY,
   tokenFields,
+  toCSSVariables,
   type ComponentId,
   type ColorScaleRole,
   type ColorScaleStop,
@@ -63,12 +65,14 @@ function TokenControl({
   field,
   value,
   overridden,
+  derivedOutline,
   onChange,
   onReset,
 }: {
   field: TokenField;
   value: string | number;
   overridden?: boolean;
+  derivedOutline?: string;
   onChange: (value: string | number) => void;
   onReset: () => void;
 }) {
@@ -144,6 +148,7 @@ function TokenControl({
         />
         <span>{isColor ? "HEX" : "px"}</span>
       </div>
+      {derivedOutline && <p className="text-[11px] studio-text-secondary">{t.derivedOutline}: {derivedOutline}</p>}
       {!isColor && (
         <input
           className="token-range"
@@ -282,7 +287,7 @@ export default function Studio() {
   const fields = tokenFields.filter(
     ({ key, type }) => isGlobal
       ? (selection !== "colors" || type === "color") && (selection !== "spacing" || type === "number")
-      : isComponentKey(key) && (component !== "text" || key === "foreground"),
+      : isComponentKey(key) && (componentEditableTokenKeys(component).includes(key)),
   );
   const colorFields = fields.filter((field) => field.type === "color");
   const numberFields = fields.filter((field) => field.type === "number");
@@ -700,6 +705,8 @@ export default function Studio() {
                     key={`${workspaceRevision}-${activeTheme}-${selection}-${field.key}`}
                     field={field}
                     value={values[field.key as keyof typeof values]}
+                    derivedOutline={!isGlobal && component === "badge" && field.key === "border" && !Object.hasOwn(theme.components.badge, "border")
+                      ? toCSSVariables(theme, activeTheme)["--badge-neutral-outline"] : undefined}
                     overridden={
                       isGlobal
                         ? undefined
