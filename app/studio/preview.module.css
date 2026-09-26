@@ -447,6 +447,30 @@
   max-width: 360px;
 }
 
+.formDemoDisclosure {
+  padding-top: 12px;
+  border-top: 1px solid var(--ds-border);
+}
+
+.formDemoDisclosure summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.formDemoDisclosure summary:focus-visible {
+  outline: 2px solid var(--ds-primary-focus);
+  outline-offset: 2px;
+}
+
+.formDemo {
+  display: grid;
+  gap: var(--ds-gap);
+  margin-top: 12px;
+}
+
+.formDemo > button { justify-self: start; }
+.formDemo output:empty { display: none; }
+
 /* Side by side so the size steps are easy to compare. */
 .sizeGroup {
   display: grid;

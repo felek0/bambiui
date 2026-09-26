@@ -755,6 +755,42 @@ try {
       await send('Emulation.setDeviceMetricsOverride',{width:375,height:812,deviceScaleFactor:1,mobile:false});
     }
   });
+  await check('controlled form validates required fields and submits native FormData',async()=>{
+    await send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
+    await navigate('design','input');
+    const form='[data-form-demo]';
+    assert.ok(await evaluate(`!!${q(form)}`));
+
+    const disclosure='[data-specimen="input"] details';
+    await evaluate(`${q(`${disclosure} summary`)}.focus({preventScroll:true})`);
+    await key('Enter');
+    await wait(`${q(disclosure)}.open`);
+    assert.equal(await evaluate(`${q(form)}.checkValidity()`),false,'required form cannot submit while empty');
+    await evaluate(`${q(form)}.requestSubmit()`);
+    assert.equal(await evaluate(`${q(`${form} [data-form-result]`)}.textContent`),'','invalid submit does not invoke handler');
+    const email=`${form} input[name="contact"]`;
+    await evaluate(`${q(email)}.focus({preventScroll:true})`);
+    await send('Input.insertText',{text:'not-an-email'});
+    await wait(`${q(email)}.value === 'not-an-email'`);
+    assert.equal(await evaluate(`${q(email)}.validity.typeMismatch`),true);
+    await send('Input.dispatchKeyEvent',{type:'keyDown',key:'a',code:'KeyA',modifiers:4,commands:['selectAll']});
+    await send('Input.dispatchKeyEvent',{type:'keyUp',key:'a',code:'KeyA',modifiers:4});
+    await send('Input.insertText',{text:'form@example.com'});
+    await wait(`${q(email)}.value === 'form@example.com'`);
+    assert.equal(await evaluate(`${q(form)}.checkValidity()`),false,'required checkbox still prevents submission');
+    for(const role of ['switch','checkbox']) {
+      const control=`${form} [role="${role}"]`;
+      await evaluate(`${q(control)}.focus({preventScroll:true})`);
+      await key(' ','Space');
+      await wait(`${q(control)}.getAttribute('aria-checked') === 'true'`);
+    }
+    assert.equal(await evaluate(`${q(form)}.checkValidity()`),true);
+    assert.deepEqual(await evaluate(`Object.fromEntries(new FormData(${q(form)}))`),{contact:'form@example.com',updates:'yes',terms:'accepted'});
+    await evaluate(`${q(`${form} button[type="submit"]`)}.focus({preventScroll:true})`);
+    await key('Enter');
+    await wait(`${q(`${form} [data-form-result]`)}.textContent.includes('form@example.com')`);
+    assert.equal(await evaluate('location.pathname'),'/input');
+  });
   await check('Undo and redo group edits and restore both themes after a palette preset',async()=>{
     await send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
     await navigate('design','spacing');

@@ -77,6 +77,26 @@ function SaveButtonDemo({ copy }: { copy: PreviewCopy }) {
   </div>;
 }
 
+function FormDemo() {
+  const [email, setEmail] = useState("");
+  const [updates, setUpdates] = useState(false);
+  const [agreed, setAgreed] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  return <form className={styles.formDemo} data-form-demo onSubmit={(event) => {
+    event.preventDefault();
+    const values = Object.fromEntries(new FormData(event.currentTarget));
+    setResult(`Submitted ${values.contact} · updates ${values.updates ?? "off"} · terms ${values.terms}`);
+  }}>
+    <strong>Controlled form</strong>
+    <Input label="Contact email" type="email" name="contact" required value={email} onValueChange={(next) => { setEmail(next); setResult(null); }} />
+    <Switch label="Email updates" name="updates" value="yes" checked={updates} onCheckedChange={(next) => { setUpdates(next); setResult(null); }} />
+    <Checkbox label="Accept terms" name="terms" value="accepted" required checked={agreed} onCheckedChange={(next) => { setAgreed(next); setResult(null); }} labelPosition="start" />
+    <Button type="submit">Submit example</Button>
+    <output role="status" data-form-result>{result}</output>
+  </form>;
+}
+
 type ShowcaseId = Exclude<ComponentId, "text">;
 
 function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; copy: PreviewCopy }) {
@@ -154,6 +174,10 @@ function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; c
                 <Input label={copy.button.medium} size="md" placeholder="size=&quot;md&quot;" />
                 <Input label={copy.button.large} size="lg" placeholder="size=&quot;lg&quot;" />
               </div>
+              <details className={styles.formDemoDisclosure}>
+                <summary>Controlled form example</summary>
+                <FormDemo />
+              </details>
             </>
           )}
         </div>
