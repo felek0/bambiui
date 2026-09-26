@@ -379,6 +379,36 @@ try {
     assert.equal((await stored()).themes.dark.components.button.paddingX,undefined);
     await click(named(themeControl + ' button','Light'));
   });
+  await check('shape and spacing specimens visualize every shared dimension live',async()=>{
+    await navigate('design','spacing');
+    await click(named(themeControl + ' button','Light'));
+    const original=await stored();
+    const examples=[
+      ['radius',24,'[class*="shapeVisual"]','borderTopLeftRadius'],
+      ['paddingX',28,'[class*="paddingVisual"]','paddingLeft'],
+      ['paddingY',22,'[class*="paddingVisual"]','paddingTop'],
+      ['gap',18,'[class*="gapVisual"]','gap'],
+      ['margin',20,'[class*="marginVisual"] > span','marginLeft'],
+      ['fontSize',20,'[class*="fontVisual"]','fontSize'],
+      ['borderWidth',4,'[class*="shapeVisual"]','borderTopWidth'],
+      ['controlHeightSm',40,'[class*="heightVisual"]','height'],
+      ['controlHeightMd',48,'[class*="heightVisual"]','height'],
+      ['controlHeightLg',56,'[class*="heightVisual"]','height'],
+    ];
+    for(const [token,value,visual,property] of examples) {
+      await fill(`#token-${token}`,String(value));
+      const sample=`[data-spacing-token="${token}"]`;
+      assert.ok(await evaluate(`${q(sample)}.textContent.includes(${JSON.stringify(`${value}px`)})`),`${token} label should reflect the edit`);
+      assert.equal(await evaluate(`getComputedStyle(${q(`${sample} ${visual}`)})[${JSON.stringify(property)}]`),`${value}px`,`${token} should change the visual example`);
+      assert.equal((await stored()).themes.dark.global[token],value,`${token} should be shared`);
+    }
+    await capture('studio-spacing-live-light');
+    await click(named(themeControl + ' button','Dark'));
+    for(const [token,value,visual,property] of examples) assert.equal(await evaluate(`getComputedStyle(${q(`[data-spacing-token="${token}"] ${visual}`)})[${JSON.stringify(property)}]`),`${value}px`);
+    await capture('studio-spacing-live-dark');
+    await click(named(themeControl + ' button','Light'));
+    for(const [token] of examples) await fill(`#token-${token}`,String(original.themes.light.global[token]));
+  });
   await check('contrast warnings follow manual edits and exported CSS/JSON keep both themes',async()=>{
     await navigate('design','button');
     const fillColor = await evaluate(`${q('#token-background')}.value`);
@@ -549,6 +579,8 @@ try {
     assert.ok(await evaluate(`!!${q('#token-radius')} && !${q('#token-background')} && !${q('#scale-primary-500')}`));
     await delay(450);
     await capture('studio-spacing');
+    await navigate('design','text');
+    await delay(450);
     await click(q('[data-foundation="text"] h2 a'));
     await route('design','text');
     await click(named(viewNav + ' a','Develop'));
@@ -617,6 +649,10 @@ try {
       assert.ok(await evaluate('document.documentElement.scrollWidth <= innerWidth'),`mobile overflow: ${view}/${id}`);
       assert.ok(await evaluate(`${q(viewNav)}.getBoundingClientRect().right <= innerWidth && ${q(themeControl)}.getBoundingClientRect().right <= innerWidth`),`header controls overflow: ${view}/${id}`);
       if(view === 'design') assert.ok(await evaluate(`${q(`[data-canvas-unit="${id}"]`)}.getClientRects().length>0`));
+      if(view === 'design' && id === 'spacing') {
+        await evaluate(`${q('[data-foundation="spacing"]')}.scrollIntoView({block:'start',behavior:'instant'})`);
+        await capture('studio-375-spacing');
+      }
     }
     await navigate('design','button');
     assert.ok(await evaluate(`${q('.mobile-editor-link')}.getClientRects().length > 0`));

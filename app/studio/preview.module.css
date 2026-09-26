@@ -211,9 +211,8 @@
 
 .spacingSample {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 8px;
   min-width: 0;
   padding: 12px;
   border: 1px solid var(--ds-border);
@@ -221,6 +220,97 @@
   color: var(--ds-foreground);
   text-decoration: none;
 }
+
+.spacingSampleHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.spacingVisual {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 76px;
+  padding: 6px;
+  border: 1px dashed var(--ds-border);
+  border-radius: 5px;
+}
+
+.shapeVisual {
+  width: 96px;
+  height: 52px;
+  border: 1px solid var(--ds-primary);
+  border-radius: var(--ds-radius);
+  background: var(--ds-muted);
+}
+
+[data-spacing-token="borderWidth"] .shapeVisual {
+  border-width: var(--ds-border-width);
+}
+
+.paddingVisual {
+  padding: 6px var(--ds-padding-x);
+  border: 1px solid var(--ds-primary);
+  border-radius: var(--ds-radius);
+  background: var(--ds-muted);
+}
+
+.paddingVisual > span {
+  display: block;
+  padding: 4px 8px;
+  background: var(--ds-background);
+}
+
+[data-spacing-token="paddingY"] .paddingVisual {
+  padding: var(--ds-padding-y) 10px;
+}
+
+.gapVisual {
+  display: flex;
+  gap: var(--ds-gap);
+}
+
+.gapVisual i {
+  width: 18px;
+  height: 26px;
+  border-radius: 3px;
+  background: var(--ds-primary);
+}
+
+.marginVisual {
+  width: min(100%, 220px);
+  border: 1px solid var(--ds-border);
+}
+
+.marginVisual > span {
+  display: block;
+  width: 64px;
+  height: 34px;
+  margin-inline: var(--ds-margin);
+  background: var(--ds-primary);
+}
+
+.fontVisual {
+  font-size: var(--ds-font-size);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.heightVisual {
+  display: grid;
+  place-items: center;
+  width: 94px;
+  border: 1px solid var(--ds-primary);
+  border-radius: var(--ds-radius);
+  background: var(--ds-muted);
+  font-size: 11px;
+  line-height: 1;
+}
+
+[data-spacing-token="controlHeightSm"] .heightVisual { height: var(--ds-control-height-sm); }
+[data-spacing-token="controlHeightMd"] .heightVisual { height: var(--ds-control-height-md); }
+[data-spacing-token="controlHeightLg"] .heightVisual { height: var(--ds-control-height-lg); }
 
 .spacingSample:hover,
 .spacingSample:focus-visible {

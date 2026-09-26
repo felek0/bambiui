@@ -588,8 +588,16 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
               <h2 id="canvas-spacing-title"><Link href="/spacing" aria-current={selected === "spacing" ? "page" : undefined}>Shape &amp; spacing</Link></h2>
               <p>Shared dimensions for both themes. Select a token to edit its global value.</p>
               <div className={styles.spacingSamples}>
-                {tokenFields.filter((field) => field.type === "number").map((field) => <Link key={field.key} href="/spacing" className={styles.spacingSample}>
-                  <span>{field.label}</span><strong>{system.themes[mode].global[field.key]}px</strong>
+                {tokenFields.filter((field) => field.type === "number").map((field) => <Link key={field.key} href="/spacing" className={styles.spacingSample} data-spacing-token={field.key}>
+                  <span className={styles.spacingSampleHeader}><span>{field.label}</span><strong>{system.themes[mode].global[field.key]}px</strong></span>
+                  <span className={styles.spacingVisual} aria-hidden="true">
+                    {field.key === "radius" || field.key === "borderWidth" ? <span className={styles.shapeVisual} />
+                      : field.key === "paddingX" || field.key === "paddingY" ? <span className={styles.paddingVisual}><span>Content</span></span>
+                      : field.key === "gap" ? <span className={styles.gapVisual}><i /><i /><i /></span>
+                      : field.key === "margin" ? <span className={styles.marginVisual}><span /></span>
+                      : field.key === "fontSize" ? <span className={styles.fontVisual}>Ag</span>
+                      : <span className={styles.heightVisual}>Control</span>}
+                  </span>
                 </Link>)}
               </div>
             </section>
