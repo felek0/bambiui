@@ -243,6 +243,16 @@ export const systemConstants = {
   "--ds-state-disabled-opacity": "0.4",
 
   "--ds-text-muted-mix": "70%",
+  "--ds-button-font-weight": "500",
+  "--ds-button-line-height": "1.35",
+  "--ds-field-label-font-weight": "500",
+  "--ds-field-helper-font-size": "0.86em",
+  "--ds-field-helper-line-height": "1.45",
+  "--ds-input-line-height": "1.4",
+  "--ds-badge-line-height": "1.2",
+  "--ds-card-title-font-weight": "550",
+  "--ds-card-title-letter-spacing": "-0.02em",
+  "--ds-card-description-line-height": "1.65",
 
   "--ds-shadow-elevated": "0 8px 24px #27272a0c",
   "--ds-transition-duration": "150ms",

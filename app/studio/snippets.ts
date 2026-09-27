@@ -2,7 +2,7 @@ import type { ComponentId } from "./tokens";
 
 /*
  * React source shown in the component spotlight's "React" tab. Each entry
- * mirrors the expanded `Specimen` case in preview.tsx; update both together.
+ * illustrates representative supported props; interactive client-only demos live in preview.tsx.
  */
 
 const imports = (names: string, icon = true) =>
@@ -47,6 +47,7 @@ export function Example() {
       <Input
         label="Email address"
         type="email"
+        required
         placeholder="you@example.com"
         description="We only use it for receipts."
       />
@@ -62,6 +63,7 @@ export function Example() {
         label="Workspace URL"
         type="url"
         defaultValue="studio"
+        endIcon={<Icon name="link" />}
         error="Enter a full URL, including https://"
       />
       <Input
@@ -95,7 +97,7 @@ export function Example() {
         </Card.Header>
       </Card>
 
-      <Card variant="elevated">
+      <Card variant="elevated" size="lg">
         <Card.Icon>
           <Icon name="plus" />
         </Card.Icon>
@@ -103,6 +105,7 @@ export function Example() {
           <Card.Title>Space to explore</Card.Title>
           <Card.Description>Your next idea starts right here.</Card.Description>
         </Card.Header>
+        <Card.Content>Give your next idea a place to grow.</Card.Content>
         <Card.Footer>
           <Button size="sm">Start</Button>
           <Button size="sm" variant="ghost">
@@ -123,7 +126,7 @@ export function Example() {
   );
 }
 `,
-  badge: `${imports("Badge", false)}
+  badge: `${imports("Badge")}
 const title = (value: string) => value[0].toUpperCase() + value.slice(1);
 const variants = ["solid", "subtle", "outline"] as const;
 const tones = ["neutral", "primary", "success", "warning", "danger", "info"] as const;
@@ -138,6 +141,8 @@ export function Example() {
           </Badge>
         )),
       )}
+
+      <Badge variant="outline" tone="info" startIcon={<Icon name="spark" />}>Info</Badge>
 
       {/* Sizes */}
       <Badge size="sm" dot tone="success">
@@ -166,7 +171,9 @@ export function Example() {
         defaultChecked
       />
       <Switch label="Compact rows" size="sm" labelPosition="start" />
-      <Switch label="Unavailable" disabled />
+      <Switch label="Read-only setting" readOnly defaultChecked />
+      <Switch label="Needs attention" error="Turn this setting on to continue." />
+      <Switch label="Unavailable" disabled defaultChecked />
     </>
   );
 }
@@ -187,6 +194,7 @@ export function Example() {
       <Text variant="paragraph" tone="info">An informative note.</Text>
       <Text variant="label" as="span">Visual label, not a form label</Text>
       <Text variant="caption" as="span" tone="primary">Updated today</Text>
+      <Text tone="danger" size="lg">An important warning.</Text>
     </>
   );
 }
@@ -197,13 +205,14 @@ export function Example() {
     <>
       <Checkbox label="Include the details" defaultChecked />
       <Checkbox label="Keep me in the loop" />
-      <Checkbox label="Select all" indeterminate />
+      <Checkbox label="Select all" size="lg" description="Includes every item in this list." indeterminate />
       <Checkbox
         label="I accept the terms"
         required
         error="Please accept the terms to continue."
       />
       <Checkbox label="Small print" size="sm" />
+      <Checkbox label="Read-only selection" readOnly defaultChecked />
       <Checkbox label="Unavailable" disabled defaultChecked />
     </>
   );

@@ -82,8 +82,8 @@
   color: var(--button-ink);
   font-family: inherit;
   font-size: calc(var(--button-font-size) * var(--size-scale));
-  font-weight: 500;
-  line-height: 1.35;
+  font-weight: var(--ds-button-font-weight);
+  line-height: var(--ds-button-line-height);
   cursor: pointer;
   transition:
     background-color var(--ds-transition-duration) ease,
@@ -199,14 +199,14 @@
 }
 
 .label {
-  font-weight: 500;
+  font-weight: var(--ds-field-label-font-weight);
 }
 
 .description,
 .error {
   margin: 0;
-  font-size: 0.86em;
-  line-height: 1.45;
+  font-size: var(--ds-field-helper-font-size);
+  line-height: var(--ds-field-helper-line-height);
 }
 
 .description {
@@ -247,7 +247,7 @@
   background: transparent;
   color: inherit;
   font: inherit;
-  line-height: 1.4;
+  line-height: var(--ds-input-line-height);
   outline: none;
 }
 
@@ -499,7 +499,7 @@
   background: var(--badge-background);
   color: var(--tone-text);
   font-size: calc(var(--badge-font-size) * var(--size-scale));
-  line-height: 1.2;
+  line-height: var(--ds-badge-line-height);
 }
 
 .badge > svg {
@@ -627,14 +627,14 @@
 }
 
 .cardTitle {
-  font-weight: 550;
-  letter-spacing: -0.02em;
+  font-weight: var(--ds-card-title-font-weight);
+  letter-spacing: var(--ds-card-title-letter-spacing);
 }
 
 .cardDescription {
   margin: 0;
   color: var(--card-description);
-  line-height: 1.65;
+  line-height: var(--ds-card-description-line-height);
 }
 
 .cardContent {

@@ -113,7 +113,7 @@ for (const mode of modes) {
   test(`${mode}: CSS maps contain all stored, derived, and constant values`, () => {
     const theme = fresh().themes[mode];
     const variables = toCSSVariables(theme, mode);
-    assert.equal(Object.keys(variables).length, 170 + colorScaleRoles.length * colorScaleStops.length + typographyVariants.length * typographyFields.length);
+    assert.equal(Object.keys(variables).length, 155 + Object.keys(systemConstants).length + colorScaleRoles.length * colorScaleStops.length + typographyVariants.length * typographyFields.length);
     for (const [key, value] of Object.entries(theme.global)) {
       assert.equal(variables[`--ds-${kebab(key)}`], typeof value === "number" ? `${value}px` : value);
     }
@@ -212,6 +212,11 @@ test("system constant map includes only the current geometry and state constants
     "--ds-focus-ring-width": "2px", "--ds-focus-ring-offset": "3px",
     "--ds-state-pressed-offset": "1px", "--ds-state-disabled-opacity": "0.4",
     "--ds-text-muted-mix": "70%",
+    "--ds-button-font-weight": "500", "--ds-button-line-height": "1.35",
+    "--ds-field-label-font-weight": "500", "--ds-field-helper-font-size": "0.86em",
+    "--ds-field-helper-line-height": "1.45", "--ds-input-line-height": "1.4",
+    "--ds-badge-line-height": "1.2", "--ds-card-title-font-weight": "550",
+    "--ds-card-title-letter-spacing": "-0.02em", "--ds-card-description-line-height": "1.65",
     "--ds-shadow-elevated": "0 8px 24px #27272a0c", "--ds-transition-duration": "150ms",
     "--ds-control-inset": "2px", "--ds-switch-thumb-shadow": "0 1px 2px #00000029",
     "--ds-checkbox-inset": "6px", "--ds-spinner-duration": "800ms", "--ds-card-icon-border-width": "1px",

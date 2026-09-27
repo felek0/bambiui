@@ -218,6 +218,21 @@ try {
     assert.equal(await evaluate(`${q('[data-palette-builder]')}.open`),false);
     await capture('studio-desktop-light');
   });
+  await check('component typography consumes exported system constants',async()=>{
+    const pane='[data-ds-theme="light"]';
+    for(const [selector,property,constant] of [
+      ['[data-specimen="button"] button[data-variant="primary"]','fontWeight','--ds-button-font-weight'],
+      ['[data-specimen="card"] [class*="cardTitle"]','fontWeight','--ds-card-title-font-weight'],
+      ['[data-specimen="badge"] [data-variant="outline"]','lineHeight','--ds-badge-line-height'],
+    ]) {
+      const computed=await evaluate(`getComputedStyle(${q(selector)})[${JSON.stringify(property)}]`);
+      const value=await evaluate(`${q(pane)}.style.getPropertyValue(${JSON.stringify(constant)}).trim()`);
+      if(property === 'lineHeight') {
+        const fontSize=Number.parseFloat(await evaluate(`getComputedStyle(${q(selector)}).fontSize`));
+        assert.ok(Math.abs(Number.parseFloat(computed)-fontSize*Number(value))<0.2,`${selector} uses ${constant}`);
+      } else assert.equal(computed,value,`${selector} uses ${constant}`);
+    }
+  });
   await check('expanded specimens expose states and read-only choices resist pointer and keyboard input',async()=>{
     try {
       for(const [id,label] of [['switch','Read-only setting'],['checkbox','Read-only selection']]) {

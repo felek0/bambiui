@@ -59,7 +59,9 @@ Run with Node.js 22.6+ (Node.js 22.13+ recommended):
 node --experimental-strip-types --test app/studio/*.test.mjs
 ```
 
-The tests cover inheritance, component isolation, CSS/JSON compatibility, invalid imports, deterministic palette generation, gamut and semantic hue preservation, contrast thresholds, modeled component mixes and CLI output.
+The tests cover inheritance, component isolation, CSS/JSON compatibility, invalid imports, deterministic palette generation, gamut and semantic hue preservation, contrast thresholds, modeled component mixes, CLI output, and type-checking every copyable React snippet against the real component APIs.
+
+To verify a direct Server Component consumer of Checkbox, run `node scripts/check-checkbox-server.mjs`. It builds a disposable Next.js fixture under `.next`, checks the static markup and client-reference manifest, then removes the fixture. This does not execute browser hydration.
 
 ## Studio smoke tests
 

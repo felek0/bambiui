@@ -2,6 +2,17 @@
 
 Tarih: 2026-09-26
 
+## Uygulama durumu · 2026-09-27
+
+Bu belge özgün incelemenin bulgularını ve o tarihteki doğrulama sonucunu korur; aşağıdaki durum daha sonraki uygulamayı özetler.
+
+- **Faz 1 — uygulandı:** Text snippet ve semantik kontrast denetimi düzeltildi; Badge türetilmiş border ve Text'in tükettiği alias'lar doğru anlatılıyor. Yedi kopyalanabilir örnek `snippets.test.mjs` ile gerçek API'ye karşı derleniyor. Checkbox'ın doğrudan Server Component kullanımı `scripts/check-checkbox-server.mjs` içinde ayrı bir statik Next build'iyle sınanıyor; gerçek tarayıcı hydration'ı bu fixture'da çalıştırılmıyor.
+- **Faz 2 — uygulandı:** Oturumluk Undo/Redo, tema kapsamı etiketleri, ilgili input'a odak taşıyan canvas bağlantıları, override variant/state açıklamaları ve preview renklerinden bağımsız canvas araçları eklendi.
+- **Faz 3 — otomatik kapsam kısmen uygulandı:** Readonly, required, error, loading ve controlled form/FormData fixture'ları Chromium smoke ile doğrulandı. Gerçek VoiceOver, browser-native %200 zoom, forced-colors ve dar/geniş tüketici container'larında manuel kabul hâlâ açık.
+- **Faz 4 — kontrollü başlangıç:** Sabit komponent tipografisi `systemConstants` altında merkezileştirildi; yeni düzenlenebilir global token veya yeni komponent eklenmedi. Font family, spacing ölçeği, elevation/motion ve skala bağımlılık modelinin değişmesi gerçek kullanım gereksinimine bağlı ayrı ürün kararlarıdır.
+
+Güncel doğrulama: 109 unit/snippet testi, lint, TypeScript, production build, Chromium smoke ve izole Checkbox Server Component build'i başarılı. Bu sonuçlar manuel erişilebilirlik kabulü veya hydration tarayıcı testi yerine geçmez.
+
 ## Kapsam ve yöntem
 
 Hedef: local-first tasarım sistemi playground'unda foundation düzenleme → komponent üzerinde doğrulama → geliştirici referansı → CSS/JSON aktarımı akışının güvenilirliği.
