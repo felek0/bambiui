@@ -6,6 +6,7 @@ import { Dialog } from "@base-ui/react/dialog";
 import { usePathname } from "next/navigation";
 import { Button, NavItem, SegmentedControl } from "./controls";
 import { BrandMark, Icon } from "./icons";
+import { brandColor } from "./brand";
 import { Preview } from "./preview";
 import { DeveloperView } from "./developer";
 import { ColorBuilder, ContrastReport } from "./color-builder";
@@ -442,43 +443,29 @@ export default function Studio() {
       </a>
       <header className="studio-header">
         <Link href="/" className="brand" aria-label={t.home}>
-          <span className="brand-mark">
+          <span className="brand-mark" style={{ color: brandColor }}>
             <BrandMark size={24} />
           </span>
           bambi<span className="brand-ui">ui</span>
           <span className="beta-tag">{t.beta}</span>
         </Link>
-        <div className="project-name">
-          <span className="studio-text-muted">/</span>
-          <input
-            aria-label={t.name}
-            maxLength={80}
-            disabled={!ready}
-            value={system.name}
-            onChange={(event) =>
-              update({ ...system, name: event.target.value }, "system-name")
-            }
-            onBlur={finishEdit}
-          />
-        </div>
+        <nav className="view-switch" aria-label={t.workspaceView}>
+          <Link href={workspaceHref("design", selection)} aria-current={view === "design" ? "page" : undefined} data-active={view === "design" || undefined}>
+            <Icon name="grid" size={14} />{t.design}
+          </Link>
+          <Link href={workspaceHref("develop", selection)} aria-current={view === "develop" ? "page" : undefined} data-active={view === "develop" || undefined}>
+            <Icon name="code" size={15} />{t.develop}
+          </Link>
+        </nav>
         <div className="header-workspace-controls">
-          <nav className="view-switch" aria-label={t.workspaceView}>
-            <Link href={workspaceHref("design", selection)} aria-current={view === "design" ? "page" : undefined} data-active={view === "design" || undefined}>
-              <Icon name="grid" size={14} />{t.design}
-            </Link>
-            <Link href={workspaceHref("develop", selection)} aria-current={view === "develop" ? "page" : undefined} data-active={view === "develop" || undefined}>
-              <Icon name="code" size={15} />{t.develop}
-            </Link>
-          </nav>
-          <SegmentedControl aria-label={t.theme} value={activeTheme} onValueChange={(next) => setActiveTheme(next as PaletteMode)}>
-            <SegmentedControl.Item value="light">{t.light}</SegmentedControl.Item>
-            <SegmentedControl.Item value="dark">{t.dark}</SegmentedControl.Item>
-          </SegmentedControl>
+          {view === "develop" && <SegmentedControl aria-label={t.theme} value={activeTheme} onValueChange={(next) => setActiveTheme(next as PaletteMode)}>
+            <SegmentedControl.Item value="light" aria-label={t.light} title={t.light}><Icon name="sun" size={16} /></SegmentedControl.Item>
+            <SegmentedControl.Item value="dark" aria-label={t.dark} title={t.dark}><Icon name="moon" size={16} /></SegmentedControl.Item>
+          </SegmentedControl>}
           {view === "design" && <a className="mobile-editor-link" href="#token-editor">{t.jumpToTokens} <Icon name="arrow" size={12} /></a>}
         </div>
         <div className="header-actions">
-          <Button iconOnly aria-label={t.undo} title={t.undo} disabled={!ready || historyCounts.undo === 0} onClick={() => travel("undo")}>↶</Button>
-          <Button iconOnly aria-label={t.redo} title={t.redo} disabled={!ready || historyCounts.redo === 0} onClick={() => travel("redo")}>↷</Button>
+
           <span className="save-status">
             <span
               className={`status-dot ${status === "unsaved" ? "warning" : ""}`}
@@ -601,62 +588,74 @@ export default function Studio() {
       <aside className="studio-sidebar" aria-label={t.library}>
         <div className="sidebar-project">
           <span className="project-icon"><Icon name="box" size={20} /></span>
-          <div><strong>{t.yourSystem}</strong><span>{t.feel}</span></div>
+          <div className="sidebar-project-fields">
+            <strong>{t.yourSystem}</strong>
+            <input
+              aria-label={t.name}
+              maxLength={80}
+              disabled={!ready}
+              value={system.name}
+              onChange={(event) => update({ ...system, name: event.target.value }, "system-name")}
+              onBlur={finishEdit}
+            />
+          </div>
         </div>
-        <div className="sidebar-section-label">{t.workspace.toUpperCase()}</div>
-        <NavItem
-          icon={<Icon name="grid" />}
-          current={selection === "overview"}
-          href={workspaceHref(view, "overview")}
-        >
-          {t.overview}
-        </NavItem>
-        <NavItem icon={<Icon name="colors" />} href={workspaceHref(view, "colors")} current={selection === "colors"}>Colors</NavItem>
-        <NavItem icon={<Icon name="sliders" />} href={workspaceHref(view, "spacing")} current={selection === "spacing"}>Shape &amp; spacing</NavItem>
-        <div className="sidebar-divider" />
-        <div className="sidebar-section-label flex justify-between">
-          {t.components.toUpperCase()}
+        <div className="sidebar-navigation">
+          <div className="sidebar-section-label">{t.workspace.toUpperCase()}</div>
+          <NavItem
+            icon={<Icon name="grid" />}
+            current={selection === "overview"}
+            href={workspaceHref(view, "overview")}
+          >
+            {t.overview}
+          </NavItem>
+          <NavItem icon={<Icon name="colors" />} href={workspaceHref(view, "colors")} current={selection === "colors"}>Colors</NavItem>
+          <NavItem icon={<Icon name="sliders" />} href={workspaceHref(view, "spacing")} current={selection === "spacing"}>Shape &amp; spacing</NavItem>
+          <div className="sidebar-divider" />
+          <div className="sidebar-section-label flex justify-between">
+            {t.components.toUpperCase()}
+          </div>
+          <div className="search-field">
+            <Icon name="search" size={14} />
+            <input
+              aria-label={t.search}
+              placeholder={t.find}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </div>
+          <nav aria-label={t.components} className="component-nav">
+            {componentIds
+              .filter((id) => id.includes(query.toLowerCase().trim()))
+              .map((id) => (
+                <NavItem
+                  key={id}
+                  icon={<Icon name={id} />}
+                  current={selection === id}
+                  end={
+                    Object.keys(theme.components[id]).length > 0 && (
+                      <>
+                        <span
+                          className="override-dot"
+                          aria-hidden="true"
+                          title={t.customTitle}
+                        />
+                        <span className="sr-only">{t.custom}</span>
+                      </>
+                    )
+                  }
+                  href={workspaceHref(view, id)}
+                >
+                  {t.componentNames[id]}
+                </NavItem>
+              ))}
+            {!componentIds.some((id) =>
+              id.includes(query.toLowerCase().trim()),
+            ) && (
+              <p className="p-3 text-xs studio-text-muted">{t.noComponents}</p>
+            )}
+          </nav>
         </div>
-        <div className="search-field">
-          <Icon name="search" size={14} />
-          <input
-            aria-label={t.search}
-            placeholder={t.find}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </div>
-        <nav aria-label={t.components} className="component-nav">
-          {componentIds
-            .filter((id) => id.includes(query.toLowerCase().trim()))
-            .map((id) => (
-              <NavItem
-                key={id}
-                icon={<Icon name={id} />}
-                current={selection === id}
-                end={
-                  Object.keys(theme.components[id]).length > 0 && (
-                    <>
-                      <span
-                        className="override-dot"
-                        aria-hidden="true"
-                        title={t.customTitle}
-                      />
-                      <span className="sr-only">{t.custom}</span>
-                    </>
-                  )
-                }
-                href={workspaceHref(view, id)}
-              >
-                {t.componentNames[id]}
-              </NavItem>
-            ))}
-          {!componentIds.some((id) =>
-            id.includes(query.toLowerCase().trim()),
-          ) && (
-            <p className="p-3 text-xs studio-text-muted">{t.noComponents}</p>
-          )}
-        </nav>
         <div className="sidebar-bottom">
           <a
             className="docs-link"
@@ -703,6 +702,16 @@ export default function Studio() {
             )}
             <section hidden={view !== "design"} aria-label={t.design} className="workspace-panel workspace-panel--design preview-canvas">
               <div className="preview-frame">
+                <div className="canvas-history" role="group" aria-label="Edit history">
+                  <Button iconOnly aria-label={t.undo} title={t.undo} disabled={!ready || historyCounts.undo === 0} onClick={() => travel("undo")}><Icon name="undo" size={16} /></Button>
+                  <Button iconOnly aria-label={t.redo} title={t.redo} disabled={!ready || historyCounts.redo === 0} onClick={() => travel("redo")}><Icon name="redo" size={16} /></Button>
+                </div>
+                <div className="canvas-theme">
+                  <SegmentedControl aria-label={t.theme} value={activeTheme} onValueChange={(next) => setActiveTheme(next as PaletteMode)}>
+                    <SegmentedControl.Item value="light" aria-label={t.light} title={t.light}><Icon name="sun" size={16} /></SegmentedControl.Item>
+                    <SegmentedControl.Item value="dark" aria-label={t.dark} title={t.dark}><Icon name="moon" size={16} /></SegmentedControl.Item>
+                  </SegmentedControl>
+                </div>
                 <Preview selected={selection} system={system} mode={activeTheme} active={view === "design"} onSelectColorRole={setScaleRole} onEditToken={(nextSelection, inputId) => setEditTarget({ selection: nextSelection, inputId })} />
               </div>
             </section>

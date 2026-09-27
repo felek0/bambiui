@@ -6,44 +6,44 @@
  */
 :root {
   color-scheme: light;
-  --studio-color-accent: #e8673c;
-  --studio-color-accent-fill: #e8673c;
-  --studio-color-accent-hover: #d95c31;
-  --studio-color-accent-border: #a74220;
-  --studio-color-accent-text: #963715;
-  --studio-color-accent-muted: #963715;
-  --studio-color-accent-subtle: #faeee7;
-  --studio-color-on-accent: #291b15;
-  --studio-color-text: #29292d;
-  --studio-color-text-secondary: #50504b;
-  --studio-color-text-muted: #62625b;
-  --studio-color-text-subtle: #62625b;
-  --studio-color-text-faint: #62625b;
-  --studio-color-text-fainter: #62625b;
-  --studio-color-border: #eee5e0;
-  --studio-color-border-subtle: #f3ede9;
-  --studio-color-border-strong: #89817e;
+  --studio-color-accent: #3f3f46;
+  --studio-color-accent-fill: #3f3f46;
+  --studio-color-accent-hover: #27272a;
+  --studio-color-accent-border: #3f3f46;
+  --studio-color-accent-text: #27272a;
+  --studio-color-accent-muted: #52525b;
+  --studio-color-accent-subtle: #f4f4f5;
+  --studio-color-on-accent: #ffffff;
+  --studio-color-text: #18181b;
+  --studio-color-text-secondary: #3f3f46;
+  --studio-color-text-muted: #52525b;
+  --studio-color-text-subtle: #52525b;
+  --studio-color-text-faint: #52525b;
+  --studio-color-text-fainter: #52525b;
+  --studio-color-border: #e4e4e7;
+  --studio-color-border-subtle: #f0f0f2;
+  --studio-color-border-strong: #71717a;
   --studio-color-surface: #ffffff;
-  --studio-color-surface-subtle: #fdfaf8;
-  --studio-color-surface-sunken: #fcf7f4;
-  --studio-color-surface-hover: #faeee7;
+  --studio-color-surface-subtle: #fafafa;
+  --studio-color-surface-sunken: #f4f4f5;
+  --studio-color-surface-hover: #f4f4f5;
   --studio-color-success: #326343;
   --studio-color-success-text: #326343;
   --studio-color-success-subtle: #eff7ef;
   --studio-color-danger: #b42323;
   --studio-color-warning: #795017;
   --studio-color-warning-subtle: #fff6e5;
-  --studio-color-canvas: #fdf9f6;
-  --studio-color-canvas-dot: #eee5df;
-  --studio-color-selection: #f8dece;
-  --studio-color-on-selection: #702d15;
+  --studio-color-canvas: #fafafa;
+  --studio-color-canvas-dot: #e4e4e7;
+  --studio-color-selection: #e4e4e7;
+  --studio-color-on-selection: #27272a;
   --studio-color-backdrop: #18181bb3;
   --studio-color-shadow: #00000018;
   --studio-color-shadow-dialog: #00000040;
   --studio-color-highlight: #ffffff29;
-  --studio-color-disabled-text: #62625b;
-  --studio-color-disabled-surface: #f3efec;
-  --studio-color-code: #79502e;
+  --studio-color-disabled-text: #52525b;
+  --studio-color-disabled-surface: #f4f4f5;
+  --studio-color-code: #3f3f46;
 
   --studio-control-height: 34px;
   --studio-control-radius: 7px;
@@ -94,7 +94,7 @@ button:disabled {
 
 .studio-button:disabled,
 .segmented-item:disabled,
-.project-name input:disabled {
+.sidebar-project-fields input:disabled {
   color: var(--studio-color-disabled-text);
   background: var(--studio-color-disabled-surface);
   border-color: var(--studio-color-border);
@@ -159,7 +159,6 @@ button:disabled {
   width: 31px;
   height: 31px;
   margin-right: 9px;
-  color: var(--studio-color-accent);
 }
 .brand-ui {
   font-weight: 400;
@@ -175,19 +174,6 @@ button:disabled {
   color: var(--studio-color-text-subtle);
   font-weight: 500;
 }
-.project-name {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  min-width: 0;
-}
-.project-name input {
-  width: 145px;
-  max-width: 100%;
-  font-size: 12px;
-  background: transparent;
-  padding: 5px 0;
-}
 .draft-tag {
   font-size: 10px;
   color: var(--studio-color-text-subtle);
@@ -200,6 +186,12 @@ button:disabled {
   align-items: center;
   gap: 16px;
   margin-left: auto;
+}
+.header-workspace-controls .segmented-item,
+.canvas-theme .segmented-item {
+  min-width: 32px;
+  min-height: 30px;
+  padding: 5px;
 }
 .header-actions {
   flex-wrap: wrap;
@@ -285,6 +277,9 @@ button:disabled {
 .studio-button[data-full-width] {
   width: 100%;
 }
+.sidebar-navigation {
+  display: contents;
+}
 .studio-sidebar {
   display: flex;
   flex-direction: column;
@@ -298,6 +293,25 @@ button:disabled {
   align-items: center;
   gap: 9px;
   padding: 0 6px 29px;
+}
+.sidebar-project-fields {
+  flex: 1;
+  min-width: 0;
+}
+.sidebar-project-fields input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  margin-top: 5px;
+  padding: 5px 6px;
+  border: 1px solid var(--studio-color-border);
+  border-radius: 5px;
+  background: var(--studio-color-surface);
+  color: var(--studio-color-text);
+  font-size: 11px;
+}
+.sidebar-project-fields input:focus-visible {
+  border-color: var(--studio-color-accent-border);
 }
 .project-icon {
   width: 35px;
@@ -314,12 +328,6 @@ button:disabled {
   display: block;
   font-size: 11px;
   font-weight: 600;
-}
-.sidebar-project div > span {
-  display: block;
-  margin-top: 4px;
-  color: var(--studio-color-text-faint);
-  font-size: 10px;
 }
 .sidebar-section-label {
   font-size: 9px;
@@ -408,16 +416,16 @@ button:disabled {
   padding: 15px 12px;
   border: 1px solid var(--studio-color-border);
   border-radius: 8px;
-  background: var(--studio-color-warning-subtle);
-  color: var(--studio-color-warning);
+  background: var(--studio-color-surface-sunken);
+  color: var(--studio-color-text-secondary);
 }
 .tip-card strong {
   font-size: 11px;
   line-height: 1.7;
-  color: var(--studio-color-warning);
+  color: var(--studio-color-text);
 }
 .tip-card p {
-  color: var(--studio-color-warning);
+  color: var(--studio-color-text-secondary);
   font-size: 10px;
   line-height: 1.7;
 }
@@ -621,8 +629,41 @@ button:disabled {
   color: var(--preview-foreground);
 }
 .preview-frame {
+  position: relative;
+  box-sizing: border-box;
   width: 100%;
+  padding-top: 54px;
   margin: 0 auto;
+  background: var(--preview-background);
+}
+.canvas-history {
+  position: absolute;
+  z-index: 3;
+  top: 7px;
+  left: 16px;
+  display: flex;
+  gap: 3px;
+  padding: 4px;
+  border: 1px solid var(--studio-color-border);
+  border-radius: 8px;
+  background: var(--studio-color-surface);
+  box-shadow: 0 3px 12px var(--studio-color-shadow);
+}
+.canvas-history .studio-button {
+  width: 30px;
+  min-height: 30px;
+  padding: 0;
+  border-color: transparent;
+}
+.canvas-history .studio-button:focus-visible {
+  position: relative;
+  z-index: 1;
+}
+.canvas-theme {
+  position: absolute;
+  z-index: 3;
+  top: 10px;
+  right: 16px;
 }
 .canvas-label {
   display: flex;
@@ -1021,9 +1062,7 @@ button.inherit-button {
   .sidebar-project strong {
     font-size: 10px;
   }
-  .sidebar-project div > span {
-    font-size: 9px;
-  }
+
   .studio-sidebar {
     padding-inline: 10px;
   }
@@ -1038,24 +1077,42 @@ button.inherit-button {
     grid-template-rows: auto auto minmax(0, 1fr);
   }
   .studio-sidebar {
+    box-sizing: border-box;
     grid-column: 1 / -1;
     min-width: 0;
     width: 100%;
     max-width: 100%;
-    flex-direction: row;
-    align-items: center;
-    overflow-x: auto;
-    overflow-y: hidden;
+    flex-direction: column;
+    align-items: stretch;
+    overflow: visible;
     padding: 8px 15px;
     border-bottom: 1px solid var(--studio-color-border);
     border-right: none;
-    gap: 4px;
+    gap: 8px;
   }
-  .sidebar-project,
+  .sidebar-navigation {
+    display: flex;
+    align-items: flex-start;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 4px;
+    padding-bottom: 14px;
+  }
   .sidebar-section-label,
   .sidebar-divider,
   .search-field,
   .sidebar-bottom {
+    display: none;
+  }
+  .sidebar-project {
+    flex: none;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+  }
+  .sidebar-project .project-icon {
     display: none;
   }
   .component-nav {
@@ -1075,9 +1132,7 @@ button.inherit-button {
   .nav-end {
     display: none;
   }
-  .project-name input {
-    width: 125px;
-  }
+
   .brand {
     font-size: 21px;
   }
@@ -1103,10 +1158,10 @@ button.inherit-button {
     gap: 12px;
   }
   .header-workspace-controls {
-    order: 3;
-    width: 100%;
-    margin-left: 0;
-    justify-content: space-between;
+    margin-left: auto;
+  }
+  .view-switch {
+    gap: 10px;
   }
   .header-actions {
     margin-left: auto;
@@ -1120,16 +1175,7 @@ button.inherit-button {
   .preview-frame .theme-pane {
     height: auto;
   }
-  .project-name {
-    flex: 1;
-  }
-  .project-name input {
-    width: 100%;
-    font-size: 10px;
-  }
-  .project-name > span {
-    display: none;
-  }
+
   .header-actions {
     gap: 5px;
   }

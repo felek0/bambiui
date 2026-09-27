@@ -21,7 +21,7 @@ const foundations = ['colors', 'spacing'];
 const href = (view, id = 'overview') => `${view === 'develop' ? '/develop' : ''}${id === 'overview' ? '' : `/${id}`}` || '/';
 const canvas = '[aria-label="Component canvas"]';
 const viewNav = '.studio-header nav.view-switch';
-const themeControl = '.studio-header [aria-label="Design theme"]';
+const themeControl = '[aria-label="Design theme"]';
 const camera = '[data-canvas]';
 
 const moved = (a,b) => Math.hypot(a.x-b.x,a.y-b.y);
@@ -82,11 +82,11 @@ async function wait(expression) {
 }
 const q = selector => `document.querySelector(${JSON.stringify(selector)})`;
 const cameraState = `(() => {const view=${q(canvas)},layer=${q(camera)},matrix=new DOMMatrixReadOnly(getComputedStyle(layer).transform);return {x:matrix.m41,y:matrix.m42,scale:matrix.a,scrollLeft:view.scrollLeft,scrollTop:view.scrollTop,scrollWidth:view.scrollWidth,clientWidth:view.clientWidth,scrollHeight:view.scrollHeight,clientHeight:view.clientHeight}})()`;
-const named = (selector, name) => `[...document.querySelectorAll(${JSON.stringify(selector)})].find(e => e.textContent.trim() === ${JSON.stringify(name)} && !e.closest('[hidden]'))`;
+const named = (selector, name) => `[...document.querySelectorAll(${JSON.stringify(selector)})].find(e => (e.textContent.trim() === ${JSON.stringify(name)} || (!e.textContent.trim() && e.getAttribute('aria-label') === ${JSON.stringify(name)})) && !e.closest('[hidden]'))`;
 async function click(expression) {
   assert.ok(await evaluate(`!!(${expression})`), `Missing control: ${expression}`);
     const destination = await evaluate(`(${expression}).closest('a')?.getAttribute('href') || null`);
-  await evaluate(`(${expression}).scrollIntoView({block:'center',behavior:'instant'})`);
+  await evaluate(`(${expression}).scrollIntoView({block:'center',inline:'center',behavior:'instant'})`);
   await evaluate('new Promise(resolve => requestAnimationFrame(resolve))');
   const point = await evaluate(`(() => {const e=${expression},r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;if(!e.contains(document.elementFromPoint(x,y)))throw Error('Occluded: '+e.outerHTML);return {x,y};})()`);
   await send('Input.dispatchMouseEvent', { type:'mousePressed', ...point, button:'left', clickCount:1 });
@@ -186,9 +186,16 @@ try {
 
   await check('header navigation and theme, full-bleed Design canvas and one visible preview',async()=>{
     assert.equal(await evaluate(`${q(viewNav)}.closest('header') === ${q('.studio-header')}`),true);
-    assert.equal(await evaluate(`${q(themeControl)}.closest('header') === ${q('.studio-header')}`),true);
+    assert.equal(await evaluate(`${q(themeControl)}.closest('.canvas-theme') !== null`),true);
+    assert.ok(await evaluate(`(()=>{const bar=${q('.canvas-theme')}.getBoundingClientRect(),preview=${q('.preview-frame')}.getBoundingClientRect();return bar.right<=preview.right && bar.top>=preview.top && bar.right>preview.right-130 && bar.top<preview.top+60})()`));
     assert.deepEqual(await evaluate(`[...document.querySelectorAll(${JSON.stringify(viewNav + ' a')})].map(e=>e.textContent.trim())`),['Design','Develop']);
-    assert.deepEqual(await evaluate(`[...document.querySelectorAll(${JSON.stringify(themeControl + ' button')})].map(e=>e.textContent.trim())`),['Light','Dark']);
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll(${JSON.stringify(themeControl + ' button')})].map(e=>e.getAttribute('aria-label'))`),['Light','Dark']);
+    assert.ok(await evaluate(`[...document.querySelectorAll(${JSON.stringify(themeControl + ' button')})].every(e=>!e.textContent.trim() && !!e.querySelector('svg'))`));
+    assert.ok(await evaluate(`${q('.studio-header .brand')}.nextElementSibling === ${q(viewNav)}`),'view links should follow the brand');
+    assert.ok(await evaluate(`${q('.studio-sidebar .sidebar-project input[aria-label="Design system name"]')}?.getClientRects().length > 0`),'editable name belongs to the project area');
+    assert.equal(await evaluate(`!!${q('.studio-header input[aria-label="Design system name"]')}`),false);
+    assert.ok(await evaluate(`!!${q('.preview-frame .canvas-history [aria-label="Undo change"] svg')} && !!${q('.preview-frame .canvas-history [aria-label="Redo change"] svg')}`));
+    assert.ok(await evaluate(`(()=>{const bar=${q('.canvas-history')}.getBoundingClientRect(),preview=${q('.preview-frame')}.getBoundingClientRect();return bar.left>=preview.left && bar.top>=preview.top && bar.left<preview.left+90 && bar.top<preview.top+90})()`));
     assert.equal(await evaluate(`!!${q('.breadcrumbs')} || !!${q('.viewport-controls')} || !!${q('[aria-label="Preview width"]')}`),false);
     assert.ok(await evaluate(`(()=>{const content=${q('#workspace-content')}.getBoundingClientRect(),area=${q('.workspace-panel--design')}.getBoundingClientRect(),viewport=${q(canvas)}.getBoundingClientRect();return Math.abs(area.left-content.left)<2 && Math.abs(area.right-content.right)<2 && Math.abs(area.top-content.top)<2 && Math.abs(area.bottom-content.bottom)<2 && viewport.width>=area.width-80 && viewport.height>=area.height-80})()`));
     assert.ok(await evaluate(`(()=>{const area=${q('.workspace-panel--design')}.getBoundingClientRect(),zoom=${q('[aria-label="Canvas zoom"]')}.getBoundingClientRect(),position=getComputedStyle(${q('[aria-label="Canvas zoom"]')}).position;return ['absolute','fixed','sticky'].includes(position) && zoom.width<area.width/2 && zoom.left>=area.left && zoom.right<=area.right+2 && zoom.top>area.top+area.height/2 && zoom.bottom<=area.bottom+2})()`));
@@ -201,12 +208,14 @@ try {
     assert.equal(await evaluate(`document.querySelectorAll('[data-ds-theme="light"]').length`),1);
     assert.equal(await evaluate(`document.querySelectorAll('[data-ds-theme="dark"]').length`),0);
     assert.equal(await evaluate(`getComputedStyle(document.documentElement).colorScheme`),'light');
-    assert.equal(await evaluate(`getComputedStyle(document.documentElement).getPropertyValue('--studio-color-accent').trim()`),'#e8673c');
-    assert.equal(await evaluate(`getComputedStyle(document.documentElement).getPropertyValue('--studio-color-border').trim()`),'#eee5e0');
+    assert.equal(await evaluate(`getComputedStyle(document.documentElement).getPropertyValue('--studio-color-accent').trim()`),'#3f3f46');
+    assert.equal(await evaluate(`getComputedStyle(document.documentElement).getPropertyValue('--studio-color-border').trim()`),'#e4e4e7');
     assert.equal(await evaluate(`getComputedStyle(${q('.brand-mark')}).color`),'rgb(232, 103, 60)');
-    assert.equal(await evaluate(`getComputedStyle(${q('.header-actions .studio-button[data-variant="primary"]')}).backgroundColor`),'rgb(232, 103, 60)');
+    assert.equal(await evaluate(`getComputedStyle(${q('.header-actions .studio-button[data-variant="primary"]')}).backgroundColor`),'rgb(63, 63, 70)');
+    assert.equal(await evaluate(`getComputedStyle(${q('.header-actions .studio-button[data-variant="primary"]')}).color`),'rgb(255, 255, 255)');
     assert.equal(await evaluate(`${q('input[id$="-source"]')}.value`),'#e8673c');
     assert.equal(await evaluate(`${q('[data-ds-theme="light"]')}.style.getPropertyValue('--ds-primary').trim()`),'#e8673c');
+    assert.notEqual(await evaluate(`getComputedStyle(document.documentElement).getPropertyValue('--studio-color-accent').trim()`),await evaluate(`${q('[data-ds-theme="light"]')}.style.getPropertyValue('--ds-primary').trim()`));
     assert.equal(await evaluate(`${q('[data-ds-theme="light"]')}.style.getPropertyValue('--ds-on-primary').trim()`),'#291b15');
     assert.equal(await evaluate(`${q('#workspace-content')}.dataset.design`),'true');
     assert.equal(await evaluate(`${q('#workspace-content')}.style.getPropertyValue('--preview-background').trim()`),'#fff8f6');
@@ -317,6 +326,7 @@ try {
     assert.ok(await evaluate(`${q('.workspace-panel:not([hidden])')}.textContent.includes('#123456')`));
     assert.equal(await evaluate(`!!${q('.breadcrumbs')} || !!${q('.viewport-controls')}`),false);
     assert.ok(await evaluate(`${q(themeControl)}.getClientRects().length > 0`));
+    assert.equal(await evaluate(`${q(themeControl)}.closest('header') === ${q('.studio-header')}`),true,'Develop keeps theme access in its header');
     await click(named(themeControl + ' button','Light'));
     assert.ok(await evaluate(`${q('.workspace-panel:not([hidden])')}.textContent.includes('light theme')`));
     await click(named(themeControl + ' button','Dark'));
@@ -678,6 +688,11 @@ try {
     await wait(`${q('[data-specimen="button"]')}.textContent.includes('successfully (2)')`);
     await navigate('design','input');
     await delay(500);
+    // The tall input specimen can place its first field just above the viewport after centering.
+    const inputTop = await evaluate(`${q('[data-specimen="input"] input[type="email"]')}.getBoundingClientRect().top`);
+    const viewportTop = await evaluate(`${q(canvas)}.getBoundingClientRect().top`);
+    if (inputTop < viewportTop) await wheel(await canvasBackground(),0,-240);
+    await wait(`(()=>{const e=${q('[data-specimen="input"] input[type="email"]')},r=e.getBoundingClientRect();return e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))})()`);
     await click(q('[data-specimen="input"] input[type="email"]'));
     await fill('[data-specimen="input"] input[type="email"]','camera-input@example.com');
     assert.equal(await evaluate(`${q('[data-specimen="input"] input[type="email"]')}.value`),'camera-input@example.com');
@@ -765,8 +780,10 @@ try {
       await route(view.toLowerCase(),'button');
 
 
-      assert.ok(await evaluate('document.documentElement.scrollWidth <= innerWidth'));
+      const overflow = await evaluate('({width:innerWidth,scrollWidth:document.documentElement.scrollWidth})');
+      assert.ok(overflow.scrollWidth<=overflow.width,JSON.stringify(overflow));
       assert.ok(await evaluate(`${q(viewNav)}.getClientRects().length>0 && ${q(themeControl)}.getClientRects().length>0`));
+      assert.ok(await evaluate(`${q('.studio-sidebar .sidebar-project input[aria-label="Design system name"]')}.getClientRects().length>0`));
       assert.equal(await evaluate(`!!${q('.breadcrumbs')} || !!${q('.viewport-controls')}`),false);
       await capture(`studio-375-${view.toLowerCase()}`);
     }
@@ -774,7 +791,7 @@ try {
     for(const view of ['design','develop']) for(const id of [...foundations,...ids]) {
       await navigate(view,id);
       assert.ok(await evaluate('document.documentElement.scrollWidth <= innerWidth'),`mobile overflow: ${view}/${id}`);
-      assert.ok(await evaluate(`${q(viewNav)}.getBoundingClientRect().right <= innerWidth && ${q(themeControl)}.getBoundingClientRect().right <= innerWidth`),`header controls overflow: ${view}/${id}`);
+      assert.ok(await evaluate(`${q(viewNav)}.getBoundingClientRect().right <= innerWidth && ${q(themeControl)}.getBoundingClientRect().right <= innerWidth`),`view/theme controls overflow: ${view}/${id}`);
       if(view === 'design') assert.ok(await evaluate(`${q(`[data-canvas-unit="${id}"]`)}.getClientRects().length>0`));
       if(view === 'design' && id === 'spacing') {
         await evaluate(`${q('[data-foundation="spacing"]')}.scrollIntoView({block:'start',behavior:'instant'})`);
@@ -879,6 +896,20 @@ try {
     assert.equal((await stored()).themes.dark.source,'#247db3');
     await click(q('[aria-label="Undo change"]'));
     assert.deepEqual(await stored(),before);
+  });
+  await check('sidebar project name persists and remains undoable',async()=>{
+    const selector='.studio-sidebar .sidebar-project input[aria-label="Design system name"]';
+    const original=(await stored()).name;
+    await fill(selector,'Updated system');
+    assert.equal((await stored()).name,'Updated system');
+    await click(q('[aria-label="Undo change"]'));
+    assert.equal((await stored()).name,original);
+    await click(q('[aria-label="Redo change"]'));
+    assert.equal((await stored()).name,'Updated system');
+    await reload();
+    assert.equal(await evaluate(`${q(selector)}.value`),'Updated system');
+    await fill(selector,original);
+    assert.equal((await stored()).name,original);
   });
   await check('JSON re-import restores both sources; old v3 files without foundations normalize',async()=>{
 
