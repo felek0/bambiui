@@ -52,6 +52,9 @@ export type TokenValues = {
   paddingY: number;
   gap: number;
   margin: number;
+  spacingSm: number;
+  spacingMd: number;
+  spacingLg: number;
   fontSize: number;
   borderWidth: number;
   // Size scale shared by every sizeable control
@@ -114,8 +117,64 @@ export const defaultTypography: Record<TypographyVariant, TypographyTokens> = {
   caption: { fontSize: 12, lineHeight: 1.4, fontWeight: 400, letterSpacing: 0 },
 };
 
+export const fontFamilyPresets = [
+  "system", "sans", "humanist", "serif", "editorial", "mono", "typewriter",
+  "google-inter", "google-roboto", "google-open-sans", "google-dm-sans",
+  "google-montserrat", "google-poppins", "google-nunito", "google-space-grotesk",
+  "google-playfair-display", "google-lora", "google-merriweather", "google-roboto-mono",
+] as const;
+export type FontFamilyPreset = (typeof fontFamilyPresets)[number];
+export const googleFontFamilies = {
+  "google-inter": { family: "Inter", fallback: "sans-serif" },
+  "google-roboto": { family: "Roboto", fallback: "sans-serif" },
+  "google-open-sans": { family: "Open Sans", fallback: "sans-serif" },
+  "google-dm-sans": { family: "DM Sans", fallback: "sans-serif" },
+  "google-montserrat": { family: "Montserrat", fallback: "sans-serif" },
+  "google-poppins": { family: "Poppins", fallback: "sans-serif" },
+  "google-nunito": { family: "Nunito", fallback: "sans-serif" },
+  "google-space-grotesk": { family: "Space Grotesk", fallback: "sans-serif" },
+  "google-playfair-display": { family: "Playfair Display", fallback: "serif" },
+  "google-lora": { family: "Lora", fallback: "serif" },
+  "google-merriweather": { family: "Merriweather", fallback: "serif" },
+  "google-roboto-mono": { family: "Roboto Mono", fallback: "monospace" },
+} as const satisfies Partial<Record<FontFamilyPreset, { family: string; fallback: string }>>;
+
+export function googleFontUrl(preset: FontFamilyPreset): string | null {
+  const font = googleFontFamilies[preset as keyof typeof googleFontFamilies];
+  if (!font) return null;
+  const weights = preset === "google-merriweather" ? "400;700" : "400;500;600;700";
+  return `https://fonts.googleapis.com/css2?family=${font.family.replaceAll(" ", "+")}:wght@${weights}&display=swap`;
+}
+
+export const fontFamilyStacks: Record<FontFamilyPreset, string> = {
+  system: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  sans: 'Arial, Helvetica, sans-serif',
+  humanist: '"Trebuchet MS", "Segoe UI", Arial, sans-serif',
+  serif: 'Georgia, "Times New Roman", serif',
+  editorial: '"Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif',
+  mono: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+  typewriter: '"Courier New", Courier, monospace',
+  ...Object.fromEntries(Object.entries(googleFontFamilies).map(([id, font]) =>
+    [id, `"${font.family}", ${font.fallback}`],
+  )) as Record<keyof typeof googleFontFamilies, string>,
+};
+
+export const fontFamilyLabels: Record<FontFamilyPreset, string> = {
+  system: "System sans", sans: "Classic sans", humanist: "Humanist sans",
+  serif: "Georgia serif", editorial: "Editorial serif",
+  mono: "System mono", typewriter: "Typewriter mono",
+  ...Object.fromEntries(Object.entries(googleFontFamilies).map(([id, font]) =>
+    [id, font.family],
+  )) as Record<keyof typeof googleFontFamilies, string>,
+};
+
+export function resolveFontFamily(theme: ThemeTokens): string {
+  return fontFamilyStacks[theme.fontFamily];
+}
+
 export type ThemeTokens = {
   source: string;
+  fontFamily: FontFamilyPreset;
   global: TokenValues;
   components: Record<ComponentId, Partial<ComponentTokens>>;
   colorScales?: ColorScaleOverrides;
@@ -162,7 +221,7 @@ export function shareNonColorTokens(system: DesignSystem, from: PaletteMode = "l
   }
   return {
     ...system,
-    themes: { ...system.themes, [other]: { ...target, global, components, typography: structuredClone(source.typography) } },
+    themes: { ...system.themes, [other]: { ...target, global, components, fontFamily: source.fontFamily, typography: structuredClone(source.typography) } },
   };
 }
 
@@ -218,7 +277,8 @@ const defaultPalette = generatePalette(defaultSource);
 function defaultTheme(mode: PaletteMode): ThemeTokens {
   return {
     source: defaultSource,
-    global: { ...legacyDefaults.global, ...defaultPalette[mode].tokens },
+    fontFamily: "system",
+    global: { ...legacyDefaults.global, spacingSm: 4, spacingMd: 8, spacingLg: 16, ...defaultPalette[mode].tokens },
     components: { button: {}, input: {}, card: {}, badge: {}, switch: {}, checkbox: {}, text: {} },
     colorScales: {},
     typography: structuredClone(defaultTypography),
@@ -312,6 +372,9 @@ export const tokenFields: TokenField[] = [
   },
   { key: "gap", label: "Gap", type: "number", min: 0, max: 64 },
   { key: "margin", label: "Margin", type: "number", min: 0, max: 48 },
+  { key: "spacingSm", label: "Spacing sm", type: "number", min: 0, max: 64 },
+  { key: "spacingMd", label: "Spacing md", type: "number", min: 0, max: 64 },
+  { key: "spacingLg", label: "Spacing lg", type: "number", min: 0, max: 64 },
   { key: "fontSize", label: "Font size", type: "number", min: 10, max: 32 },
   { key: "borderWidth", label: "Border width", type: "number", min: 0, max: 6 },
   {
@@ -403,7 +466,7 @@ export function toCSSVariables(
   theme: ThemeTokens,
   mode: PaletteMode = "light",
 ): Record<string, string> {
-  const variables: Record<string, string> = { ...systemConstants };
+  const variables: Record<string, string> = { ...systemConstants, "--ds-font-family": resolveFontFamily(theme) };
   for (const { key } of tokenFields) {
     variables[`--ds-${kebabCase(key)}`] = cssValue(theme.global[key]);
   }
@@ -463,7 +526,11 @@ export function toCSSVariables(
 }
 
 export function exportCSS(workspace: Pick<DesignSystem, "themes">): string {
-  return (["light", "dark"] as const).map((mode) => {
+  const imports = [...new Set((["light", "dark"] as const)
+    .map((mode) => googleFontUrl(workspace.themes[mode].fontFamily))
+    .filter((url): url is string => url !== null))];
+  const prelude = imports.map((url) => `@import url("${url}");`).join("\n");
+  return (prelude ? `${prelude}\n\n` : "") + (["light", "dark"] as const).map((mode) => {
     const selector = mode === "light"
       ? ':root, [data-ds-theme="light"]'
       : '[data-ds-theme="dark"]';
@@ -543,7 +610,15 @@ export function parseDesignSystem(text: string): DesignSystem {
       const theme = value.themes[mode];
       const path = `themes.${mode}`;
       requireObject(theme, path);
-      requireKnownKeys(theme, ["source", "global", "components", "colorScales", "typography"], path);
+      requireKnownKeys(theme, ["source", "fontFamily", "global", "components", "colorScales", "typography"], path);
+      if (theme.fontFamily === undefined && !Object.hasOwn(theme, "fontFamily")) theme.fontFamily = "system";
+      if (!fontFamilyPresets.includes(theme.fontFamily as FontFamilyPreset)) {
+        throw new Error(`${path}.fontFamily must be one of: ${fontFamilyPresets.join(", ")}`);
+      }
+      requireObject(theme.global, `${path}.global`);
+      for (const key of ["spacingSm", "spacingMd", "spacingLg"] as const) {
+        if (!Object.hasOwn(theme.global, key)) theme.global[key] = defaultSystem.themes[mode].global[key];
+      }
       if (typeof theme.source !== "string" || !/^#[0-9a-fA-F]{6}$/.test(theme.source)) {
         throw new Error(`${path}.source must be a #rrggbb color`);
       }
@@ -571,11 +646,15 @@ export function parseDesignSystem(text: string): DesignSystem {
     }
     value.global = { ...legacyDefaults.global, ...value.global };
   }
+  requireObject(value.global, "global");
+  for (const key of ["spacingSm", "spacingMd", "spacingLg"] as const) {
+    value.global[key] = defaultSystem.themes.light.global[key];
+  }
   validateTokens(value.global, "global", false);
   validateComponents(value.components, "components", true);
   const global = value.global as TokenValues;
   const components = value.components as ThemeTokens["components"];
-  const theme = { source: global.primary, global, components, colorScales: {}, typography: defaultTypography };
+  const theme = { source: global.primary, fontFamily: "system" as const, global, components, colorScales: {}, typography: defaultTypography };
   return {
     version: 3,
     name: value.name,

@@ -9,9 +9,9 @@ Bu belge özgün incelemenin bulgularını ve o tarihteki doğrulama sonucunu ko
 - **Faz 1 — uygulandı:** Text snippet ve semantik kontrast denetimi düzeltildi; Badge türetilmiş border ve Text'in tükettiği alias'lar doğru anlatılıyor. Yedi kopyalanabilir örnek `snippets.test.mjs` ile gerçek API'ye karşı derleniyor. Checkbox'ın doğrudan Server Component kullanımı `scripts/check-checkbox-server.mjs` içinde ayrı bir statik Next build'iyle sınanıyor; gerçek tarayıcı hydration'ı bu fixture'da çalıştırılmıyor.
 - **Faz 2 — uygulandı:** Oturumluk Undo/Redo, tema kapsamı etiketleri, ilgili input'a odak taşıyan canvas bağlantıları, override variant/state açıklamaları ve preview renklerinden bağımsız canvas araçları eklendi.
 - **Faz 3 — otomatik kapsam kısmen uygulandı:** Readonly, required, error, loading ve controlled form/FormData fixture'ları Chromium smoke ile doğrulandı. Gerçek VoiceOver, browser-native %200 zoom, forced-colors ve dar/geniş tüketici container'larında manuel kabul hâlâ açık.
-- **Faz 4 — kontrollü başlangıç:** Sabit komponent tipografisi `systemConstants` altında merkezileştirildi; yeni düzenlenebilir global token veya yeni komponent eklenmedi. Font family, spacing ölçeği, elevation/motion ve skala bağımlılık modelinin değişmesi gerçek kullanım gereksinimine bağlı ayrı ürün kararlarıdır.
+- **Faz 4 — kısmi genişleme:** Sabit komponent tipografisi `systemConstants` altında merkezileştirildi; ortak `fontFamily` (`system`/`sans`/`humanist`/`serif`/`editorial`/`mono`/`typewriter`) ve `spacingSm`/`spacingMd`/`spacingLg` (4/8/16px) presetleri eklendi; mevcut yedi yerel font seçeneğinin yanına küratörlü Google Fonts presetleri de tanımlandı. Google seçimi isteğe bağlıdır: tarayıcı `fonts.googleapis.com` adresinden stil dosyası, `fonts.gstatic.com` adresinden font dosyası ister ve IP adresi gibi istek verileri Google ile paylaşılır. Yerel seçenekler bu istekleri yapmaz; erişim yoksa yerel fallback kullanılır. Card.Content içindeki öğeler sm/md/lg boyutuna karşılık gelen preset aralığını kullanıyor; eski `paddingX`, `paddingY`, `gap` alias'ları bağımsız kaldı. Elevation/motion ve skala bağımlılık modelinin değişmesi ayrı ürün kararlarıdır.
 
-Güncel doğrulama: 109 unit/snippet testi, lint, TypeScript, production build, Chromium smoke ve izole Checkbox Server Component build'i başarılı. Bu sonuçlar manuel erişilebilirlik kabulü veya hydration tarayıcı testi yerine geçmez.
+Güncel doğrulama: 114 unit/snippet testi, lint, TypeScript, production build ve Chromium smoke başarılı. İzole Checkbox Server Component build'i önceki fazda geçti; bu değişiklikte yeniden çalıştırılmadı. Bu sonuçlar manuel erişilebilirlik kabulü veya hydration tarayıcı testi yerine geçmez.
 
 ## Kapsam ve yöntem
 
@@ -80,13 +80,13 @@ Canvas zoom, responsive viewport veya gerçek browser zoom testi değildir. Mevc
 
 ## Token kararı
 
-- 27 global alanın tamamının mevcut kullanım karşılığı var; hepsini azaltmak için kanıt yok.
+- Özgün incelemede 27 global alan vardı; üç ortak spacing presetiyle 30 oldu. Eski alanları kaldırmak için kanıt yok.
 - Asıl gereksiz/yanıltıcı yüzey Text'in tüketmediği ortak komponent tokenları.
 - Renk skalası override'ları export ve referansı değiştiriyor; komponent semantik renklerini doğrudan değiştirmiyor. Mevcut yön semantik rol → skala ve durum türevleri. Bunu UI'da açıklamak kısa vadeli çözüm.
 - Primitive skala → semantik rol → komponent zincirine geçmek ayrı mimari karardır; otomatik olarak bu incelemenin düzeltmesi sayılmamalı. Seçilirse migration ve açık mapping gerekir.
 - Global `margin` kullanılıyor ama uzun vadede dış yerleşimin container sorumluluğunda olması değerlendirilmeli. Mevcut tüketiciyi bozmadan, kullanım senaryosu üzerinden karar verilmeli.
 - Kontrol font weight/line-height, Card title ve helper tipografisi kısmen sabit. Önce mevcut değerleri merkezi sabitlerde birleştir; yalnız gerçek ihtiyaç olanları düzenlenebilir token yap.
-- Font family, spacing/radius ölçeği, elevation ve motion tam kütüphane hedefinde adaydır. Mevcut playground için hepsini inspector'a eklemek gereksiz karmaşıklık olur.
+- Sonraki uygulamada yalnız font family presetleri ve üçlü spacing ölçeği eklendi; radius ölçeği, elevation ve motion için genişleme kararı verilmedi. Presetler Light/Dark arasında ortak; Card.Content öğe aralığı ölçeğin doğrudan tüketicisidir; CSS export `--ds-font-family` ve `--ds-spacing-sm/md/lg` üretir. Google preseti seçildiğinde CSS export, her iki tema seçicisinden önce dosyanın başına `@import` koyar ve `--ds-font-family` içine yerel fallback'li çözülmüş font yığınını yazar; CSS tüketicisi de uzaktan istek yapabilir. Yerel presetlerde import yoktur. JSON, font dosyası veya URL yerine iki tema kaydında aynı preset kimliğini saklar; Google kimlikleri schema v3 ile uyumludur, sürüm artışı gerekmez. Eski v3 kayıtları `system` varsayılanıyla tamamlanır, eski padding/gap değerleri ve override'ları dönüştürülmez.
 - Shared Light/Dark invariant normal edit/reset/import yollarında korunuyor. Export'un doğrudan normalize edilmemiş nesneyle çağrılması için savunmacı doğrulama ileride eklenebilir.
 
 ## Komponent kapsamı
@@ -127,7 +127,7 @@ Kabul: Loading sırasında tekrar işlem yok; readonly/disabled/required ve form
 
 ### Faz 4 — İhtiyaca bağlı foundation genişlemesi
 
-Tipografi sabitlerinin merkezileştirilmesi; font family ve spacing ölçeğinin ihtiyacının değerlendirilmesi; renk skalası bağımlılık modeli hakkında ürün kararı. Gerekirse yeni komponentler ancak bundan sonra.
+Tipografi sabitlerinin merkezileştirilmesi ve font family/spacing presetleri uygulandı; renk skalası bağımlılık modeli hakkında ürün kararı açık. Gerekirse yeni komponentler ancak bundan sonra.
 
 Kabul: Eklenen her tokenın tanımlı tüketicisi, birimi, varsayılanı, tema kapsamı, reset/import/export ve test karşılığı var. Mevcut JSON uyumluluğu korunur veya açıkça migrate edilir.
 

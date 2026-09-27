@@ -4,21 +4,23 @@ A local-first design system playground built with Next.js, Tailwind CSS v4, and 
 
 ## Design studio
 
-- Edit 27 global tokens across light/dark design themes; only colors differ by theme:
+- Edit 30 global tokens across light/dark design themes; only colors differ by theme:
   - Surface colors (background, foreground, muted, border)
   - Brand and status roles (primary, secondary, success, warning, danger and info, each with an on-color)
-  - Radius, padding, gap, margin, font size and border width
-  - A shared `sm`/`md`/`lg` control height scale; shape, spacing, sizing, and typography are shared across themes
+  - Radius, padding, gap, margin, font size and border width, plus shared spacing presets `spacingSm`/`spacingMd`/`spacingLg` (4/8/16px by default)
+  - A shared `sm`/`md`/`lg` control height scale and `fontFamily` preset (`system` by default; the seven local choices are `system`, `sans`, `humanist`, `serif`, `editorial`, `mono` and `typewriter`, with curated Google Fonts presets alongside them); shape, spacing, sizing, and typography are shared across themes
 - Components follow one API contract (`variant`, `size`, `tone`, `disabled`, `loading`, `label`, `description`, `error`, …). See [docs/component-api.md](docs/component-api.md).
 - Customize Button, Input, Card, Badge, Switch, Checkbox, and Text. Component tokens inherit global values until overridden; Text uses its foreground override and shared typography styles. Reset an override to reconnect it.
 - **Design** view: explore component variants, sizes and states—including read-only choices, a button that enters a real loading state, and an expandable local controlled-form demo—on a pan/zoom canvas that follows the selected theme's background and foreground tokens. Use Fit or zoom controls on desktop; on mobile, scroll the page normally. The form demo validates and reads `FormData` locally; it does not submit to a server. The dots are decorative and derived from those colors; the real Card component keeps its own surface. Choose Light or Dark in the header; the inspector edits the selected theme's colors and shared non-color values. Editor chrome stays independent.
 - **Develop** view: start with copyable React usage for the selected component. Switch Light/Dark in the header to inspect either theme's tokens. Expand props/defaults, token inheritance or derived colors only when needed. Overview opens the global token reference. Full-system CSS remains available; examples reference this project's components, not a published package.
 - Both views share the selected component and theme; the token inspector appears only in Design. Switching views or themes preserves mounted demo state. On narrow screens, Edit tokens / Back to preview links connect the stacked Design workspace and inspector. The studio UI is English-only.
 - Changes are saved in this browser using localStorage. Use Undo/Redo in the header to revisit edits in this session; typing and slider changes to one field are grouped until focus leaves it, while palette application, reset, and import are single steps. History is not retained after reload. No account, server storage, or cross-device sync is included.
-- Export both themes as CSS custom properties, including raw color scales, derived state colors and system constants, or as a version 3 JSON backup. Component markup and style rules are not included.
-- Import a JSON backup to restore a system. Imports are validated before replacing your draft. Version 1/2 backups and saved drafts are upgraded to version 3: existing values and overrides are copied independently into both themes without recoloring. Version 1 additions use historical defaults. Regenerate a theme explicitly if you want new accessible colors.
+- Export both themes as CSS custom properties, including `--ds-font-family`, `--ds-spacing-sm`/`--ds-spacing-md`/`--ds-spacing-lg`, raw color scales, derived state colors and system constants, or as a version 3 JSON backup. For a Google Fonts preset, CSS export puts its Google Fonts `@import` at the very top, before the theme selectors, and `--ds-font-family` contains the resolved family stack with local fallbacks; local presets need no import. Component markup and style rules are not included. JSON stores the selected preset ID in both theme records, not font files or stylesheet contents.
+- Import a JSON backup to restore a system. Imports are validated before replacing your draft. Version 1/2 backups and saved drafts are upgraded to version 3: existing values and overrides are copied independently into both themes without recoloring. Version 1 additions use historical defaults. Older version 3 backups without the new presets receive `system` and 4/8/16px on import; curated Google preset IDs remain valid within schema v3 without a version bump, and font family remains shared between Light and Dark; legacy `paddingX`, `paddingY` and `gap` values and overrides are retained, not remapped to the spacing presets. Regenerate a theme explicitly if you want new accessible colors.
 
-In Design, select a component in the sidebar to edit its tokens, or choose **Overview**, **Colors**, or **Shape & spacing** for global foundations. Click a color stop or spacing sample to focus its inspector field. Colors apply to the selected theme; dimensions and typography are shared. Changes apply immediately. Color inputs accept six-digit hex values; numeric controls use pixels.
+Google Fonts are optional: selecting or reopening a saved draft with a curated Google preset makes the browser request a stylesheet from `fonts.googleapis.com` and font files from `fonts.gstatic.com`. This shares request data such as your IP address with Google; the seven local presets make no Google Fonts requests. If offline, blocked, or unavailable, the selected font falls back to the local fonts in its stack. Using exported CSS with a Google preset likewise requires network access unless the consumer removes the import or provides its own fonts.
+
+In Design, select a component in the sidebar to edit its tokens, or choose **Overview**, **Colors**, or **Shape & spacing** for global foundations. Click a color stop or spacing sample to focus its inspector field. Colors apply to the selected theme; dimensions, spacing presets and the font family are shared. Card.Content uses the matching spacing preset for its children's gap at sm/md/lg sizes; these presets do not rewrite legacy padding/gap tokens or their component overrides. Changes apply immediately. Color inputs accept six-digit hex values; numeric controls use pixels.
 
 ## Themes and accessibility
 
@@ -59,7 +61,7 @@ Run with Node.js 22.6+ (Node.js 22.13+ recommended):
 node --experimental-strip-types --test app/studio/*.test.mjs
 ```
 
-The tests cover inheritance, component isolation, CSS/JSON compatibility, invalid imports, deterministic palette generation, gamut and semantic hue preservation, contrast thresholds, modeled component mixes, CLI output, and type-checking every copyable React snippet against the real component APIs.
+The tests cover shared font/spacing presets, legacy alias independence, inheritance, component isolation, CSS/JSON compatibility, invalid imports, deterministic palette generation, gamut and semantic hue preservation, contrast thresholds, modeled component mixes, CLI output, and type-checking every copyable React snippet against the real component APIs.
 
 To verify a direct Server Component consumer of Checkbox, run `node scripts/check-checkbox-server.mjs`. It builds a disposable Next.js fixture under `.next`, checks the static markup and client-reference manifest, then removes the fixture. This does not execute browser hydration.
 

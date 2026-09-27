@@ -8,7 +8,7 @@
   min-width: 0;
   margin-inline: auto;
   color: var(--ds-foreground);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--ds-font-family);
   font-size: 12px;
   line-height: 1.5;
   container-type: inline-size;
@@ -293,6 +293,23 @@
 .gapVisual {
   display: flex;
   gap: var(--ds-gap);
+}
+
+.spacingScaleVisual {
+  display: flex;
+  align-items: center;
+  gap: var(--sample-spacing);
+}
+
+[data-spacing-token="spacingSm"] .spacingScaleVisual { --sample-spacing: var(--ds-spacing-sm); }
+[data-spacing-token="spacingMd"] .spacingScaleVisual { --sample-spacing: var(--ds-spacing-md); }
+[data-spacing-token="spacingLg"] .spacingScaleVisual { --sample-spacing: var(--ds-spacing-lg); }
+
+.spacingScaleVisual i {
+  width: 18px;
+  height: 26px;
+  border-radius: 3px;
+  background: var(--ds-primary);
 }
 
 .gapVisual i {

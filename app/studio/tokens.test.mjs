@@ -7,6 +7,7 @@ import {
   componentIds, componentTokenKeys, componentEditableTokenKeys, defaultSystem, exportCSS, isComponentKey,
   parseDesignSystem, resolveColorScale, resolveComponent, resolveTypography, shareNonColorTokens, STORAGE_KEY, systemConstants,
   toCSSVariables, tokenFields, colorScaleRoles, colorScaleStops, typographyVariants, typographyFields, defaultTypography,
+  fontFamilyPresets, fontFamilyStacks, fontFamilyLabels, googleFontFamilies, googleFontUrl,
 } from "./tokens.ts";
 import { contrastRatio, deriveRoleColors, generatePalette, mixColors, paletteRoles } from "./color-engine.ts";
 
@@ -23,6 +24,7 @@ const geometry = {
   radius: 8, paddingX: 16, paddingY: 10, gap: 8, margin: 0, fontSize: 14,
   borderWidth: 1, controlHeightSm: 32, controlHeightMd: 36, controlHeightLg: 44,
 };
+const spacingPresets = { spacingSm: 4, spacingMd: 8, spacingLg: 16 };
 const legacyGlobal = {
   background: "#ffffff", foreground: "#27272a", muted: "#f4f4f5",
   mutedForeground: "#63636b", border: "#e4e4e7", primary: "#e8673c",
@@ -50,7 +52,7 @@ test("Text exposes only the alias its CSS consumes while retaining legacy export
   assert.equal(variables["--text-padding-x"], "var(--ds-padding-x)");
 });
 
-test("v3 defaults contain two generated, independent themes with historical geometry", () => {
+test("v3 defaults contain two generated themes with shared presets and historical geometry", () => {
   assert.equal(STORAGE_KEY, "bambiui.design-system.v1");
   assert.deepEqual(componentIds, ["button", "input", "card", "badge", "switch", "checkbox", "text"]);
   assert.deepEqual(componentTokenKeys, ["background", "foreground", "border", "radius",
@@ -62,11 +64,12 @@ test("v3 defaults contain two generated, independent themes with historical geom
   const objects = [];
   for (const mode of modes) {
     const theme = defaultSystem.themes[mode];
-    assert.deepEqual(Object.keys(theme), ["source", "global", "components", "colorScales", "typography"]);
+    assert.deepEqual(Object.keys(theme).sort(), ["source", "global", "components", "colorScales", "typography", "fontFamily"].sort());
+    assert.equal(theme.fontFamily, "system");
     assert.deepEqual(theme.colorScales, {});
     assert.deepEqual(theme.typography, defaultTypography);
     assert.equal(theme.source, "#e8673c");
-    assert.deepEqual(theme.global, { ...palette[mode].tokens, ...geometry });
+    assert.deepEqual(theme.global, { ...palette[mode].tokens, ...geometry, ...spacingPresets });
     assert.deepEqual(Object.keys(theme.components), componentIds);
     for (const overrides of Object.values(theme.components)) assert.deepEqual(overrides, {});
     objects.push(theme, theme.global, theme.components, ...Object.values(theme.components));
@@ -74,11 +77,11 @@ test("v3 defaults contain two generated, independent themes with historical geom
   assert.equal(new Set(objects).size, 20);
 });
 
-test("metadata retains exactly 27 globals, 17 colors, 10 geometry and 10 component keys", () => {
-  assert.equal(tokenFields.length, 27);
+test("metadata includes three shared spacing presets without changing component aliases", () => {
+  assert.equal(tokenFields.length, 30);
   assert.equal(colorKeys.length, 17);
   assert.equal(componentTokenKeys.length, 10);
-  assert.deepEqual(tokenFields.map(({ key }) => key).sort(), Object.keys(legacyGlobal).sort());
+  assert.deepEqual(tokenFields.map(({ key }) => key).sort(), [...Object.keys(legacyGlobal), ...Object.keys(spacingPresets)].sort());
   for (const field of tokenFields) {
     assert.ok(field.label.length > 0);
     assert.equal(isComponentKey(field.key), componentTokenKeys.includes(field.key));
@@ -88,7 +91,12 @@ test("metadata retains exactly 27 globals, 17 colors, 10 geometry and 10 compone
       assert.equal(field.max, undefined);
     } else {
       assert.equal(field.type, "number");
-      assert.deepEqual([field.min, field.max], numericRanges[field.key]);
+      if (field.key in spacingPresets) {
+        assert.ok(Number.isFinite(field.min) && Number.isFinite(field.max));
+        assert.ok(field.min <= spacingPresets[field.key] && field.max >= spacingPresets[field.key]);
+      } else {
+        assert.deepEqual([field.min, field.max], numericRanges[field.key]);
+      }
     }
   }
 });
@@ -113,7 +121,7 @@ for (const mode of modes) {
   test(`${mode}: CSS maps contain all stored, derived, and constant values`, () => {
     const theme = fresh().themes[mode];
     const variables = toCSSVariables(theme, mode);
-    assert.equal(Object.keys(variables).length, 155 + Object.keys(systemConstants).length + colorScaleRoles.length * colorScaleStops.length + typographyVariants.length * typographyFields.length);
+    assert.equal(Object.keys(variables).length, 156 + Object.keys(systemConstants).length + colorScaleRoles.length * colorScaleStops.length + typographyVariants.length * typographyFields.length + Object.keys(spacingPresets).length);
     for (const [key, value] of Object.entries(theme.global)) {
       assert.equal(variables[`--ds-${kebab(key)}`], typeof value === "number" ? `${value}px` : value);
     }
@@ -281,7 +289,7 @@ test("parser validates JSON, workspace name/version and all required object shap
       assert.throws(() => parse(system), /Unknown field/);
     }
     const target = path.reduce((value, part) => value[part], fresh());
-    for (const key of Object.keys(target).filter((key) => !["colorScales", "typography", ...(path.at(-1) === "components" ? ["text"] : [])].includes(key))) {
+    for (const key of Object.keys(target).filter((key) => !["colorScales", "typography", "fontFamily", ...(path.at(-1) === "global" ? Object.keys(spacingPresets) : []), ...(path.at(-1) === "components" ? ["text"] : [])].includes(key))) {
       const system = fresh();
       delete path.reduce((value, part) => value[part], system)[key];
       assert.throws(() => parse(system), undefined, `${path.join(".")}.${key} required`);
@@ -311,11 +319,13 @@ for (const version of [1, 2]) {
     assert.equal(migrated.name, legacy.name);
     for (const mode of modes) {
       assert.equal(migrated.themes[mode].source, "#AbCdEf");
-      assert.deepEqual(migrated.themes[mode].global, global);
+      assert.deepEqual(migrated.themes[mode].global, { ...global, ...spacingPresets });
       assert.deepEqual(migrated.themes[mode].components, legacy.components);
     }
     assert.deepEqual(migrated.themes.light.colorScales, {});
     assert.deepEqual(migrated.themes.light.typography, defaultTypography);
+    assert.equal(migrated.themes.light.fontFamily, "system");
+    assert.equal(migrated.themes.dark.fontFamily, "system");
     assert.deepEqual(parse(migrated), migrated);
     migrated.themes.light.global.radius = 48;
     migrated.themes.light.components.card.gap = 64;
@@ -348,6 +358,143 @@ for (const version of [1, 2]) {
     }
   });
 }
+
+test("shared font family presets and spacing survive v3 round-trip and dark edits", () => {
+  const system = fresh();
+  for (const preset of fontFamilyPresets) {
+    system.themes.dark.fontFamily = preset;
+    const shared = shareNonColorTokens(system, "dark");
+    const restored = parse(shared);
+    for (const mode of modes) assert.equal(restored.themes[mode].fontFamily, preset);
+    assert.deepEqual(parse(restored), restored);
+  }
+  Object.assign(system.themes.dark.global, { spacingSm: 5, spacingMd: 12, spacingLg: 24 });
+  system.themes.dark.global.paddingX = 30;
+  system.themes.dark.global.paddingY = 7;
+  system.themes.dark.global.gap = 3;
+  system.themes.dark.components.button.gap = 11;
+  const restored = parse(shareNonColorTokens(system, "dark"));
+  for (const mode of modes) {
+    assert.deepEqual(Object.fromEntries(Object.keys(spacingPresets).map((key) => [key, restored.themes[mode].global[key]])),
+      { spacingSm: 5, spacingMd: 12, spacingLg: 24 });
+    assert.deepEqual([restored.themes[mode].global.paddingX, restored.themes[mode].global.paddingY, restored.themes[mode].global.gap], [30, 7, 3]);
+    assert.equal(restored.themes[mode].components.button.gap, 11);
+  }
+  assert.equal(system.themes.light.global.spacingSm, 4);
+});
+
+test("old v3 records default missing presets without changing legacy aliases or colors", () => {
+  const system = fresh();
+  for (const mode of modes) {
+    delete system.themes[mode].fontFamily;
+    for (const key of Object.keys(spacingPresets)) delete system.themes[mode].global[key];
+  }
+  system.themes.light.global.paddingX = 19;
+  system.themes.light.global.paddingY = 6;
+  system.themes.light.global.gap = 13;
+  system.themes.light.components.button.paddingX = 27;
+  system.themes.dark.global.primary = "#123456";
+  const parsed = parse(system);
+  for (const mode of modes) {
+    assert.equal(parsed.themes[mode].fontFamily, "system");
+    for (const [key, value] of Object.entries(spacingPresets)) assert.equal(parsed.themes[mode].global[key], value);
+    assert.deepEqual([parsed.themes[mode].global.paddingX, parsed.themes[mode].global.paddingY, parsed.themes[mode].global.gap], [19, 6, 13]);
+    assert.equal(parsed.themes[mode].components.button.paddingX, 27);
+  }
+  assert.equal(parsed.themes.dark.global.primary, "#123456");
+  assert.deepEqual(parse(parsed), parsed);
+});
+
+test("v3 imports normalize conflicting font and spacing from Light; reject invalid presets", () => {
+  const system = fresh();
+  system.themes.light.fontFamily = "serif";
+  system.themes.dark.fontFamily = "mono";
+  Object.assign(system.themes.light.global, { spacingSm: 6, spacingMd: 10, spacingLg: 20 });
+  Object.assign(system.themes.dark.global, { spacingSm: 7, spacingMd: 14, spacingLg: 28 });
+  const parsed = parse(system);
+  for (const mode of modes) {
+    assert.equal(parsed.themes[mode].fontFamily, "serif");
+    assert.deepEqual(Object.fromEntries(Object.keys(spacingPresets).map((key) => [key, parsed.themes[mode].global[key]])),
+      { spacingSm: 6, spacingMd: 10, spacingLg: 20 });
+  }
+  for (const mode of modes) for (const invalid of ["unknown", "", "var(--font)", null, 1]) {
+    const candidate = fresh();
+    candidate.themes[mode].fontFamily = invalid;
+    assert.throws(() => parse(candidate), new RegExp(`themes.${mode}.fontFamily`));
+  }
+  for (const mode of modes) for (const key of Object.keys(spacingPresets)) {
+    const field = tokenFields.find((entry) => entry.key === key);
+    for (const invalid of ["8", null, -1, field.max + 1, Infinity]) {
+      const candidate = fresh();
+      candidate.themes[mode].global[key] = invalid;
+      assert.throws(() => parse(candidate), new RegExp(`themes.${mode}.global.${key}`));
+    }
+  }
+});
+
+test("Google presets use allowlisted font URLs and CSS imports only when selected", () => {
+  assert.equal(fontFamilyPresets.length, 19);
+  for (const preset of fontFamilyPresets) {
+    const url = googleFontUrl(preset);
+    if (!preset.startsWith("google-")) {
+      assert.equal(url, null);
+      continue;
+    }
+    const font = googleFontFamilies[preset];
+    assert.ok(font);
+    const weights = preset === "google-merriweather" ? "400;700" : "400;500;600;700";
+    assert.equal(url, `https://fonts.googleapis.com/css2?family=${font.family.replaceAll(" ", "+")}:wght@${weights}&display=swap`);
+    const system = fresh();
+    system.themes.dark.fontFamily = preset;
+    const shared = parse(shareNonColorTokens(system, "dark"));
+    for (const mode of modes) assert.equal(shared.themes[mode].fontFamily, preset);
+    const css = exportCSS(shared);
+    assert.ok(css.startsWith(`@import url("${url}");\n\n:root`));
+    assert.equal(css.split("@import url(").length - 1, 1);
+    assert.equal(css.split(`--ds-font-family: ${fontFamilyStacks[preset]};`).length - 1, 2);
+  }
+  assert.ok(!exportCSS(fresh()).includes("@import"));
+  const disagreeing = fresh();
+  disagreeing.themes.light.fontFamily = "google-inter";
+  disagreeing.themes.dark.fontFamily = "google-lora";
+  const css = exportCSS(disagreeing);
+  assert.ok(css.includes(`@import url("${googleFontUrl("google-inter")}");`));
+  assert.ok(css.includes(`@import url("${googleFontUrl("google-lora")}");`));
+});
+
+test("CSS export emits shared preset variables while legacy spacing aliases stay independent", () => {
+  const system = fresh();
+  system.themes.dark.fontFamily = "mono";
+  Object.assign(system.themes.dark.global, { spacingSm: 6, spacingMd: 12, spacingLg: 24 });
+  const shared = parse(shareNonColorTokens(system, "dark"));
+  const css = exportCSS(shared);
+  const fontStacks = new Set();
+  for (const mode of modes) {
+    const vars = toCSSVariables(shared.themes[mode], mode);
+    assert.equal(typeof vars["--ds-font-family"], "string");
+    assert.ok(vars["--ds-font-family"].length > 0);
+    fontStacks.add(vars["--ds-font-family"]);
+    for (const [key, value] of Object.entries({ spacingSm: 6, spacingMd: 12, spacingLg: 24 })) {
+      assert.equal(vars[`--ds-${kebab(key)}`], `${value}px`);
+      assert.equal(css.split(`--ds-${kebab(key)}: ${value}px;`).length - 1, 2);
+    }
+    assert.equal(vars["--ds-padding-x"], "16px");
+    assert.equal(vars["--ds-padding-y"], "10px");
+    assert.equal(vars["--ds-gap"], "8px");
+    assert.equal(vars["--button-padding-x"], "var(--ds-padding-x)");
+    assert.equal(vars["--button-gap"], "var(--ds-gap)");
+  }
+  assert.equal(fontStacks.size, 1);
+  assert.equal(css.split(`--ds-font-family: ${[...fontStacks][0]};`).length - 1, 2);
+  const stacks = fontFamilyPresets.map((preset) => {
+    const theme = { ...shared.themes.light, fontFamily: preset };
+    const stack = toCSSVariables(theme)["--ds-font-family"];
+    assert.equal(stack, fontFamilyStacks[preset]);
+    assert.ok(fontFamilyLabels[preset], `Missing label for ${preset}`);
+    return stack;
+  });
+  assert.equal(new Set(stacks).size, fontFamilyPresets.length);
+});
 
 test("optional v3 extensions normalize old saves and retain existing data", () => {
   const system = fresh();

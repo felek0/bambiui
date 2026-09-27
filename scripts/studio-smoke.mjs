@@ -173,6 +173,8 @@ try {
     } else if(message.method==='Page.javascriptDialogOpening') {
       if(!acceptImportDialog) errors.push(`Unexpected browser dialog: ${message.params.message}`);
       send('Page.handleJavaScriptDialog',{accept:acceptImportDialog}).catch(error=>errors.push(String(error)));
+    } else if(message.method==='Fetch.requestPaused') {
+      send('Fetch.fulfillRequest',{requestId:message.params.requestId,responseCode:200,responseHeaders:[{name:'Content-Type',value:'text/css'}],body:''}).catch(error=>errors.push(String(error)));
     } else if(message.method==='Runtime.exceptionThrown')errors.push(message.params.exceptionDetails.exception?.description || message.params.exceptionDetails.text);
     else if(message.method==='Runtime.consoleAPICalled' && message.params.type==='error')errors.push(message.params.args.map(arg=>arg.value ?? arg.description).join(' '));
     else if(message.method==='Log.entryAdded' && message.params.entry.level==='error')errors.push(message.params.entry.text);
@@ -375,6 +377,40 @@ try {
     assert.deepEqual((await stored()).themes.dark,before.themes.dark);
     assert.equal(await evaluate(`${q('[data-ds-theme="light"]')}.style.getPropertyValue('--ds-primary-500').trim()`),'#345678');
   });
+  await check('font preset is shared, visible, exported and reset independently',async()=>{
+    await navigate('design','text');
+    assert.equal(await evaluate(`document.querySelectorAll('link[href^="https://fonts.googleapis.com/css2"]').length`),0,'local defaults must not fetch Google fonts');
+    assert.equal(await evaluate(`${q('#font-family-preset')}.querySelectorAll('optgroup[label^="Google Fonts"] option').length`),12);
+    await click(named(themeControl + ' button','Light'));
+    await evaluate(`(()=>{const input=${q('#font-family-preset')};input.value='mono';input.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+    await wait(`${q('[data-ds-theme="light"]')}.style.getPropertyValue('--ds-font-family').includes('Menlo')`);
+    for(const mode of ['light','dark']) assert.equal((await stored()).themes[mode].fontFamily,'mono');
+    assert.ok((await evaluate(`getComputedStyle(${q('[data-specimen="text"] [data-variant="paragraph"]')}).fontFamily`)).includes('Menlo'));
+    await click(q('[aria-label="Export tokens"]'));
+    assert.ok((await evaluate(`${q('[aria-label="Exported tokens"]')}.textContent`)).includes('--ds-font-family: ui-monospace'));
+    await click(q('[aria-label="Close export dialog"]'));
+    await navigate('develop','text');
+    assert.ok(await evaluate(`${q('.workspace-panel--develop')}.textContent.includes('--ds-font-family')`));
+    await navigate('design','text');
+    for(const [preset,firstFont] of [['sans','Arial'],['humanist','Trebuchet MS'],['editorial','Palatino'],['typewriter','Courier New']]) {
+      await evaluate(`(()=>{const input=${q('#font-family-preset')};input.value=${JSON.stringify(preset)};input.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+      await wait(`${q('[data-ds-theme="light"]')}.style.getPropertyValue('--ds-font-family').includes(${JSON.stringify(firstFont)})`);
+      for(const mode of ['light','dark']) assert.equal((await stored()).themes[mode].fontFamily,preset);
+      assert.ok((await evaluate(`getComputedStyle(${q('[data-specimen="text"] [data-variant="paragraph"]')}).fontFamily`)).includes(firstFont));
+      assert.ok((await evaluate(`getComputedStyle(${q('#font-family-tokens p[style]')}).fontFamily`)).includes(firstFont));
+    }
+    await send('Fetch.enable',{patterns:[{urlPattern:'https://fonts.googleapis.com/*',requestStage:'Request'}]});
+    await evaluate(`(()=>{const input=${q('#font-family-preset')};input.value='google-inter';input.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+    await wait(`!!document.querySelector('link[href^="https://fonts.googleapis.com/css2?family=Inter"]')`);
+    assert.equal((await stored()).themes.dark.fontFamily,'google-inter');
+    await click(q('[aria-label="Export tokens"]'));
+    assert.ok((await evaluate(`${q('[aria-label="Exported tokens"]')}.textContent`)).startsWith('@import url("https://fonts.googleapis.com/css2?family=Inter'));
+    await click(q('[aria-label="Close export dialog"]'));
+    await click(named('#font-family-tokens button','Reset font family'));
+    await wait(`!document.querySelector('link[href^="https://fonts.googleapis.com/css2"]')`);
+    await send('Fetch.disable');
+    for(const mode of ['light','dark']) assert.equal((await stored()).themes[mode].fontFamily,'system');
+  });
   await check('heading typography edits update Text, CSS, Docs and storage in both themes',async()=>{
     await navigate('design','text');
     const before=await stored();
@@ -467,6 +503,9 @@ try {
       ['paddingY',22,'[class*="paddingVisual"]','paddingTop'],
       ['gap',18,'[class*="gapVisual"]','gap'],
       ['margin',20,'[class*="marginVisual"] > span','marginLeft'],
+      ['spacingSm',6,'[class*="spacingScaleVisual"]','gap'],
+      ['spacingMd',12,'[class*="spacingScaleVisual"]','gap'],
+      ['spacingLg',24,'[class*="spacingScaleVisual"]','gap'],
       ['fontSize',20,'[class*="fontVisual"]','fontSize'],
       ['borderWidth',4,'[class*="shapeVisual"]','borderTopWidth'],
       ['controlHeightSm',40,'[class*="heightVisual"]','height'],
@@ -480,10 +519,18 @@ try {
       assert.equal(await evaluate(`getComputedStyle(${q(`${sample} ${visual}`)})[${JSON.stringify(property)}]`),`${value}px`,`${token} should change the visual example`);
       assert.equal((await stored()).themes.dark.global[token],value,`${token} should be shared`);
     }
+    assert.equal((await stored()).themes.light.global.gap,18,'legacy gap must remain independent');
+    for(const [size,token,value] of [['sm','spacingSm',6],['md','spacingMd',12],['lg','spacingLg',24]]) {
+      const content=`[data-specimen="card"] [data-size="${size}"] [class*="cardContent"]`;
+      assert.equal(await evaluate(`getComputedStyle(${q(content)}).gap`),`${value}px`,`${token} must reach Card.Content`);
+      assert.equal(await evaluate(`${q(content)}.children.length`),2,'Card.Content must display multiple items');
+    }
+    assert.equal(await evaluate(`getComputedStyle(${q('[data-specimen="card"] [data-size="md"]')}).gap`),'18px','Card root still uses legacy gap');
     await capture('studio-spacing-live-light');
     await click(named(themeControl + ' button','Dark'));
     for(const [token,value,visual,property] of examples) assert.equal(await evaluate(`getComputedStyle(${q(`[data-spacing-token="${token}"] ${visual}`)})[${JSON.stringify(property)}]`),`${value}px`);
     await capture('studio-spacing-live-dark');
+    assert.equal(await evaluate(`getComputedStyle(${q('[data-specimen="card"] [data-size="lg"] [class*="cardContent"]')}).gap`),'24px');
     await click(named(themeControl + ' button','Light'));
     for(const [token] of examples) await fill(`#token-${token}`,String(original.themes.light.global[token]));
   });

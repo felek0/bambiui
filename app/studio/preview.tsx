@@ -195,6 +195,7 @@ function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; c
                 {copy.card.makeDescription}
               </Card.Description>
             </Card.Header>
+            <Card.Content><span>Shape the details.</span><span>Keep the whole system in view.</span></Card.Content>
           </Card>
           {expanded && (
             <>
@@ -208,7 +209,7 @@ function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; c
                     {copy.card.exploreDescription}
                   </Card.Description>
                 </Card.Header>
-                <Card.Content>Give your next idea a place to grow.</Card.Content>
+                <Card.Content><span>Give your next idea a place to grow.</span><span>Carry it through every detail.</span></Card.Content>
                 <Card.Footer>
                   <Button size="sm">{copy.card.start}</Button>
                   <Button size="sm" variant="ghost">
@@ -223,6 +224,7 @@ function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; c
                     {copy.card.filledDescription}
                   </Card.Description>
                 </Card.Header>
+                <Card.Content><span>Start with a foundation.</span><span>Make it your own.</span></Card.Content>
               </Card>
             </>
           )}
@@ -635,7 +637,7 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
             </section>
             <section data-foundation="spacing" data-canvas-unit="spacing" data-selected={selected === "spacing" || undefined} aria-labelledby="canvas-spacing-title" className={styles.foundation}>
               <h2 id="canvas-spacing-title"><Link href="/spacing" aria-current={selected === "spacing" ? "page" : undefined}>Shape &amp; spacing</Link></h2>
-              <p>Shared dimensions for both themes. Select a token to edit its global value.</p>
+              <p>Shared dimensions for both themes. Spacing sm/md/lg sets the gap between Card.Content items at matching sizes; legacy component padding and outer gap stay independent. Select a token to edit its value.</p>
               <div className={styles.spacingSamples}>
                 {tokenFields.filter((field) => field.type === "number").map((field) => <Link key={field.key} href="/spacing" onClick={() => onEditToken?.("spacing", `token-${field.key}`)} className={styles.spacingSample} data-spacing-token={field.key}>
                   <span className={styles.spacingSampleHeader}><span>{field.label}</span><strong>{system.themes[mode].global[field.key]}px</strong></span>
@@ -643,6 +645,7 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
                     {field.key === "radius" || field.key === "borderWidth" ? <span className={styles.shapeVisual} />
                       : field.key === "paddingX" || field.key === "paddingY" ? <span className={styles.paddingVisual}><span>Content</span></span>
                       : field.key === "gap" ? <span className={styles.gapVisual}><i /><i /><i /></span>
+                                            : field.key === "spacingSm" || field.key === "spacingMd" || field.key === "spacingLg" ? <span className={styles.spacingScaleVisual}><i /><i /></span>
                       : field.key === "margin" ? <span className={styles.marginVisual}><span /></span>
                       : field.key === "fontSize" ? <span className={styles.fontVisual}>Ag</span>
                       : <span className={styles.heightVisual}>Control</span>}

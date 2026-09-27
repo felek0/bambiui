@@ -638,8 +638,13 @@
 }
 
 .cardContent {
+  display: grid;
   align-self: stretch;
+  gap: var(--ds-spacing-md);
 }
+
+.card[data-size="sm"] .cardContent { gap: var(--ds-spacing-sm); }
+.card[data-size="lg"] .cardContent { gap: var(--ds-spacing-lg); }
 
 .cardFooter {
   display: flex;

@@ -214,6 +214,7 @@ function TypographyReference({ theme, variables }: { theme: ThemeTokens; variabl
     <section className={styles.section}>
       <h3>{copy.typographyReference}</h3>
       <p>{copy.typographyDescription}</p>
+      <p>{copy.fontFamily}: <code>{theme.fontFamily ?? "system"}</code> · <code>--ds-font-family</code>: <code>{variables["--ds-font-family"]}</code></p>
       <ScrollRegion label={copy.typographyReference}>
         <table className={styles.table}>
           <caption>{copy.typographyReference}</caption>
@@ -223,7 +224,7 @@ function TypographyReference({ theme, variables }: { theme: ThemeTokens; variabl
             const prefix = `--ds-typography-${variant}-`;
             return <tr key={variant}>
               <th scope="row">{variant}</th>
-              <td><span className={styles.typeSample} style={{ fontSize: values.fontSize, lineHeight: values.lineHeight, fontWeight: values.fontWeight, letterSpacing: values.letterSpacing }}>{copy.sampleText}</span></td>
+              <td><span className={styles.typeSample} style={{ fontFamily: "var(--ds-font-family)", fontSize: values.fontSize, lineHeight: values.lineHeight, fontWeight: values.fontWeight, letterSpacing: values.letterSpacing }}>{copy.sampleText}</span></td>
               {(["font-size", "line-height", "font-weight", "letter-spacing"] as const).map((field) => {
                 const name = `${prefix}${field}`;
                 return <td key={field}><code>{name}</code><br /><code>{variables[name]}</code></td>;
@@ -279,7 +280,7 @@ function FoundationTokens({ theme, mode, variables, kind }: {
       <h3>{colors ? "Global color roles" : "Global shape, spacing & sizing"}</h3>
       <p>{colors
         ? "Surface and semantic roles include foreground partners for readable content on their fills. Use the CSS variable in styles; copy a name or value from the table."
-        : "Use these global variables for consistent radius, insets, gaps, type size, borders, and control heights. The sm/md/lg heights are shared across controls."}</p>
+        : "SpacingSm/Md/Lg (--ds-spacing-sm/md/lg) set the gap between items in Card.Content at matching Card sizes. Legacy paddingX, paddingY and gap tokens still control component padding and outer gaps independently. The sm/md/lg control heights are shared across controls."}</p>
       <ScrollRegion label={colors ? "Global color roles" : "Global spacing and sizing tokens"}>
         <table className={styles.table}>
           <caption>{colors ? `${mode} global colors` : "Shared global numeric tokens"}</caption>
@@ -300,7 +301,7 @@ function FoundationTokens({ theme, mode, variables, kind }: {
       <h3>{colors ? "Component color tokens" : "Component numeric tokens"}</h3>
       <p>{colors
         ? "Each component has background, foreground, and border aliases. A declared override replaces the inherited global value even if they currently match. Other variant and state colors are derived separately."
-        : "Component radius, padding, gap, margin, font size, and border width inherit global tokens until explicitly overridden. These aliases are shared between light and dark."}</p>
+        : "Component radius, padding, gap, margin, font size, and border width still inherit their legacy global tokens until explicitly overridden. Padding and gap overrides continue to work independently of spacingSm/Md/Lg. These aliases are shared between light and dark."}</p>
       <ScrollRegion label={colors ? "Component color aliases" : "Component numeric aliases"}>
         <table className={styles.table}>
           <caption>{colors ? `${mode} component color aliases` : "Shared component numeric aliases"}</caption>
@@ -339,7 +340,7 @@ function FoundationTokens({ theme, mode, variables, kind }: {
       <ScrollRegion label={colors ? "Color CSS example" : "Spacing CSS example"}>
         <pre className={styles.code}><code>{colors
           ? `.example {\n  color: var(--ds-foreground);\n  background: var(--ds-background);\n  border-color: var(--ds-border);\n  outline-color: var(--ds-primary-focus);\n}\n.example--accent { background: var(--ds-primary-500); }`
-          : `.example {\n  padding: var(--ds-padding-y) var(--ds-padding-x);\n  gap: var(--ds-gap);\n  border-radius: var(--ds-radius);\n  min-height: var(--ds-control-height-md);\n}\n.button-example { padding-inline: var(--button-padding-x); }`}</code></pre>
+          : `.example {\n  padding: var(--ds-spacing-md);\n  gap: var(--ds-spacing-sm);\n  border-radius: var(--ds-radius);\n  min-height: var(--ds-control-height-md);\n}\n.button-example { padding-inline: var(--button-padding-x); }`}</code></pre>
       </ScrollRegion>
     </section>
   </>;

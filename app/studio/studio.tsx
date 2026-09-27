@@ -19,6 +19,10 @@ import {
   typographyFields,
   typographyVariants,
   defaultTypography,
+  fontFamilyPresets,
+  fontFamilyLabels,
+  googleFontUrl,
+  resolveFontFamily,
   resolveColorScale,
   resolveTypography,
   shareNonColorTokens,
@@ -333,6 +337,17 @@ export default function Studio() {
   }
 
   const theme = system.themes[activeTheme];
+  useEffect(() => {
+    if (!ready) return;
+    const url = googleFontUrl(theme.fontFamily);
+    if (!url) return;
+    const stylesheet = document.createElement("link");
+    stylesheet.rel = "stylesheet";
+    stylesheet.href = url;
+    stylesheet.referrerPolicy = "no-referrer";
+    document.head.append(stylesheet);
+    return () => stylesheet.remove();
+  }, [ready, theme.fontFamily]);
   const previewColors = {
     "--preview-background": theme.global.background,
     "--preview-foreground": theme.global.foreground,
@@ -799,6 +814,21 @@ export default function Studio() {
                 onChange={(value) => setScaleStop(stop, value)} onReset={() => resetScaleStop(stop)} onFinish={finishEdit} />)}
             </div>
           </section>}
+          {(selection === "overview" || selection === "text") && <section className="token-section foundation-editor" id="font-family-tokens">
+            <div className="section-heading"><h3>Font family</h3><span>{t.sharedThemes}</span></div>
+            <label htmlFor="font-family-preset">Font family preset</label>
+            <select id="font-family-preset" value={theme.fontFamily} onChange={(event) => updateTheme({ ...theme, fontFamily: event.target.value as ThemeTokens["fontFamily"] })}>
+              <optgroup label="Local fonts">
+                {fontFamilyPresets.filter((preset) => !googleFontUrl(preset)).map((preset) => <option key={preset} value={preset}>{fontFamilyLabels[preset]}</option>)}
+              </optgroup>
+              <optgroup label="Google Fonts · requires internet">
+                {fontFamilyPresets.filter((preset) => googleFontUrl(preset)).map((preset) => <option key={preset} value={preset}>{fontFamilyLabels[preset]}</option>)}
+              </optgroup>
+            </select>
+            <p style={{ fontFamily: resolveFontFamily(theme), fontSize: 18, lineHeight: 1.4 }}>The quick brown fox jumps over the lazy dog.</p>
+            <p>Shared by both themes. Google Fonts load only when selected, sending a request to Google; an internet connection is required. Local presets make no font request. Exported CSS imports the selected Google font; offline viewers use its fallback.</p>
+            {selection === "text" && <Button type="button" onClick={() => updateTheme({ ...theme, fontFamily: defaultSystem.themes[activeTheme].fontFamily })}>Reset font family</Button>}
+          </section>}
           {selection === "text" && !isGlobal && <section className="token-section foundation-editor" id="typography-tokens">
             <div className="section-heading"><h3>Text styles</h3><span>{t.sharedThemes}</span></div>
             <p>Typography tokens are shared by both themes and every Text variant.</p>
@@ -822,7 +852,7 @@ export default function Studio() {
               if (
                 !window.confirm(
                   isGlobal
-                    ? selection === "colors" ? `Reset ${activeTheme} global colors? Color scale and component overrides will be kept; shared dimensions will not change.`
+                    ? selection === "colors" ? `Reset ${activeTheme} global colors? Color scale and component overrides will be kept; shared dimensions and font family will not change.`
                       : selection === "spacing" ? "Reset shared shape, spacing and sizing in both themes? Colors and component overrides will be kept."
                       : t.confirmGlobal(activeTheme === "light" ? t.light : t.dark)
                     : t.confirmComponent(activeTheme === "light" ? t.light : t.dark, t.componentNames[component]),
@@ -832,6 +862,7 @@ export default function Studio() {
               updateTheme(
                 isGlobal
                   ? { ...theme, source: selection === "spacing" ? theme.source : defaultSystem.themes[activeTheme].source,
+                      fontFamily: selection === "overview" ? defaultSystem.themes[activeTheme].fontFamily : theme.fontFamily,
                       global: Object.fromEntries(tokenFields.map(({ key, type }) => [key,
                         selection === "overview" || selection === "colors" && type === "color" || selection === "spacing" && type === "number"
                           ? defaultSystem.themes[activeTheme].global[key] : theme.global[key],

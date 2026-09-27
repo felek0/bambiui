@@ -84,6 +84,7 @@ type DeveloperCopy = {
   role: string;
   typographyReference: string;
   typographyDescription: string;
+  fontFamily: string;
   variant: string;
   preview: string;
   fontSize: string;
@@ -159,7 +160,8 @@ export const developerCopy = {
     colorRampDescription: "Seven live theme roles, each with 11 light-to-dark stops. Swatches and values follow the exported --ds-{role}-{stop} CSS variables, including overrides. Scroll horizontally to see every stop.",
     role: "Role",
     typographyReference: "Typography reference",
-    typographyDescription: "Resolved values for the current theme. Text variants use these CSS variables; size sm/lg scales only font size with --ds-size-scale-sm/lg, while md uses the base size. Variant is visual; use as to choose semantic markup. Tone selects --ds-foreground (neutral) or --ds-{tone}-on-subtle.",
+    typographyDescription: "Shared font family and resolved values for the current theme. Text variants use these CSS variables; size sm/lg scales only font size with --ds-size-scale-sm/lg, while md uses the base size. Variant is visual; use as to choose semantic markup. Tone selects --ds-foreground (neutral) or --ds-{tone}-on-subtle.",
+    fontFamily: "Font family preset",
     variant: "Variant",
     preview: "Preview",
     fontSize: "Font size",
