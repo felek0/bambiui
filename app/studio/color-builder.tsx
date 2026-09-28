@@ -1,13 +1,13 @@
 
-import { useId, useMemo, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { Button } from "./controls";
 import { Icon } from "./icons";
 import { generatePalette, type GeneratedPalette, type PaletteMode } from "./color-engine";
-import { auditSystemColors, colorCheckTargets, type ColorCheckTarget, type ContrastCheck } from "./color-audit";
+import { colorCheckTargets, type ColorCheckTarget, type ContrastCheck } from "./color-audit";
 import { colorBuilderCopy } from "./color-builder-copy";
 
-import type { ComponentId, DesignSystem, ThemeTokens } from "./tokens";
+import type { ComponentId, DesignSystem } from "./tokens";
 import styles from "./color-builder.module.css";
 
 const presets = [
@@ -170,34 +170,4 @@ export function ColorPairDialog({ checks: allChecks, mode, component, onNavigate
       </Dialog.Popup>
     </Dialog.Portal>
   </Dialog.Root>;
-}
-
-export function ContrastReport({ theme, mode, component }: { theme: ThemeTokens; mode: PaletteMode; component?: ComponentId }) {
-  const copy = colorBuilderCopy;
-  const checks = useMemo(() => auditSystemColors(theme, mode), [theme, mode]);
-  const scoped = component ? checks.filter((check) => check.component === component) : checks;
-  const failures = scoped.filter((check) => !check.passes);
-  return (
-    <section className={styles.report} data-failing={failures.length > 0 || undefined} aria-label={copy.currentChecks}>
-      <h3>{copy.modes[mode]} · {component ? copy.componentContrast(title(component)) : copy.systemContrast}</h3>
-      <p role="status" aria-atomic="true">
-        {failures.length > 0
-          ? copy.failures(numberText(failures.length), numberText(scoped.length))
-          : copy.allPass(numberText(scoped.length))}
-      </p>
-      <details className={styles.details}>
-        <summary>{failures.length ? copy.reviewWarnings(numberText(failures.length)) : copy.reviewPairs}</summary>
-        <p>{copy.reportHelp}</p>
-        <ul className={styles.checks} tabIndex={0} aria-label={copy.pairResults}>
-          {(failures.length ? failures : scoped).map((check) => (
-            <li key={check.id} data-contrast-check={check.id}>
-              <strong>{check.label}</strong>
-              <span>{check.passes ? copy.pass : copy.belowTarget}: {ratioText(check.ratio)}:1 / {copy.required} {numberText(check.minimum)}:1</span>
-              <code>{check.foreground} {copy.on} {check.background}</code>
-            </li>
-          ))}
-        </ul>
-      </details>
-    </section>
-  );
 }

@@ -1,3 +1,3 @@
-export default function DesignOverviewPage() {
+export default function DesignHomePage() {
   return null;
 }

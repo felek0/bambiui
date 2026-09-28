@@ -1,3 +1,3 @@
-export default function DevelopOverviewPage() {
+export default function DevelopHomePage() {
   return null;
 }

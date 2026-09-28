@@ -1,5 +1,4 @@
-.builder,
-.report {
+.builder {
   min-width: 0;
   padding-block: 10px;
   border-top: 1px solid var(--studio-color-border);
@@ -9,30 +8,18 @@
   overflow-wrap: anywhere;
 }
 
-.builder > summary,
-.report h3 {
+.builder > summary {
   margin: 0;
   font-size: 12px;
   font-weight: 600;
 }
 
-.builder p,
-.report p {
+.builder p {
   margin: 0;
   color: var(--studio-color-text-secondary);
   font-size: 11px;
 }
 
-.report[data-failing] {
-  border-left: 2px solid var(--studio-color-warning);
-  padding-inline: 8px;
-  background: var(--studio-color-warning-subtle);
-}
-
-.report[data-failing] > p {
-  color: var(--studio-color-warning);
-  font-weight: 500;
-}
 
 .contrastTrigger {
   display: grid;
@@ -121,7 +108,6 @@
 .builder > .sourceInput + p { margin-top: 4px; }
 .builder > .presets { margin-top: 8px; }
 .builder > .feedback { margin-top: 8px; }
-.report > * + * { margin-top: 4px; }
 
 .builder > summary:focus-visible {
   outline: var(--studio-focus-ring);
@@ -173,8 +159,6 @@
 }
 
 .sourceInput input:focus-visible,
-.details summary:focus-visible,
-.checks:focus-visible,
 .builder button:focus-visible {
   outline: var(--studio-focus-ring);
   outline-offset: var(--studio-focus-ring-offset);
@@ -239,26 +223,6 @@
   display: none;
 }
 
-.details {
-  min-width: 0;
-}
-
-.details > summary {
-  padding-block: 4px;
-  cursor: pointer;
-  font-weight: 500;
-}
-
-.details > p {
-  margin-block: 4px 6px;
-}
-
-.details .warning {
-  padding: 8px;
-  border-left: 3px solid var(--studio-color-warning);
-  background: var(--studio-color-warning-subtle);
-  color: var(--studio-color-warning);
-}
 
 .recipe {
   display: grid;
@@ -345,39 +309,4 @@
   align-items: center;
   gap: 5px;
   font-size: 10px;
-}
-
-.checks {
-  display: grid;
-  gap: 6px;
-  max-height: 240px;
-  margin: 0;
-  padding: 2px;
-  overflow: auto;
-  scrollbar-gutter: stable;
-  list-style: none;
-}
-
-.checks li {
-  display: grid;
-  gap: 2px;
-  padding: 6px 8px;
-  border: 1px solid var(--studio-color-border);
-  border-radius: 6px;
-  background: var(--studio-color-surface);
-  font-size: 11px;
-}
-
-.checks strong {
-  font-weight: 600;
-}
-
-.checks span {
-  color: var(--studio-color-text-secondary);
-  font-variant-numeric: tabular-nums;
-}
-
-.checks code {
-  color: var(--studio-color-text-secondary);
-  font-size: 11px;
 }

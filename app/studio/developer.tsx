@@ -25,7 +25,7 @@ import type { PaletteMode } from "./color-engine";
 
 
 export type DeveloperViewProps = {
-  selected: "overview" | "colors" | "spacing" | ComponentId;
+  selected: "colors" | "spacing" | ComponentId;
   system: DesignSystem;
   mode: PaletteMode;
   cssOutput: string;
@@ -348,11 +348,11 @@ function FoundationTokens({ theme, mode, variables, kind }: {
 
 export function DeveloperView({ selected, system, mode, cssOutput }: DeveloperViewProps) {
   const copy = developerCopy;
-  const component = selected === "overview" || selected === "colors" || selected === "spacing" ? null : reference[selected];
+  const component = selected === "colors" || selected === "spacing" ? null : reference[selected];
   const theme = system.themes[mode];
   const variables = useMemo(() => toCSSVariables(theme, mode), [theme, mode]);
-  const prefix = selected === "overview" || selected === "colors" || selected === "spacing" ? "--ds-" : `--${selected}-`;
-  const editableNames = new Set((selected === "overview" ? tokenFields.map(({ key }) => key) : selected === "colors" || selected === "spacing" ? [...componentTokenKeys] : componentEditableTokenKeys(selected))
+  const prefix = selected === "colors" || selected === "spacing" ? "--ds-" : `--${selected}-`;
+  const editableNames = new Set((selected === "colors" || selected === "spacing" ? [...componentTokenKeys] : componentEditableTokenKeys(selected))
     .map((key) => `${prefix}${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`));
   const tokens = Object.entries(variables).filter(([name]) => editableNames.has(name));
   const derived = Object.entries(variables).filter(([name]) => name.startsWith(prefix) && !editableNames.has(name) && !(selected === "text" && name.startsWith("--text-")));
@@ -363,7 +363,7 @@ export function DeveloperView({ selected, system, mode, cssOutput }: DeveloperVi
         <p className={styles.systemName}>{copy.system}: {system.name} · {copy.modeName[mode]} {copy.theme} · {copy.source} {system.themes[mode].source}</p>
       </header>
 
-      {selected !== "overview" && selected !== "colors" && selected !== "spacing" && component && (
+      {selected !== "colors" && selected !== "spacing" && component && (
         <>
           <ReactUsage key={selected} selected={selected} />
           <details className={styles.reference}>
@@ -391,10 +391,9 @@ export function DeveloperView({ selected, system, mode, cssOutput }: DeveloperVi
       )}
 
       {(selected === "colors" || selected === "spacing") && <FoundationTokens theme={theme} mode={mode} variables={variables} kind={selected} />}
-      {selected === "overview" && <ColorRamp theme={theme} mode={mode} variables={variables} />}
-      {(selected === "overview" || selected === "text") && <TypographyReference theme={theme} variables={variables} />}
+      {selected === "text" && <TypographyReference theme={theme} variables={variables} />}
 
-      {selected !== "colors" && selected !== "spacing" && <details className={styles.reference} open={selected === "overview"}>
+      {selected !== "colors" && selected !== "spacing" && <details className={styles.reference}>
         <summary>{component ? copy.tokenInheritance : copy.globalTokenReference}</summary>
         <p>
           {component

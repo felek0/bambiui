@@ -12,14 +12,11 @@ export const colorBuilderCopy = {
   invalidHex: "Enter a six-digit hex color, such as #e8673c.",
   presets: "Brand color presets",
   applyPreset: (name: string) => `Apply ${name} to both themes`,
-  currentChecks: "Current contrast checks",
-  componentContrast: (component: string) => `${component} contrast`,
-  systemContrast: "Current system contrast",
+
   failures: (failures: string, total: string) => `${failures} of ${total} checked color pairs need attention.`,
   allPass: (total: string) => `All ${total} checked color pairs meet their targets.`,
   reportHelp: "Selected color pairs on the global surface, including modeled mixes and enabled states. Not a complete accessibility audit; nested surfaces and other states still need review.",
-  reviewWarnings: (count: string) => `Review ${count} contrast warnings`,
-  reviewPairs: "Review checked pairs",
+
   pairResults: "Contrast pair results",
   componentPairs: (name: string) => `${name} color pairs`,
   componentPairStatus: (name: string, failures: number, total: number) => failures

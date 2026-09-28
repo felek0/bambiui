@@ -9,7 +9,7 @@ import { BrandMark, Icon } from "./icons";
 import { brandColor } from "./brand";
 import { Preview } from "./preview";
 import { DeveloperView } from "./developer";
-import { ColorBuilder, ColorBuilderDialog, ColorPairDialog, ContrastReport } from "./color-builder";
+import { ColorBuilderDialog, ColorPairDialog } from "./color-builder";
 import { auditSystemColors, type ColorCheckTarget } from "./color-audit";
 import { mixColors, type GeneratedPalette, type PaletteMode } from "./color-engine";
 import { copy as t, tokenImpact } from "./studio-copy";
@@ -49,7 +49,7 @@ import {
 } from "./tokens";
 import { loadSystems, saveSystems, SYSTEMS_KEY, type SystemCollection } from "./systems";
 
-type Selection = "overview" | "colors" | "spacing" | ComponentId;
+type Selection = "colors" | "spacing" | ComponentId;
 type View = "design" | "develop";
 
 const spacingGroups: { label: string; keys: readonly (keyof TokenValues)[] }[] = [
@@ -67,7 +67,7 @@ const componentGroups: { label: string; ids: readonly ComponentId[] }[] = [
 
 function workspaceHref(view: View, selection: Selection) {
   const prefix = view === "develop" ? "/develop" : "";
-  return `${prefix}${selection === "overview" ? "" : `/${selection}`}` || "/";
+  return `${prefix}/${selection}`;
 }
 
 function isValidToken(field: TokenField, text: string) {
@@ -273,9 +273,9 @@ export default function Studio() {
   const segments = pathname.split("/").filter(Boolean);
   const view: View = segments[0] === "develop" ? "develop" : "design";
   const routeComponent = segments[view === "develop" ? 1 : 0];
-  const selection: Selection = routeComponent === "colors" || routeComponent === "spacing"
-    ? routeComponent
-    : componentIds.find((id) => id === routeComponent) ?? "overview";
+  const selection: Selection = routeComponent === "spacing"
+    ? "spacing"
+    : componentIds.find((id) => id === routeComponent) ?? "colors";
   const [query, setQuery] = useState("");
   const [activeTheme, setActiveTheme] = useState<PaletteMode>("light");
   useEffect(() => {
@@ -455,7 +455,7 @@ export default function Studio() {
   const previewColors = {
     "--preview-grid-dot": mixColors(theme.global.foreground, theme.global.background, 0.18),
   } as CSSProperties;
-  const isGlobal = selection === "overview" || selection === "colors" || selection === "spacing";
+  const isGlobal = selection === "colors" || selection === "spacing";
   const component: ComponentId = isGlobal ? "button" : selection;
   const values = isGlobal ? theme.global : resolveComponent(theme, component);
   const fields = tokenFields.filter(
@@ -751,13 +751,7 @@ export default function Studio() {
       <aside className="studio-sidebar" aria-label={t.library}>
         <div className="sidebar-navigation">
           <div className="sidebar-section-label">{t.workspace.toUpperCase()}</div>
-          <NavItem
-            icon={<Icon name="grid" />}
-            current={selection === "overview"}
-            href={workspaceHref(view, "overview")}
-          >
-            {t.overview}
-          </NavItem>
+
           <div className="sidebar-section-label sidebar-foundations-label">{t.sidebarFoundations.toUpperCase()}</div>
           <NavItem icon={<Icon name="colors" />} href={workspaceHref(view, "colors")} current={selection === "colors"}
             ariaLabel={ready && globalIssueCount ? `Colors, ${t.sidebarContrastWarning(globalIssueCount, activeTheme)}` : undefined}
@@ -823,10 +817,10 @@ export default function Studio() {
 
       <main className={`studio-main studio-main--${view}`} id="workspace" tabIndex={-1}>
         {view === "design" ? (
-          <h1 className="sr-only">{selection === "overview" ? t.overviewTitle : selection === "colors" ? "Colors" : selection === "spacing" ? "Shape & spacing" : t.componentTitle(t.componentNames[selection])}</h1>
+          <h1 className="sr-only">{selection === "colors" ? "Colors" : selection === "spacing" ? "Shape & spacing" : t.componentTitle(t.componentNames[selection])}</h1>
         ) : (
           <div className="workspace-heading">
-            <h1>{selection === "overview" ? "Token reference" : selection === "colors" ? "Colors documentation" : selection === "spacing" ? "Shape & spacing documentation" : `${t.componentNames[selection]} documentation`}</h1>
+            <h1>{selection === "colors" ? "Colors documentation" : selection === "spacing" ? "Shape & spacing documentation" : `${t.componentNames[selection]} documentation`}</h1>
             <p>{selection === "colors" || selection === "spacing" ? "Live token values and CSS references for your design system." : "React usage, props and resolved theme tokens for your design system."}</p>
           </div>
         )}
@@ -893,16 +887,7 @@ export default function Studio() {
 
         <fieldset disabled={!ready} className={`editor-fields${!isGlobal || selection === "colors" || selection === "spacing" ? " editor-fields--compact" : ""}${!isGlobal ? " editor-fields--component" : ""}${selection === "spacing" ? " editor-fields--spacing" : ""}`}>
           <legend className="sr-only">{selection === "spacing" ? "Edit shared shape and spacing tokens" : t.editTokens(activeTheme === "light" ? t.light : t.dark)}</legend>
-          {isGlobal && selection === "overview" && <div className="editor-intro">
-            <span className="scope-icon"><Icon name="sliders" size={18} /></span>
-            <div>
-              <h3>{t.foundations}</h3>
-              <p>{t.foundationsHint}</p>
-              <p>{t.mixedScope}</p>
-            </div>
-          </div>}
-          {ready && selection === "overview" && <ColorBuilder key={workspaceRevision} system={system} onFinish={finishEdit} onApply={applyPalette} />}
-          {selection === "overview" && <ContrastReport key={activeTheme} theme={theme} mode={activeTheme} />}
+
           {selection === "spacing" && spacingGroups.map((group) => <section className="token-section" key={group.label}>
             <div className="section-heading"><h3>{group.label}</h3>{group.label === "Shape" && <span>{t.sharedThemes}</span>}</div>
             <div className="number-fields">{numberFields.filter((field) => group.keys.includes(field.key)).map(renderTokenField)}</div>
@@ -947,7 +932,7 @@ export default function Studio() {
                 onChange={(value) => setScaleStop(stop, value)} onReset={() => resetScaleStop(stop)} onFinish={finishEdit} />)}
             </div>
           </section>}
-          {(selection === "overview" || selection === "text") && <section className="token-section foundation-editor" id="font-family-tokens">
+          {selection === "text" && <section className="token-section foundation-editor" id="font-family-tokens">
             <div className="section-heading"><h3>Font family</h3><span>{t.sharedThemes}</span></div>
             <div className="font-family-row"><label htmlFor="font-family-preset">Font family</label>
             <select id="font-family-preset" value={theme.fontFamily} onChange={(event) => updateTheme({ ...theme, fontFamily: event.target.value as ThemeTokens["fontFamily"] })}>
@@ -996,9 +981,9 @@ export default function Studio() {
               updateTheme(
                 isGlobal
                   ? { ...theme, source: selection === "spacing" ? theme.source : defaultSystem.themes[activeTheme].source,
-                      fontFamily: selection === "overview" ? defaultSystem.themes[activeTheme].fontFamily : theme.fontFamily,
+                      fontFamily: theme.fontFamily,
                       global: Object.fromEntries(tokenFields.map(({ key, type }) => [key,
-                        selection === "overview" || selection === "colors" && type === "color" || selection === "spacing" && type === "number"
+                        selection === "colors" && type === "color" || selection === "spacing" && type === "number"
                           ? defaultSystem.themes[activeTheme].global[key] : theme.global[key],
                       ])) as TokenValues }
                   : {

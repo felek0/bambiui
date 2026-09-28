@@ -376,7 +376,7 @@ function ThemePane({ theme, mode, children, copy }: {
 }
 
 export function Preview({ selected, system, mode, active = true, onSelectColorRole, onEditToken }: {
-  selected: "overview" | "colors" | "spacing" | ComponentId;
+  selected: "colors" | "spacing" | ComponentId;
   system: DesignSystem;
   mode: PaletteMode;
   active?: boolean;
@@ -553,12 +553,10 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
     const frame = requestAnimationFrame(() => {
       const view = viewport.current;
       const element = canvas.current;
-      const target = selected === "overview" ? element : element?.querySelector<HTMLElement>(`[data-canvas-unit="${selected}"]`);
+      const target = element?.querySelector<HTMLElement>(`[data-canvas-unit="${selected}"]`);
       if (!view || !element || !target || !view.clientWidth) return;
       if (naturalLayout()) {
-        if (selected !== "overview") target.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
-      } else if (selected === "overview") {
-        moveCamera({ x: (view.clientWidth - element.offsetWidth * camera.current.zoom) / 2, y: 24, zoom: camera.current.zoom }, initialized.current);
+        target.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
       } else {
         const bounds = target.getBoundingClientRect();
         const box = view.getBoundingClientRect();
@@ -577,15 +575,13 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
         }, initialized.current);
       }
       initialized.current = true;
-      if (selected !== "overview") {
-        const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-        const highlight = { outline: "2px solid var(--ds-foreground)", outlineOffset: "4px" };
-        target.animate(reducedMotion ? [highlight, highlight] : [
-          { outline: "2px solid transparent", outlineOffset: "4px" },
-          { ...highlight, offset: 0.2 },
-          { outline: "2px solid transparent", outlineOffset: "4px" },
-        ], { duration: 1400 });
-      }
+      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const highlight = { outline: "2px solid var(--ds-foreground)", outlineOffset: "4px" };
+      target.animate(reducedMotion ? [highlight, highlight] : [
+        { outline: "2px solid transparent", outlineOffset: "4px" },
+        { ...highlight, offset: 0.2 },
+        { outline: "2px solid transparent", outlineOffset: "4px" },
+      ], { duration: 1400 });
     });
     return () => cancelAnimationFrame(frame);
   }, [selected, active, moveCamera]);

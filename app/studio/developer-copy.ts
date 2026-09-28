@@ -45,7 +45,7 @@ type DeveloperCopy = {
   developerReference: string;
   systemTokens: string;
   componentIntro: string;
-  overviewIntro: string;
+
   system: string;
   theme: string;
   modeName: Record<PaletteMode, string>;
@@ -122,7 +122,7 @@ export const developerCopy = {
     developerReference: "Developer reference",
     systemTokens: "System tokens",
     componentIntro: "React usage, component props and live token inheritance.",
-    overviewIntro: "Select a component in the studio to see its React usage and API reference.",
+
     system: "System",
     theme: "theme",
     modeName: { light: "light", dark: "dark" },

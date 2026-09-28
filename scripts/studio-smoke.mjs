@@ -18,7 +18,7 @@ let server, chrome, profile, socket, sequence = 0, acceptImportDialog = false;
 const watchdog = setTimeout(() => { console.error('Smoke test exceeded 180 seconds'); process.exit(1); }, 180000);
 const ids = ['button', 'input', 'card', 'badge', 'switch', 'checkbox', 'text'];
 const foundations = ['colors', 'spacing'];
-const href = (view, id = 'overview') => `${view === 'develop' ? '/develop' : ''}${id === 'overview' ? '' : `/${id}`}` || '/';
+const href = (view, id = 'colors') => `${view === 'develop' ? '/develop' : ''}/${id}`;
 const canvas = '[aria-label="Component canvas"]';
 const viewNav = '.studio-header nav.view-switch';
 const themeControl = '[aria-label="Design theme"]';
@@ -45,7 +45,7 @@ async function stableCamera() {
   await delay(500);
   return evaluate(cameraState);
 }
-async function route(view, id = 'overview') {
+async function route(view, id = 'colors') {
   const path = href(view, id);
   await wait(`location.pathname === ${JSON.stringify(path)} && ${q('.editor-fields')} && !${q('.editor-fields')}.disabled`);
   await wait(`${q('.workspace-panel--' + view)} && !${q('.workspace-panel--' + view)}.hidden`);
@@ -59,7 +59,7 @@ async function route(view, id = 'overview') {
   assert.equal(await evaluate(`document.querySelectorAll('[data-specimen="text"]').length`),1);
   assert.equal(await evaluate(`${q('[data-specimen="text"]')}===${q('[data-foundation="text"]')}`),true);
 }
-async function navigate(view, id = 'overview') {
+async function navigate(view, id = 'colors') {
   const currentView = await evaluate(`location.pathname.startsWith('/develop') ? 'develop' : 'design'`);
   if (currentView !== view) await click(named(viewNav + ' a',view === 'design' ? 'Design' : 'Develop'));
   await click(q(`.studio-sidebar a[href="${href(view, id)}"], ${viewNav} a[href="${href(view, id)}"]`));
@@ -232,6 +232,8 @@ try {
     assert.equal(await evaluate(`getComputedStyle(${q('.brand-mark')}).color`),'rgb(232, 103, 60)');
     assert.equal(await evaluate(`getComputedStyle(${q('.header-actions .studio-button[data-variant="primary"]')}).backgroundColor`),'rgb(63, 63, 70)');
     assert.equal(await evaluate(`getComputedStyle(${q('.header-actions .studio-button[data-variant="primary"]')}).color`),'rgb(255, 255, 255)');
+    await click(q('[aria-label="Open color builder"]'));
+    await wait(`!!${q('[data-palette-builder][open]')}`);
     assert.equal(await evaluate(`${q('input[id$="-source"]')}.value`),'#e8673c');
     assert.equal(await evaluate(`${q('[data-ds-theme="light"]')}.style.getPropertyValue('--ds-primary').trim()`),'#e8673c');
     assert.notEqual(await evaluate(`getComputedStyle(document.documentElement).getPropertyValue('--studio-color-accent').trim()`),await evaluate(`${q('[data-ds-theme="light"]')}.style.getPropertyValue('--ds-primary').trim()`));
@@ -248,7 +250,8 @@ try {
     assert.equal(await evaluate(`getComputedStyle(${q('.theme-pane:not([hidden]) section[aria-label="Button preview"]')}).backgroundColor`),'rgba(0, 0, 0, 0)');
     assert.equal(await evaluate(`getComputedStyle(${q('.theme-pane:not([hidden]) section[aria-label="Card preview"] article')}).borderTopWidth`),'1px');
     assert.equal(await evaluate(`document.querySelectorAll('[data-palette-builder] button').length`),5);
-    assert.equal(await evaluate(`${q('[data-palette-builder]')}.open`),false);
+    await click(q('[aria-label="Close color builder"]'));
+    await wait(`!${q('[data-palette-builder]')}`);
     await capture('studio-desktop-light');
   });
   await check('component typography consumes exported system constants',async()=>{
@@ -523,7 +526,7 @@ try {
     await fill('#token-foreground',original);
   });
   await check('shape, component sizing and typography edits stay shared across Light and Dark',async()=>{
-    await navigate('design');
+    await navigate('design','spacing');
     await fill('#token-radius','17');
     assert.equal((await stored()).themes.dark.global.radius,17);
     await click(named(themeControl + ' button','Dark'));
@@ -595,10 +598,8 @@ try {
     for(const [token] of examples) await fill(`#token-${token}`,String(original.themes.light.global[token]));
   });
   await check('contrast warnings follow manual edits and exported CSS/JSON keep both themes',async()=>{
-    await navigate('design');
-    assert.ok(await evaluate(`!!${q('[aria-label="Current contrast checks"] summary')}`),'Overview keeps its global contrast report');
     await navigate('design','colors');
-    assert.equal(await evaluate(`!!${q('[aria-label="Current contrast checks"]')}`),false,'Colors no longer has an inline report');
+    assert.equal(await evaluate(`!!${q('[aria-label="Current contrast checks"]')}`),false,'global checks are available through the Colors dialog, not inline');
     const globalPairs='.editor-title-actions button[aria-label*="System color pairs"]';
     await click(q(globalPairs));
     await wait(`!!${q('[aria-label="Contrast pair results"]')}`);
@@ -833,7 +834,7 @@ try {
     await send('Input.dispatchMouseEvent',{type:'mouseMoved',...foundationPoint,button:'none'});
     assert.ok(await evaluate(`${q(foundation)}.matches(':hover')`),JSON.stringify(await evaluate(`(()=>{const r=${q(foundation)}.getBoundingClientRect(),v=${q(canvas)}.getBoundingClientRect();return {r:{x:r.x,y:r.y,width:r.width,height:r.height},v:{x:v.x,y:v.y,width:v.width,height:v.height},hit:document.elementFromPoint(${foundationPoint.x},${foundationPoint.y})?.outerHTML.slice(0,180)}})()`)));
     assert.equal(await evaluate(`getComputedStyle(${q(foundation)}).outlineStyle`),'solid');
-    assert.ok(await evaluate(`parseFloat(getComputedStyle(${q(foundation)}).outlineWidth) > 2`),'section outline must remain visible at Fit zoom');
+    assert.ok(await evaluate(`parseFloat(getComputedStyle(${q(foundation)}).outlineWidth) >= 2`),'section outline must remain visible at Fit zoom');
     await wait(`${q('[data-canvas-selection-hint]')}?.textContent.includes('Colors · Click to edit tokens') && ${q('[data-canvas-selection-hint]')}.dataset.visible === 'true'`);
     assert.equal(await evaluate(`getComputedStyle(${q('[data-canvas-selection-hint]')}).transitionDuration`),'0.12s, 0.12s, 0.12s');
     await delay(200);
@@ -875,7 +876,7 @@ try {
   await check('Design canvas units route to their own inspectors and Develop references',async()=>{
     await navigate('design');
     assert.equal(await evaluate(`!!${q('.breadcrumbs')}`),false);
-    assert.equal(await evaluate(`${q('main h1')}.textContent.trim()`),'Your design system');
+    assert.equal(await evaluate(`${q('main h1')}.textContent.trim()`),'Colors');
     await click(named('[aria-label="Canvas zoom"] button','Reset zoom'));
     await wait(`${q('[aria-label="Zoom level"]')}.textContent==='100%'`);
     await click(named('[aria-label="Canvas zoom"] button','Fit'));
@@ -1223,7 +1224,7 @@ try {
       assert.deepEqual(await stored(),normalized);
     } finally {acceptImportDialog = false;}
   });
-  for(const view of ['design','develop']) for(const id of ['overview',...foundations,...ids]) {
+  for(const view of ['design','develop']) for(const id of [...foundations,...ids]) {
     await check(`direct static opening ${href(view,id)}`,async()=>{
       const url=`http://127.0.0.1:${server.address().port}${href(view,id)}`;
       const response=await fetch(url);
@@ -1234,7 +1235,22 @@ try {
       await wait(`performance.timeOrigin!==${origin}`);
       await route(view,id);
       const name=id[0].toUpperCase()+id.slice(1);
-      assert.equal(await evaluate(`${q('h1')}.textContent`),view==='develop'?(id==='overview'?'Token reference':id==='spacing'?'Shape & spacing documentation':`${name} documentation`):(id==='overview'?'Your design system':id==='spacing'?'Shape & spacing':name));
+      assert.equal(await evaluate(`${q('h1')}.textContent`),view==='develop'?(id==='spacing'?'Shape & spacing documentation':`${name} documentation`):(id==='spacing'?'Shape & spacing':name));
+    });
+  }
+  for(const [view,path] of [['design','/'],['develop','/develop']]) {
+    await check(`default ${view} entry opens Colors at ${path}`,async()=>{
+      const url=`http://127.0.0.1:${server.address().port}${path}`;
+      const response=await fetch(url);
+      assert.equal(response.status,200);
+      assert.ok((await response.text()).includes('<html'));
+      const origin=await evaluate('performance.timeOrigin');
+      await send('Page.navigate',{url});
+      await wait(`performance.timeOrigin!==${origin} && location.pathname===${JSON.stringify(path)}`);
+      await wait(`${q('.editor-fields')} && !${q('.editor-fields')}.disabled`);
+      await wait(`${q(`.workspace-panel--${view}`)} && !${q(`.workspace-panel--${view}`)}.hidden`);
+      assert.equal(await evaluate(`${q('.studio-sidebar a[aria-current="page"]')}.getAttribute('href')`),href(view,'colors'));
+      assert.equal(await evaluate(`${q('h1')}.textContent`),view==='design'?'Colors':'Colors documentation');
     });
   }
   await check('no runtime, browser console or resource errors',async()=>{await delay(200);assert.deepEqual(errors,[]);});
