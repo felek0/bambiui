@@ -46,9 +46,16 @@ import {
   type TokenField,
   type TokenValues,
 } from "./tokens";
+import { loadSystems, saveSystems, SYSTEMS_KEY, type SystemCollection } from "./systems";
 
 type Selection = "overview" | "colors" | "spacing" | ComponentId;
 type View = "design" | "develop";
+
+const componentGroups: { label: string; ids: readonly ComponentId[] }[] = [
+  { label: "Actions", ids: ["button"] },
+  { label: "Forms", ids: ["input", "switch", "checkbox"] },
+  { label: "Content", ids: ["card", "badge", "text"] },
+];
 
 function workspaceHref(view: View, selection: Selection) {
   const prefix = view === "develop" ? "/develop" : "";
@@ -278,9 +285,29 @@ export default function Studio() {
   const [format, setFormat] = useState<"css" | "json">("css");
   const [copyStatus, setCopyStatus] = useState("");
   const importRef = useRef<HTMLInputElement>(null);
+  const importAsNew = useRef(false);
+  const switcherRef = useRef<HTMLDetailsElement>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [collection, setCollection] = useState<SystemCollection>({ version: 1, activeId: "original", systems: [{ id: "original", system: defaultSystem }] });
+  const collectionRef = useRef(collection);
   const history = useRef<{ undo: DesignSystem[]; redo: DesignSystem[]; group: string | null }>({ undo: [], redo: [], group: null });
   const currentSystem = useRef(system);
   const [historyCounts, setHistoryCounts] = useState({ undo: 0, redo: 0 });
+
+  useEffect(() => {
+    const dismiss = (event: PointerEvent) => {
+      if (switcherRef.current && !switcherRef.current.contains(event.target as Node)) switcherRef.current.open = false;
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && switcherRef.current?.open) {
+        switcherRef.current.open = false;
+        switcherRef.current.querySelector("summary")?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", escape); };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -288,12 +315,13 @@ export default function Studio() {
     queueMicrotask(() => {
       if (cancelled) return;
       try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          const loaded = parseDesignSystem(saved);
-          currentSystem.current = loaded;
-          setSystem(loaded);
-        }
+        const saved = localStorage.getItem(SYSTEMS_KEY) || localStorage.getItem(STORAGE_KEY);
+        const loaded = loadSystems(localStorage);
+        collectionRef.current = loaded;
+        setCollection(loaded);
+        const active = loaded.systems.find((entry) => entry.id === loaded.activeId)!.system;
+        currentSystem.current = active;
+        setSystem(active);
         setStatus(saved ? "saved" : "draft");
       } catch {
         setStatus("draft");
@@ -310,6 +338,48 @@ export default function Studio() {
     history.current.group = null;
   }
 
+  function persist(next: SystemCollection) {
+    collectionRef.current = next;
+    setCollection(next);
+    try {
+      saveSystems(localStorage, next);
+      setStatus("saved");
+      return true;
+    } catch {
+      setStatus("unsaved");
+      setNotice("storageError");
+      return false;
+    }
+  }
+
+  function activate(next: SystemCollection) {
+    try {
+      saveSystems(localStorage, next);
+      setStatus("saved");
+    } catch {
+      setStatus("unsaved");
+      setNotice("storageError");
+      return false;
+    }
+    collectionRef.current = next;
+    setCollection(next);
+    const active = next.systems.find((entry) => entry.id === next.activeId)!.system;
+    currentSystem.current = active;
+    setSystem(active);
+    history.current = { undo: [], redo: [], group: null };
+    setHistoryCounts({ undo: 0, redo: 0 });
+    setWorkspaceRevision((revision) => revision + 1);
+    setEditTarget(null);
+    switcherRef.current?.removeAttribute("open");
+    return true;
+  }
+
+  function addSystem(duplicate: boolean, imported?: DesignSystem) {
+    const id = crypto.randomUUID();
+    const nextSystem = imported ?? (duplicate ? { ...currentSystem.current, name: `${currentSystem.current.name} copy` } : { ...defaultSystem });
+    return activate({ ...collectionRef.current, activeId: id, systems: [...collectionRef.current.systems, { id, system: nextSystem }] });
+  }
+
   function update(next: DesignSystem, group?: string, record = true) {
     if (JSON.stringify(currentSystem.current) === JSON.stringify(next)) return;
     if (record) {
@@ -323,13 +393,9 @@ export default function Studio() {
     currentSystem.current = next;
     setSystem(next);
     setHistoryCounts({ undo: history.current.undo.length, redo: history.current.redo.length });
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      setStatus("saved");
-    } catch {
-      setStatus("unsaved");
-      setNotice("storageError");
-    }
+    persist({ ...collectionRef.current, systems: collectionRef.current.systems.map((entry) =>
+      entry.id === collectionRef.current.activeId ? { ...entry, system: next } : entry),
+    });
   }
 
   function travel(direction: "undo" | "redo") {
@@ -460,6 +526,43 @@ export default function Studio() {
             <Icon name="code" size={15} />{t.develop}
           </Link>
         </nav>
+        <details className="system-switcher" ref={switcherRef} onToggle={(event) => {
+          if (event.currentTarget.open) setRenameDraft(system.name);
+        }}>
+          <summary aria-label={`${t.selectSystem}: ${system.name || t.untitled}`}>
+            <span className="system-switcher-name">{system.name || t.untitled}</span>
+            <Icon name="chevron" size={14} />
+          </summary>
+          <div className="system-switcher-panel">
+            <div className="system-switcher-heading">{t.yourSystems}</div>
+            <div className="system-switcher-list">
+              {collection.systems.map((entry) => <button key={entry.id} type="button" aria-current={entry.id === collection.activeId ? "true" : undefined}
+                onClick={() => entry.id === collection.activeId ? switcherRef.current?.removeAttribute("open") : activate({ ...collectionRef.current, activeId: entry.id })}>
+                <span>{entry.system.name || t.untitled}</span>{entry.id === collection.activeId && <Icon name="check" size={14} />}
+              </button>)}
+            </div>
+            <div className="system-switcher-actions">
+              <button type="button" onClick={() => addSystem(false)}>{t.newSystem}</button>
+              <button type="button" onClick={() => addSystem(true)}>{t.duplicateSystem}</button>
+              <button type="button" onClick={() => { importAsNew.current = true; switcherRef.current?.removeAttribute("open"); importRef.current?.click(); }}>{t.importAsNew}</button>
+              {collection.systems.length > 1 && <button type="button" onClick={() => {
+                if (!window.confirm(t.deleteSystemConfirm(system.name || t.untitled))) return;
+                const systems = collectionRef.current.systems.filter((entry) => entry.id !== collectionRef.current.activeId);
+                activate({ ...collectionRef.current, activeId: systems[0].id, systems });
+              }}>{t.deleteSystem}</button>}
+            </div>
+            <form className="system-rename" onSubmit={(event) => {
+              event.preventDefault();
+              const name = renameDraft.trim();
+              if (name && name !== system.name) update({ ...currentSystem.current, name });
+              switcherRef.current?.removeAttribute("open");
+            }}>
+              <label htmlFor="design-system-name">{t.name}</label>
+              <div><input id="design-system-name" maxLength={80} required value={renameDraft} onChange={(event) => setRenameDraft(event.target.value)} />
+                <button type="submit">{t.rename}</button></div>
+            </form>
+          </div>
+        </details>
         <div className="header-workspace-controls">
           {view === "develop" && <SegmentedControl aria-label={t.theme} value={activeTheme} onValueChange={(next) => setActiveTheme(next as PaletteMode)}>
             <SegmentedControl.Item value="light" aria-label={t.light} title={t.light}><Icon name="sun" size={16} /></SegmentedControl.Item>
@@ -479,7 +582,7 @@ export default function Studio() {
             aria-label={t.importAria}
             disabled={!ready}
             startIcon={<Icon name="upload" />}
-            onClick={() => importRef.current?.click()}
+            onClick={() => { importAsNew.current = false; importRef.current?.click(); }}
           >
             {t.import}
           </Button>
@@ -493,18 +596,19 @@ export default function Studio() {
               const file = event.target.files?.[0];
               event.target.value = "";
               if (!file) return;
+              const asNew = importAsNew.current;
+              importAsNew.current = false;
               try {
                 if (file.size > 100_000)
                   throw new Error(t.fileSize);
                 const imported = parseDesignSystem(await file.text());
-                if (
-                  !window.confirm(
-                    t.replace,
-                  )
-                )
-                  return;
-                update(imported);
-                setWorkspaceRevision((revision) => revision + 1);
+                if (asNew) {
+                  if (!addSystem(false, imported)) return;
+                } else {
+                  if (!window.confirm(t.replace)) return;
+                  update(imported);
+                  setWorkspaceRevision((revision) => revision + 1);
+                }
                 setNotice("imported");
               } catch (error) {
                 setImportError(error instanceof Error && error.message === t.fileSize ? "fileSize" : "invalidJson");
@@ -589,20 +693,6 @@ export default function Studio() {
       </header>
 
       <aside className="studio-sidebar" aria-label={t.library}>
-        <div className="sidebar-project">
-          <span className="project-icon"><Icon name="box" size={20} /></span>
-          <div className="sidebar-project-fields">
-            <strong>{t.yourSystem}</strong>
-            <input
-              aria-label={t.name}
-              maxLength={80}
-              disabled={!ready}
-              value={system.name}
-              onChange={(event) => update({ ...system, name: event.target.value }, "system-name")}
-              onBlur={finishEdit}
-            />
-          </div>
-        </div>
         <div className="sidebar-navigation">
           <div className="sidebar-section-label">{t.workspace.toUpperCase()}</div>
           <NavItem
@@ -612,10 +702,11 @@ export default function Studio() {
           >
             {t.overview}
           </NavItem>
+          <div className="sidebar-section-label sidebar-foundations-label">{t.sidebarFoundations.toUpperCase()}</div>
           <NavItem icon={<Icon name="colors" />} href={workspaceHref(view, "colors")} current={selection === "colors"}>Colors</NavItem>
           <NavItem icon={<Icon name="sliders" />} href={workspaceHref(view, "spacing")} current={selection === "spacing"}>Shape &amp; spacing</NavItem>
           <div className="sidebar-divider" />
-          <div className="sidebar-section-label flex justify-between">
+          <div className="sidebar-section-label">
             {t.components.toUpperCase()}
           </div>
           <div className="search-field">
@@ -628,33 +719,32 @@ export default function Studio() {
             />
           </div>
           <nav aria-label={t.components} className="component-nav">
-            {componentIds
-              .filter((id) => id.includes(query.toLowerCase().trim()))
-              .map((id) => (
-                <NavItem
-                  key={id}
-                  icon={<Icon name={id} />}
-                  current={selection === id}
-                  end={
-                    Object.keys(theme.components[id]).length > 0 && (
-                      <>
-                        <span
-                          className="override-dot"
-                          aria-hidden="true"
-                          title={t.customTitle}
-                        />
-                        <span className="sr-only">{t.custom}</span>
-                      </>
-                    )
-                  }
-                  href={workspaceHref(view, id)}
-                >
-                  {t.componentNames[id]}
-                </NavItem>
-              ))}
-            {!componentIds.some((id) =>
-              id.includes(query.toLowerCase().trim()),
-            ) && (
+            {componentGroups.map((group) => {
+              const matches = group.ids.filter((id) => t.componentNames[id].toLowerCase().includes(query.toLowerCase().trim()));
+              if (!matches.length) return null;
+              return <div className="component-group" role="group" aria-label={group.label} key={group.label}>
+                <div className="component-group-label" aria-hidden="true">{group.label}</div>
+                {matches.map((id) => (
+                  <NavItem
+                    key={id}
+                    icon={<Icon name={id} />}
+                    current={selection === id}
+                    end={
+                      Object.keys(theme.components[id]).length > 0 && (
+                        <>
+                          <span className="override-dot" aria-hidden="true" title={t.customTitle} />
+                          <span className="sr-only">{t.custom}</span>
+                        </>
+                      )
+                    }
+                    href={workspaceHref(view, id)}
+                  >
+                    {t.componentNames[id]}
+                  </NavItem>
+                ))}
+              </div>;
+            })}
+            {!componentIds.some((id) => t.componentNames[id].toLowerCase().includes(query.toLowerCase().trim())) && (
               <p className="p-3 text-xs studio-text-muted">{t.noComponents}</p>
             )}
           </nav>
@@ -715,7 +805,7 @@ export default function Studio() {
                     <SegmentedControl.Item value="dark" aria-label={t.dark} title={t.dark}><Icon name="moon" size={16} /></SegmentedControl.Item>
                   </SegmentedControl>
                 </div>
-                <Preview selected={selection} system={system} mode={activeTheme} active={view === "design"} onSelectColorRole={setScaleRole} onEditToken={(nextSelection, inputId) => setEditTarget({ selection: nextSelection, inputId })} />
+                <Preview key={collection.activeId} selected={selection} system={system} mode={activeTheme} active={view === "design"} onSelectColorRole={setScaleRole} onEditToken={(nextSelection, inputId) => setEditTarget({ selection: nextSelection, inputId })} />
               </div>
             </section>
             <section hidden={view !== "develop"} aria-label={t.develop} className="workspace-panel workspace-panel--develop">

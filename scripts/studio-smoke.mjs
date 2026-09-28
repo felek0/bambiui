@@ -201,8 +201,18 @@ try {
     assert.deepEqual(await evaluate(`[...document.querySelectorAll(${JSON.stringify(themeControl + ' button')})].map(e=>e.getAttribute('aria-label'))`),['Light','Dark']);
     assert.ok(await evaluate(`[...document.querySelectorAll(${JSON.stringify(themeControl + ' button')})].every(e=>!e.textContent.trim() && !!e.querySelector('svg'))`));
     assert.ok(await evaluate(`${q('.studio-header .brand')}.nextElementSibling === ${q(viewNav)}`),'view links should follow the brand');
-    assert.ok(await evaluate(`${q('.studio-sidebar .sidebar-project input[aria-label="Design system name"]')}?.getClientRects().length > 0`),'editable name belongs to the project area');
-    assert.equal(await evaluate(`!!${q('.studio-header input[aria-label="Design system name"]')}`),false);
+    assert.ok(await evaluate(`${q('.studio-header .system-switcher summary')}?.getClientRects().length > 0`),'active system belongs in the header');
+    assert.equal(await evaluate(`!!${q('.studio-sidebar #design-system-name')}`),false);
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('.component-group')].map(e=>[e.querySelector('.component-group-label').textContent,...[...e.querySelectorAll('a')].map(a=>a.textContent.trim())])`),[['Actions','Button'],['Forms','Input','Switch','Checkbox'],['Content','Card','Badge','Text']]);
+    assert.equal(await evaluate(`${q('.sidebar-foundations-label')}.textContent`),'FOUNDATIONS');
+    await fill('.search-field input','badge');
+    await wait(`document.querySelectorAll('.component-group a').length === 1`);
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('.component-group a')].map(a=>a.textContent.trim())`),['Badge']);
+    await send('Input.dispatchKeyEvent',{type:'keyDown',key:'a',code:'KeyA',modifiers:4,commands:['selectAll']});
+    await send('Input.dispatchKeyEvent',{type:'keyUp',key:'a',code:'KeyA',modifiers:4});
+    await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8});
+    await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8});
+    await wait(`document.querySelectorAll('.component-group a').length === 7`);
     assert.ok(await evaluate(`!!${q('.preview-frame .canvas-history [aria-label="Undo change"] svg')} && !!${q('.preview-frame .canvas-history [aria-label="Redo change"] svg')}`));
     assert.ok(await evaluate(`(()=>{const bar=${q('.canvas-history')}.getBoundingClientRect(),view=${q(canvas)}.getBoundingClientRect();return bar.left>=view.left && bar.top>=view.top && bar.left<view.left+90 && bar.bottom<view.bottom})()`));
     assert.equal(await evaluate(`!!${q('.breadcrumbs')} || !!${q('.viewport-controls')} || !!${q('[aria-label="Preview width"]')}`),false);
@@ -704,6 +714,15 @@ try {
       const next=await evaluate(`(()=>{const r=${q(camera)}.getBoundingClientRect(),m=new DOMMatrixReadOnly(getComputedStyle(${q(camera)}).transform);return {scale:m.a,x:r.left+${old.worldX}*m.a,y:r.top+${old.worldY}*m.a}})()`);
       assert.ok(Math.abs(next.x-anchor.x)<4 && Math.abs(next.y-anchor.y)<4,'modified wheel zoom must preserve pointer anchor');
     }
+    const pinchPoint=await canvasBackground();
+    const pinchStart=await evaluate(`(()=>{const r=${q(camera)}.getBoundingClientRect(),m=new DOMMatrixReadOnly(getComputedStyle(${q(camera)}).transform);return {scale:m.a,worldX:(${pinchPoint.x}-r.left)/m.a,worldY:(${pinchPoint.y}-r.top)/m.a}})()`);
+    assert.ok(pinchStart.scale<2.5,'pinch burst should start below the zoom limit');
+    for(let i=0;i<24;i++) await wheel(pinchPoint,0,-1,2);
+    await wait(`${cameraState}.scale > ${pinchStart.scale}*1.08`);
+    const pinchEnd=await evaluate(`(()=>{const r=${q(camera)}.getBoundingClientRect(),m=new DOMMatrixReadOnly(getComputedStyle(${q(camera)}).transform);return {scale:m.a,x:r.left+${pinchStart.worldX}*m.a,y:r.top+${pinchStart.worldY}*m.a}})()`);
+    assert.ok(Math.abs(pinchEnd.x-pinchPoint.x)<4 && Math.abs(pinchEnd.y-pinchPoint.y)<4,'small wheel deltas must preserve pointer anchor');
+    await wait(`parseInt(${q('[aria-label="Zoom level"]')}.textContent) === Math.round(Number(${q(canvas)}.dataset.cameraZoom)*100)`);
+    assert.equal(await evaluate(`parseInt(${q('[aria-label="Zoom level"]')}.textContent)`),Math.round(pinchEnd.scale*100));
     assert.equal(await evaluate(`(()=>{const e=new WheelEvent('wheel',{bubbles:true,cancelable:true,ctrlKey:true,deltaY:-80});${q(canvas)}.dispatchEvent(e);return e.defaultPrevented})()`),true,'desktop Ctrl+wheel over canvas should be consumed for canvas zoom');
     assert.equal(await evaluate(`(()=>{const e=new WheelEvent('wheel',{bubbles:true,cancelable:true,ctrlKey:true,deltaY:-80});${q('.studio-sidebar')}.dispatchEvent(e);return e.defaultPrevented})()`),false,'modified wheel outside canvas must remain available to browser zoom');
     assert.equal(await evaluate(`${q(canvas)}.scrollLeft===0 && ${q(canvas)}.scrollTop===0`),true);
@@ -872,7 +891,7 @@ try {
       const overflow = await evaluate('({width:innerWidth,scrollWidth:document.documentElement.scrollWidth})');
       assert.ok(overflow.scrollWidth<=overflow.width,JSON.stringify(overflow));
       assert.ok(await evaluate(`${q(viewNav)}.getClientRects().length>0 && ${q(themeControl)}.getClientRects().length>0`));
-      assert.ok(await evaluate(`${q('.studio-sidebar .sidebar-project input[aria-label="Design system name"]')}.getClientRects().length>0`));
+      assert.ok(await evaluate(`${q('.studio-header .system-switcher summary')}.getClientRects().length>0`));
       if (view === 'Design') assert.ok(await evaluate(`(()=>{const canvas=${q('[data-foundation="colors"] h2')}.getBoundingClientRect(),history=${q('.canvas-history')}.getBoundingClientRect(),theme=${q('.canvas-theme')}.getBoundingClientRect(),viewport=${q('[aria-label="Component canvas"]')}.getBoundingClientRect();return history.top>=viewport.top && theme.top>=viewport.top && canvas.top>Math.max(history.bottom,theme.bottom)})()`),'mobile specimen must start below floating canvas controls');
       assert.equal(await evaluate(`!!${q('.breadcrumbs')} || !!${q('.viewport-controls')}`),false);
       await capture(`studio-375-${view.toLowerCase()}`);
@@ -987,19 +1006,84 @@ try {
     await click(q('[aria-label="Undo change"]'));
     assert.deepEqual(await stored(),before);
   });
-  await check('sidebar project name persists and remains undoable',async()=>{
-    const selector='.studio-sidebar .sidebar-project input[aria-label="Design system name"]';
-    const original=(await stored()).name;
+  await check('header system picker renames, duplicates and isolates histories',async()=>{
+    const selector='.system-rename input';
+    const original=await stored();
+    await click(q('.system-switcher summary'));
     await fill(selector,'Updated system');
+    await click(q('.system-rename button'));
     assert.equal((await stored()).name,'Updated system');
     await click(q('[aria-label="Undo change"]'));
-    assert.equal((await stored()).name,original);
+    assert.equal((await stored()).name,original.name);
     await click(q('[aria-label="Redo change"]'));
     assert.equal((await stored()).name,'Updated system');
+    await click(q('.system-switcher summary'));
+    await click(named('.system-switcher-actions button','Duplicate current system'));
+    assert.equal((await stored()).name,'Updated system copy');
+    assert.equal(await evaluate(`${q('[aria-label="Undo change"]')}.disabled`),true,'new system must not inherit undo history');
+    await navigate('design','spacing');
+    const radius=original.themes.light.global.radius === 21 ? 22 : 21;
+    await fill('#token-radius',String(radius));
     await reload();
-    assert.equal(await evaluate(`${q(selector)}.value`),'Updated system');
-    await fill(selector,original);
-    assert.equal((await stored()).name,original);
+    assert.equal((await stored()).name,'Updated system copy');
+    assert.equal((await stored()).themes.light.global.radius,radius);
+    await click(q('.system-switcher summary'));
+    assert.equal(await evaluate(`document.querySelectorAll('.system-switcher-list button').length`),2);
+    await click(named('.system-switcher-list button','Updated system'));
+    assert.equal((await stored()).name,'Updated system');
+    assert.equal((await stored()).themes.light.global.radius,original.themes.light.global.radius,'switching systems must restore its own tokens');
+    assert.equal(await evaluate(`${q('[aria-label="Undo change"]')}.disabled`),true,'switching clears edit history');
+    await click(q('.system-switcher summary'));
+    await fill(selector,original.name);
+    await click(q('.system-rename button'));
+    assert.equal((await stored()).name,original.name);
+    await click(q('.system-switcher summary'));
+    await click(named('.system-switcher-actions button','New design system'));
+    assert.equal((await stored()).name,'Untitled system');
+    assert.equal(await evaluate(`JSON.parse(localStorage.getItem('bambiui.systems.v1')).systems.length`),3);
+    await click(q('.system-switcher summary'));
+    await click(named('.system-switcher-list button',original.name));
+    assert.deepEqual(await stored(),original);
+    await reload();
+    assert.deepEqual(await stored(),original);
+  });
+  await check('import as new preserves the active system and exports only the selected system',async()=>{
+    const original=await stored();
+    const count=await evaluate(`JSON.parse(localStorage.getItem('bambiui.systems.v1')).systems.length`);
+    await click(q('.system-switcher summary'));
+    await click(named('.system-switcher-actions button','Import as new system'));
+    await evaluate(`(() => {const e=${q('.header-actions input[type="file"]')},d=new DataTransfer();d.items.add(new File([${JSON.stringify(JSON.stringify({ ...original, name: 'Imported system' }))}],'import.json',{type:'application/json'}));e.files=d.files;e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+    await wait(`${q('.system-switcher summary')}.textContent.includes('Imported system')`);
+    assert.equal(await evaluate(`JSON.parse(localStorage.getItem('bambiui.systems.v1')).systems.length`),count+1);
+    assert.deepEqual(await stored(),{ ...original, name: 'Imported system' });
+    await click(q('[aria-label="Export tokens"]'));
+    await click(named('[aria-label="Export format"] button','JSON'));
+    assert.deepEqual(JSON.parse(await evaluate(`${q('[aria-label="Exported tokens"]')}.textContent`)),{ ...original, name: 'Imported system' });
+    await click(q('[aria-label="Close export dialog"]'));
+    await click(q('.system-switcher summary'));
+    await click(named('.system-switcher-list button',original.name));
+    assert.deepEqual(await stored(),original);
+    await click(q('.system-switcher summary'));
+    await click(named('.system-switcher-list button','Imported system'));
+    await click(q('.system-switcher summary'));
+    acceptImportDialog = true;
+    try {
+      await click(named('.system-switcher-actions button','Delete current system'));
+    } finally { acceptImportDialog = false; }
+    await wait(`${q('.system-switcher summary')}.textContent.includes(${JSON.stringify(original.name)})`);
+    assert.deepEqual(await stored(),original);
+    assert.equal(await evaluate(`JSON.parse(localStorage.getItem('bambiui.systems.v1')).systems.length`),count);
+  });
+  await check('legacy single-system storage migrates without losing the saved collection',async()=>{
+    const backup=await evaluate(`localStorage.getItem('bambiui.systems.v1')`);
+    const active=await stored();
+    await evaluate(`localStorage.removeItem('bambiui.systems.v1')`);
+    await reload();
+    assert.deepEqual(await stored(),active);
+    assert.equal(await evaluate(`${q('.system-switcher-list button')}.textContent.trim()`),active.name);
+    await evaluate(`localStorage.setItem('bambiui.systems.v1',${JSON.stringify(backup)})`);
+    await reload();
+    assert.deepEqual(await stored(),active);
   });
   await check('JSON re-import restores both sources; old v3 files without foundations normalize',async()=>{
 

@@ -392,6 +392,8 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
   const dragged = useRef(false);
   const camera = useRef({ x: 0, y: 0, zoom: 1 });
   const animation = useRef<number | null>(null);
+  const wheelFrame = useRef<number | null>(null);
+  const zoomLabelTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialized = useRef(false);
   const [zoom, setZoom] = useState(1);
   const [hoveredUnit, setHoveredUnit] = useState<string | null>(null);
@@ -415,7 +417,7 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
     animation.current = null;
   }, []);
 
-  const setCamera = useCallback((next: { x: number; y: number; zoom: number }) => {
+  const setCamera = useCallback((next: { x: number; y: number; zoom: number }, updateLabel = true) => {
     camera.current = next;
     const view = viewport.current;
     if (view) {
@@ -428,8 +430,24 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
       view.dataset.cameraZoom = String(next.zoom);
     }
     if (canvas.current) canvas.current.style.transform = `translate(${next.x}px, ${next.y}px) scale(${next.zoom})`;
-    setZoom((previous) => previous === next.zoom ? previous : next.zoom);
+    if (updateLabel) setZoom((previous) => previous === next.zoom ? previous : next.zoom);
   }, []);
+
+  const queueWheelCamera = useCallback((next: { x: number; y: number; zoom: number }, updateLabel: boolean) => {
+    camera.current = next;
+    if (wheelFrame.current === null) {
+      wheelFrame.current = requestAnimationFrame(() => {
+        wheelFrame.current = null;
+        setCamera(camera.current, false);
+      });
+    }
+    if (updateLabel && zoomLabelTimer.current === null) {
+      zoomLabelTimer.current = setTimeout(() => {
+        zoomLabelTimer.current = null;
+        setZoom(camera.current.zoom);
+      }, 80);
+    }
+  }, [setCamera]);
 
   const moveCamera = useCallback((next: { x: number; y: number; zoom: number }, smooth = false) => {
     stopAnimation();
@@ -452,16 +470,22 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
     animation.current = requestAnimationFrame(tick);
   }, [setCamera, stopAnimation]);
 
-  const zoomAt = useCallback((next: number, x: number, y: number) => {
+  const zoomAt = useCallback((next: number, x: number, y: number, fromWheel = false) => {
     const current = camera.current;
     const value = Math.min(3, Math.max(0.2, next));
     if (value === current.zoom) return;
-    moveCamera({
+    const nextCamera = {
       x: x - (x - current.x) * value / current.zoom,
       y: y - (y - current.y) * value / current.zoom,
       zoom: value,
-    });
-  }, [moveCamera]);
+    };
+    if (fromWheel) {
+      stopAnimation();
+      queueWheelCamera(nextCamera, true);
+    } else {
+      moveCamera(nextCamera);
+    }
+  }, [moveCamera, queueWheelCamera, stopAnimation]);
 
   function changeZoom(next: number) {
     const view = viewport.current;
@@ -492,7 +516,12 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
       }
     });
     observer.observe(view);
-    return () => { observer.disconnect(); stopAnimation(); };
+    return () => {
+      observer.disconnect();
+      stopAnimation();
+      if (wheelFrame.current !== null) cancelAnimationFrame(wheelFrame.current);
+      if (zoomLabelTimer.current !== null) clearTimeout(zoomLabelTimer.current);
+    };
   }, [setCamera, stopAnimation]);
 
   useEffect(() => {
@@ -504,18 +533,20 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
       const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? view.clientHeight : 1;
       if (event.ctrlKey || event.metaKey) {
         const bounds = view.getBoundingClientRect();
-        zoomAt(camera.current.zoom * Math.exp(-event.deltaY * unit * 0.002), event.clientX - bounds.left, event.clientY - bounds.top);
+        const delta = Math.max(-120, Math.min(120, event.deltaY * unit));
+        zoomAt(camera.current.zoom * Math.exp(-delta * 0.004), event.clientX - bounds.left, event.clientY - bounds.top, true);
       } else {
         const current = camera.current;
-        moveCamera({ ...current,
+        stopAnimation();
+        queueWheelCamera({ ...current,
           x: current.x - (event.shiftKey && !event.deltaX ? event.deltaY : event.deltaX) * unit,
           y: current.y - (event.shiftKey ? 0 : event.deltaY) * unit,
-        });
+        }, false);
       }
     };
     view.addEventListener("wheel", wheel, { passive: false });
     return () => view.removeEventListener("wheel", wheel);
-  }, [active, moveCamera, zoomAt]);
+  }, [active, queueWheelCamera, stopAnimation, zoomAt]);
 
   useEffect(() => {
     if (!active) return;
