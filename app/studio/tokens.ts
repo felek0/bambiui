@@ -47,7 +47,10 @@ export type TokenValues = {
   info: string;
   onInfo: string;
   // Shape and spacing
+  /** Legacy medium radius. Kept for v1-v3 compatibility and exported as --ds-radius/--ds-radius-md. */
   radius: number;
+  radiusSm: number;
+  radiusLg: number;
   paddingX: number;
   paddingY: number;
   gap: number;
@@ -88,6 +91,15 @@ export function componentEditableTokenKeys(id: ComponentId): readonly (keyof Com
 }
 
 export type ColorScaleOverrides = Partial<Record<ColorScaleRole, Partial<Record<ColorScaleStop, string>>>>;
+
+export const componentVariantKeys = {
+  button: ["primary", "secondary", "outline", "ghost", "destructive", "link"],
+  badge: ["solid.neutral", "solid.primary", "solid.success", "solid.warning", "solid.danger", "solid.info", "subtle.neutral", "subtle.primary", "subtle.success", "subtle.warning", "subtle.danger", "subtle.info", "outline.neutral", "outline.primary", "outline.success", "outline.warning", "outline.danger", "outline.info"],
+  card: ["outlined", "elevated", "filled"],
+} as const;
+export type ComponentVariantId = keyof typeof componentVariantKeys;
+export type ComponentVariantColorTokens = Partial<Record<"background" | "foreground" | "border" | "hoverBackground" | "activeBackground", string>> & { shadow?: "none" | "sm" | "md" | "lg" };
+export type ComponentVariantColors = Partial<Record<ComponentVariantId, Partial<Record<(typeof componentVariantKeys)[ComponentVariantId][number], ComponentVariantColorTokens>>>>;
 
 export const typographyVariants = ["heading", "h1", "h2", "h3", "h4", "h5", "h6", "paragraph", "label", "caption"] as const;
 export type TypographyVariant = (typeof typographyVariants)[number];
@@ -179,6 +191,8 @@ export type ThemeTokens = {
   components: Record<ComponentId, Partial<ComponentTokens>>;
   colorScales?: ColorScaleOverrides;
   typography?: Partial<Record<TypographyVariant, Partial<TypographyTokens>>>;
+  /** Optional Light/Dark-specific colors for real component variant/tone combinations. */
+  variantColors?: ComponentVariantColors;
 };
 
 export function resolveColorScale(
@@ -219,9 +233,23 @@ export function shareNonColorTokens(system: DesignSystem, from: PaletteMode = "l
     }
     components[id] = overrides;
   }
+  const variantColors = structuredClone(target.variantColors ?? {});
+  for (const id of Object.keys(componentVariantKeys) as ComponentVariantId[]) {
+    const next = { ...(variantColors[id] ?? {}) };
+    for (const key of componentVariantKeys[id]) {
+      const sourceTokens = source.variantColors?.[id]?.[key];
+      const targetTokens = { ...(next[key] ?? {}) };
+      if (sourceTokens?.shadow === undefined) delete targetTokens.shadow;
+      else targetTokens.shadow = sourceTokens.shadow;
+      if (Object.keys(targetTokens).length) next[key] = targetTokens;
+      else delete next[key];
+    }
+    if (Object.keys(next).length) variantColors[id] = next;
+    else delete variantColors[id];
+  }
   return {
     ...system,
-    themes: { ...system.themes, [other]: { ...target, global, components, fontFamily: source.fontFamily, typography: structuredClone(source.typography) } },
+    themes: { ...system.themes, [other]: { ...target, global, components, fontFamily: source.fontFamily, typography: structuredClone(source.typography), variantColors } },
   };
 }
 
@@ -250,6 +278,8 @@ const legacyDefaults = {
     info: "#2563c9",
     onInfo: "#ffffff",
     radius: 8,
+    radiusSm: 4,
+    radiusLg: 12,
     paddingX: 16,
     paddingY: 10,
     gap: 8,
@@ -282,6 +312,7 @@ function defaultTheme(mode: PaletteMode): ThemeTokens {
     components: { button: {}, input: {}, card: {}, badge: {}, switch: {}, checkbox: {}, text: {} },
     colorScales: {},
     typography: structuredClone(defaultTypography),
+    variantColors: {},
   };
 }
 
@@ -314,6 +345,9 @@ export const systemConstants = {
   "--ds-card-title-letter-spacing": "-0.02em",
   "--ds-card-description-line-height": "1.65",
 
+  "--ds-shadow-sm": "0 1px 2px #00000014",
+  "--ds-shadow-md": "0 4px 12px #00000018",
+  "--ds-shadow-lg": "0 8px 24px #27272a1f",
   "--ds-shadow-elevated": "0 8px 24px #27272a0c",
   "--ds-transition-duration": "150ms",
   "--ds-control-inset": "2px",
@@ -355,7 +389,9 @@ export const tokenFields: TokenField[] = [
   color("onDanger", "On danger"),
   color("info", "Info"),
   color("onInfo", "On info"),
-  { key: "radius", label: "Radius", type: "number", min: 0, max: 48 },
+  { key: "radius", label: "Radius md (legacy)", type: "number", min: 0, max: 48 },
+  { key: "radiusSm", label: "Radius sm", type: "number", min: 0, max: 48 },
+  { key: "radiusLg", label: "Radius lg", type: "number", min: 0, max: 48 },
   {
     key: "paddingX",
     label: "Horizontal padding",
@@ -490,6 +526,8 @@ export function toCSSVariables(
     }
   }
   const global = theme.global;
+  variables["--ds-radius-md"] = variables["--ds-radius"];
+  variables["--ds-radius"] = variables["--ds-radius-md"];
   for (const role of paletteRoles) {
     const colors = deriveRoleColors(
       global[role], global[onRoleKeys[role]], global.background, mode, global.muted,
@@ -499,29 +537,77 @@ export function toCSSVariables(
     }
   }
   const button = resolveComponent(theme, "button");
-  const buttonColors = deriveRoleColors(
-    button.background, button.foreground, global.background, mode, global.muted,
-  );
-  variables["--button-hover"] = buttonColors.hover;
-  variables["--button-active"] = buttonColors.active;
+  const buttonDefaults: Record<string, { background: string; foreground: string; border: string }> = {
+    primary: { background: button.background, foreground: button.foreground, border: button.border },
+    secondary: { background: global.secondary, foreground: global.onSecondary, border: global.secondary },
+    outline: { background: "transparent", foreground: global.foreground, border: global.border },
+    ghost: { background: "transparent", foreground: global.foreground, border: "transparent" },
+    destructive: { background: global.danger, foreground: global.onDanger, border: global.danger },
+    link: { background: "transparent", foreground: variables["--ds-primary-on-subtle"], border: "transparent" },
+  };
+  for (const variant of componentVariantKeys.button) {
+    const defaults = buttonDefaults[variant];
+    const overrides = theme.variantColors?.button?.[variant] ?? {};
+    const colors = { ...defaults, ...overrides };
+    const prefix = `--button-variant-${variant}`;
+    for (const key of ["background", "foreground", "border"] as const) variables[`${prefix}-${kebabCase(key)}`] = colors[key];
+    const derivedBackground = colors.background === "transparent" ? global.background : colors.background;
+    const derived = deriveRoleColors(derivedBackground, colors.foreground, global.background, mode, global.muted);
+    variables[`${prefix}-hover-background`] = overrides.hoverBackground ?? (variant === "outline" || variant === "ghost" ? global.muted : derived.hover);
+    variables[`${prefix}-active-background`] = overrides.activeBackground ?? (variant === "outline" || variant === "ghost" ? global.muted : derived.active);
+  }
+  variables["--button-hover"] = variables["--button-variant-primary-hover-background"];
+  variables["--button-active"] = variables["--button-variant-primary-active-background"];
 
   const badge = resolveComponent(theme, "badge");
-  for (const tone of ["neutral", "primary", "success", "warning", "danger", "info"] as const) {
-    const colors = deriveRoleColors(
-      tone === "neutral" ? badge.foreground : global[tone],
-      tone === "neutral" ? badge.background : global[onRoleKeys[tone]],
-      badge.background, mode, badge.background,
-    );
-    for (const key of ["subtle", "onSubtle", "outline"] as const) {
-      variables[`--badge-${tone}-${kebabCase(key)}`] =
-              tone === "neutral" && key === "outline"
-                ? theme.components.badge.border ?? colors[key]
-                : colors[key];
+  const tones = ["neutral", "primary", "success", "warning", "danger", "info"] as const;
+  const badgeRoles: Record<typeof tones[number], { fill: string; ink: string }> = {
+    neutral: { fill: badge.foreground, ink: badge.background },
+    primary: { fill: global.primary, ink: global.onPrimary },
+    success: { fill: global.success, ink: global.onSuccess },
+    warning: { fill: global.warning, ink: global.onWarning },
+    danger: { fill: global.danger, ink: global.onDanger },
+    info: { fill: global.info, ink: global.onInfo },
+  };
+  for (const tone of tones) {
+    const role = badgeRoles[tone];
+    const derived = deriveRoleColors(role.fill, role.ink, badge.background, mode, badge.background);
+    const defaults = {
+      solid: { background: role.fill, foreground: role.ink, border: role.fill },
+      subtle: { background: derived.subtle, foreground: derived.onSubtle, border: "transparent" },
+      outline: { background: badge.background, foreground: derived.onSubtle, border: tone === "neutral" ? theme.components.badge.border ?? derived.outline : derived.outline },
+    };
+    variables[`--badge-${tone}-subtle`] = derived.subtle;
+    variables[`--badge-${tone}-on-subtle`] = derived.onSubtle;
+    variables[`--badge-${tone}-outline`] = tone === "neutral" ? theme.components.badge.border ?? derived.outline : derived.outline;
+    for (const variant of ["solid", "subtle", "outline"] as const) {
+      const key = `${variant}.${tone}`;
+      const values = { ...defaults[variant], ...theme.variantColors?.badge?.[key as (typeof componentVariantKeys.badge)[number]] };
+      const prefix = `--badge-variant-${variant}-${tone}`;
+      for (const field of ["background", "foreground", "border"] as const) variables[`${prefix}-${field}`] = values[field];
+      variables[`${prefix}-subtle`] = derived.subtle;
+      variables[`${prefix}-on-subtle`] = derived.onSubtle;
+      variables[`${prefix}-outline`] = values.border;
     }
   }
   const card = resolveComponent(theme, "card");
+  const cardDefaults = {
+    outlined: { background: card.background, foreground: card.foreground, border: card.border, shadow: "none" },
+    elevated: { background: card.background, foreground: card.foreground, border: "transparent", shadow: "lg" },
+    filled: { background: global.muted, foreground: global.foreground, border: "transparent", shadow: "none" },
+  } as const;
+  const shadowValue = (level: string) => level === "none" ? "none" : `var(--ds-shadow-${level})`;
+  for (const variant of componentVariantKeys.card) {
+    const values = { ...cardDefaults[variant], ...theme.variantColors?.card?.[variant] };
+    const prefix = `--card-variant-${variant}`;
+    variables[`${prefix}-background`] = values.background;
+    variables[`${prefix}-foreground`] = values.foreground;
+    variables[`${prefix}-border`] = values.border;
+    variables[`${prefix}-shadow`] = shadowValue(values.shadow);
+    variables[`${prefix}-description`] = descriptionColor(values.foreground, values.background);
+  }
   variables["--card-description"] = descriptionColor(card.foreground, card.background);
-  variables["--card-filled-description"] = descriptionColor(global.foreground, global.muted);
+  variables["--card-filled-description"] = variables["--card-variant-filled-description"];
   return variables;
 }
 
@@ -610,13 +696,13 @@ export function parseDesignSystem(text: string): DesignSystem {
       const theme = value.themes[mode];
       const path = `themes.${mode}`;
       requireObject(theme, path);
-      requireKnownKeys(theme, ["source", "fontFamily", "global", "components", "colorScales", "typography"], path);
+      requireKnownKeys(theme, ["source", "fontFamily", "global", "components", "colorScales", "typography", "variantColors"], path);
       if (theme.fontFamily === undefined && !Object.hasOwn(theme, "fontFamily")) theme.fontFamily = "system";
       if (!fontFamilyPresets.includes(theme.fontFamily as FontFamilyPreset)) {
         throw new Error(`${path}.fontFamily must be one of: ${fontFamilyPresets.join(", ")}`);
       }
       requireObject(theme.global, `${path}.global`);
-      for (const key of ["spacingSm", "spacingMd", "spacingLg"] as const) {
+      for (const key of ["spacingSm", "spacingMd", "spacingLg", "radiusSm", "radiusLg"] as const) {
         if (!Object.hasOwn(theme.global, key)) theme.global[key] = defaultSystem.themes[mode].global[key];
       }
       if (typeof theme.source !== "string" || !/^#[0-9a-fA-F]{6}$/.test(theme.source)) {
@@ -626,10 +712,12 @@ export function parseDesignSystem(text: string): DesignSystem {
       validateComponents(theme.components, `${path}.components`, true);
       if (theme.colorScales !== undefined) validateColorScales(theme.colorScales, `${path}.colorScales`);
       if (theme.typography !== undefined) validateTypography(theme.typography, `${path}.typography`);
+      if (theme.variantColors !== undefined) validateVariantColors(theme.variantColors, `${path}.variantColors`);
       theme.colorScales ??= {};
       theme.typography = Object.fromEntries(typographyVariants.map((variant) =>
         [variant, resolveTypography(theme as ThemeTokens, variant)],
       ));
+      theme.variantColors ??= {};
     }
     // Older v3 exports may disagree; retain Light geometry and both color palettes.
     return shareNonColorTokens(value as DesignSystem);
@@ -647,14 +735,14 @@ export function parseDesignSystem(text: string): DesignSystem {
     value.global = { ...legacyDefaults.global, ...value.global };
   }
   requireObject(value.global, "global");
-  for (const key of ["spacingSm", "spacingMd", "spacingLg"] as const) {
+  for (const key of ["spacingSm", "spacingMd", "spacingLg", "radiusSm", "radiusLg"] as const) {
     value.global[key] = defaultSystem.themes.light.global[key];
   }
   validateTokens(value.global, "global", false);
   validateComponents(value.components, "components", true);
   const global = value.global as TokenValues;
   const components = value.components as ThemeTokens["components"];
-  const theme = { source: global.primary, fontFamily: "system" as const, global, components, colorScales: {}, typography: defaultTypography };
+  const theme = { source: global.primary, fontFamily: "system" as const, global, components, colorScales: {}, typography: defaultTypography, variantColors: {} };
   return {
     version: 3,
     name: value.name,
@@ -693,6 +781,30 @@ function validateTypography(value: unknown, path: string): void {
       const number = tokens[field.key];
       if (typeof number !== "number" || !Number.isFinite(number) || number < field.min || number > field.max) {
         throw new Error(`${variantPath}.${field.key} must be a finite number from ${field.min} to ${field.max}`);
+      }
+    }
+  }
+}
+
+function validateVariantColors(value: unknown, path: string): void {
+  requireObject(value, path);
+  requireKnownKeys(value, Object.keys(componentVariantKeys), path);
+  const allowedFields = ["background", "foreground", "border", "hoverBackground", "activeBackground", "shadow"] as const;
+  for (const id of Object.keys(value) as ComponentVariantId[]) {
+    const variants = value[id];
+    const variantsPath = `${path}.${id}`;
+    requireObject(variants, variantsPath);
+    requireKnownKeys(variants, componentVariantKeys[id], variantsPath);
+    for (const [variant, rawTokens] of Object.entries(variants)) {
+      const tokenPath = `${variantsPath}.${variant}`;
+      requireObject(rawTokens, tokenPath);
+      requireKnownKeys(rawTokens, allowedFields, tokenPath);
+      for (const [field, token] of Object.entries(rawTokens)) {
+        if (field === "shadow") {
+          if (id !== "card" || !["none", "sm", "md", "lg"].includes(token as string)) throw new Error(`${tokenPath}.${field} must be a supported card shadow preset`);
+        } else if (typeof token !== "string" || !/^#[0-9a-fA-F]{6}$/.test(token)) {
+          throw new Error(`${tokenPath}.${field} must be a #rrggbb color`);
+        }
       }
     }
   }

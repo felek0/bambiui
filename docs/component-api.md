@@ -15,8 +15,9 @@ The same concept always uses the same prop name, type and default.
 | Prop | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `variant` | component-specific union | component-specific | Visual hierarchy or fill style. Never encodes size or state. |
-| `tone` | `Tone` = `"neutral" \| "primary" \| "success" \| "warning" \| "danger" \| "info"` | `"neutral"` | Semantic color role. Maps 1:1 to global color tokens. |
+| `tone` | `Tone` = `"neutral" \| "primary" \| "success" \| "warning" \| "danger" \| "info"` | `"neutral"` | Semantic color role. Inherits the global role unless that component tone/variant has a local color override. |
 | `size` | `Size` = `"sm" \| "md" \| "lg"` | `"md"` | The shared size scale. Maps to `controlHeight{Sm,Md,Lg}` and the size scale factors. |
+| `radius` | `Radius` = `"sm" | "md" | "lg"` | omitted (global md by default) | Shape scale for components with corners. Resolves to shared global radius tokens. Omit to preserve a legacy numeric component radius override. Switch keeps its pill geometry and does not accept this prop. |
 | `disabled` | `boolean` | `false` | Not interactive. Native `disabled` when possible. |
 | `loading` | `boolean` | `false` | Busy. Blocks activation, keeps focus, sets `aria-busy`. |
 | `readOnly` | `boolean` | `false` | Value can be focused and copied but not changed. Not the same as `disabled`. |
@@ -39,23 +40,23 @@ Do not invent synonyms such as `buttonSize`, `dimension`, `density`, `kind`, `ap
 
 | Category | Examples | Must support |
 | --- | --- | --- |
-| Action | Button, IconButton, MenuItem | `variant`, `size`, `disabled`, `loading`, `fullWidth`, `iconOnly`, `startIcon`, `endIcon`, all native button props, `render` (Base UI composition) |
-| Text field | Input, Textarea, NumberField, Select trigger | `label`, `hideLabel`, `description`, `error`, `size`, `disabled`, `readOnly`, `required`, `placeholder`, `name`, `value`/`defaultValue`/`onValueChange`, `startIcon`/`endIcon` where applicable, `type` for native inputs |
-| Choice | Checkbox, Switch, Radio | `label`, `hideLabel`, `description`, `error`, `size`, `labelPosition`, `disabled`, `readOnly`, `required`, `name`, `value`, `checked`/`defaultChecked`/`onCheckedChange` (Checkbox also supports `indeterminate`) |
-| Status | Badge, Tag, Alert, Toast | `variant` (`solid \| subtle \| outline`), `tone`, `size` (for inline statuses), `startIcon` or `dot` |
-| Container | Card, Dialog, Popover | `variant` (`outlined \| elevated \| filled` for surfaces), `size` (density), compound parts: `.Header`, `.Title`, `.Description`, `.Content`, `.Footer`, and `.Icon` or `.Media` where relevant |
+| Action | Button, IconButton, MenuItem | `variant`, `size`, `radius`, `disabled`, `loading`, `fullWidth`, `iconOnly`, `startIcon`, `endIcon`, all native button props, `render` (Base UI composition) |
+| Text field | Input, Textarea, NumberField, Select trigger | `label`, `hideLabel`, `description`, `error`, `size`, `radius` where corners are configurable, `disabled`, `readOnly`, `required`, `placeholder`, `name`, `value`/`defaultValue`/`onValueChange`, `startIcon`/`endIcon` where applicable, `type` for native inputs |
+| Choice | Checkbox, Switch, Radio | `label`, `hideLabel`, `description`, `error`, `size`, `radius` where corners are configurable, `labelPosition`, `disabled`, `readOnly`, `required`, `name`, `value`, `checked`/`defaultChecked`/`onCheckedChange` (Checkbox also supports `indeterminate`) |
+| Status | Badge, Tag, Alert, Toast | `variant` (`solid \| subtle \| outline`), `tone`, `size` (for inline statuses), `radius` for shape-bearing statuses, `startIcon` or `dot` |
+| Container | Card, Dialog, Popover | `variant` (`outlined \| elevated \| filled` for surfaces), `size` (density), `radius`, compound parts: `.Header`, `.Title`, `.Description`, `.Content`, `.Footer`, and `.Icon` or `.Media` where relevant |
 | Typography | Text | `variant` (`heading \| h1 \| h2 \| h3 \| h4 \| h5 \| h6 \| paragraph \| label \| caption`), `size`, `tone`, `as` (native `h1`–`h6`, `p`, or `span`), `children`, `className`, native HTML attributes |
 
 Current components:
 
 | Component | `variant` | Other props |
 | --- | --- | --- |
-| Button | `primary`, `secondary`, `outline`, `ghost`, `destructive`, `link` | `size`, `loading`, `disabled`, `fullWidth`, `iconOnly`, `startIcon`, `endIcon` |
-| Input | — | `type`, `size`, `label`, `hideLabel`, `description`, `error`, `readOnly`, `disabled`, `required`, `startIcon`, `endIcon` |
-| Switch | — | `size`, `label`, `hideLabel`, `description`, `error`, `labelPosition`, `disabled`, `readOnly`, `required` |
-| Checkbox | — | Same as Switch, plus `indeterminate` |
-| Badge | `solid`, `subtle`, `outline` | `tone`, `size`, `dot`, `startIcon` |
-| Card | `outlined`, `elevated`, `filled` | `size`; parts: `Card.Icon`, `Card.Header`, `Card.Title`, `Card.Description`, `Card.Content`, `Card.Footer` |
+| Button | `primary`, `secondary`, `outline`, `ghost`, `destructive`, `link` | `size`, `radius`, `loading`, `disabled`, `fullWidth`, `iconOnly`, `startIcon`, `endIcon` |
+| Input | — | `type`, `size`, `radius`, `label`, `hideLabel`, `description`, `error`, `readOnly`, `disabled`, `required`, `startIcon`, `endIcon` |
+| Switch | — | `size`, `label`, `hideLabel`, `description`, `error`, `labelPosition`, `disabled`, `readOnly`, `required`; switch track keeps a pill shape |
+| Checkbox | — | Same as Switch, plus `radius` and `indeterminate` |
+| Badge | `solid`, `subtle`, `outline` | `tone`, `size`, `radius`, `dot`, `startIcon` |
+| Card | `outlined`, `elevated`, `filled` | `size`, `radius`; parts: `Card.Icon`, `Card.Header`, `Card.Title`, `Card.Description`, `Card.Content`, `Card.Footer` |
 | Text | `heading`, `h1`–`h6`, `paragraph` (default), `label`, `caption` | `size` (`md` default), `tone` (`neutral` default), `as`, `children`, `className`, native HTML attributes |
 
 ### Text API
@@ -83,19 +84,20 @@ The shared `fontFamily` preset (`system` by default; six other local presets plu
 
 ## 4. Design tokens
 
-- **Theme model** (`app/studio/tokens.ts`): schema v3 stores `themes.light` and `themes.dark` with independent sources, color roles, color scales and component color overrides. All non-color tokens (global shape/spacing/size, component numeric overrides, the `fontFamily` preset and Text typography, including H1–H6) are shared across themes; edits from either theme update both records. Older v3 drafts without the new presets receive `system` and 4/8/16px; conflicting non-color values use Light on import while both color palettes are retained. v1/v2 migration preserves exact historical values and component overrides while supplying the new preset defaults in both themes.
+- **Theme model** (`app/studio/tokens.ts`): schema v3 stores `themes.light` and `themes.dark` with independent sources, global colors, color scales and component variant/tone color overrides. Shape, spacing, size, radius scale, numeric component overrides, component radius selections, shadow presets, the `fontFamily` preset and Text typography (including H1–H6) are shared across themes; edits from either theme update both records. Older v3 drafts receive deterministic defaults for additions without changing existing colors or numeric component radius overrides. Conflicting non-color values use Light on import while Light/Dark color data is retained. v1/v2 migration preserves exact historical values and component overrides while supplying new preset defaults.
 - **Studio routes**: `/colors` and `/spacing` select the canvas foundations and their global inspectors; `/develop/colors` and `/develop/spacing` provide the corresponding theme-aware CSS references. `/text` and `/develop/text` cover the Text component and shared typography. Design/Develop links preserve the current selection.
 - **Global tokens** (`app/studio/tokens.ts`, exported as `--ds-*`):
   - Surfaces: `background`, `foreground`, `muted`, `mutedForeground`, `border`
   - Roles: `primary`, `secondary`, `success`, `warning`, `danger` and `info`, each with an `on*` foreground
-  - Shape and legacy spacing aliases: `radius`, `paddingX`, `paddingY`, `gap`, `margin`, `fontSize`, `borderWidth`
+  - Shape and legacy spacing aliases: `radiusSm`, `radius` (legacy medium / `radiusMd` alias), `radiusLg`, `paddingX`, `paddingY`, `gap`, `margin`, `fontSize`, `borderWidth`. Exported radius variables are `--ds-radius-sm`, `--ds-radius-md`, and `--ds-radius-lg`; `--ds-radius` remains a compatibility alias for md.
   - Shared spacing presets: `spacingSm` (4px), `spacingMd` (8px), `spacingLg` (16px), exported as `--ds-spacing-sm`, `--ds-spacing-md`, `--ds-spacing-lg`. Card.Content consumes the matching preset as the gap between its children at Card sizes sm/md/lg. Legacy padding/gap globals and component overrides continue to control the Card shell and other components independently; editing a preset does not remap those aliases.
   - Size scale: `controlHeightSm`, `controlHeightMd`, `controlHeightLg`
-- **Component tokens** (exported as `--{component}-{token}`): `background`, `foreground`, `border`, `radius`, `paddingX`, `paddingY`, `gap`, `margin`, `fontSize`, `borderWidth`. They inherit from the global tokens until overridden. Text's inspector exposes only its consumed `foreground` override and shared typography styles; other Text aliases appear in export but do not drive its rendered styles.
-- **Derived roles** (`color-engine.ts`, emitted by `toCSSVariables(theme, mode)`): role hover, active, subtle, on-subtle, outline and focus colors; component-specific Button/Badge derivatives; Card description ink. Link Buttons use `--ds-primary-on-subtle` as readable text rather than assuming the primary fill meets 4.5:1 on a surface. Recomputed from current tokens, including overrides, not from the saved source. Invalid manual pairs are reported rather than silently rewritten.
+- **Base component tokens** (exported as `--{component}-{token}`): `background`, `foreground`, `border`, legacy numeric `radius`, `paddingX`, `paddingY`, `gap`, `margin`, `fontSize`, `borderWidth`. They inherit from the appropriate global tokens until overridden. Shape-bearing Button, Input, Checkbox, Badge and Card accept `radius="sm" | "md" | "lg"` to select the global radius scale; when omitted, old numeric per-component radius overrides remain effective. Switch retains its pill shape. Text's inspector exposes only its consumed `foreground` override and shared typography styles; other Text aliases are compatibility exports and do not drive its rendered styles.
+- **Component variant styles**: schema v3 stores sparse per-theme color overrides for every actual Button variant, every Badge variant/tone combination, and every Card surface variant. Their stable variables (`--button-variant-*`, `--badge-variant-*`, `--card-variant-*`) are consumed by component CSS and exported with resolved inherited defaults. Button hover/active fills derive from the configured variant colors unless explicitly overridden. Badge warning/success colors may differ from their global semantic roles. Card variant backgrounds, foregrounds, borders and description colors resolve together. Card variants also expose shared shadow presets `none | sm | md | lg`; the CSS values come from `--ds-shadow-*` constants. These overrides are separate from React props.
+- **Derived roles** (`color-engine.ts`, emitted by `toCSSVariables(theme, mode)`): global role hover, active, subtle, on-subtle, outline and focus colors; component variant hover fills; Badge readable/outline derivatives; Card description ink. Link Buttons retain readable derived text. Recomputed from current resolved values, not saved source. Invalid manual pairs are reported rather than silently rewritten.
 - **Shared font preset** (`themes.*.fontFamily`): the seven local choices are `system` (default), `sans`, `humanist`, `serif`, `editorial`, `mono` and `typewriter`; curated Google Fonts presets are available alongside them. JSON stores the chosen preset ID in both theme records, not a URL or downloaded font. Older schema-v3 records without `fontFamily` still default to `system`; accepting curated IDs does not change the schema version. Edits, reset and import keep this non-color value identical in Light and Dark (a conflicting imported v3 value uses Light). Local choices need no hosted fonts. Selecting a Google preset opts the browser into a stylesheet request to `fonts.googleapis.com` and font-file requests to `fonts.gstatic.com`, exposing request data such as IP address to Google; if unavailable or blocked, the resolved stack falls back to local fonts. CSS export puts the selected Google stylesheet `@import` at the top, before either theme selector, and exports the resolved family stack (not the ID) as `--ds-font-family` for both themes. CSS consumers also make these remote requests unless they remove the import or provide their own fonts.
-- **System constants** (not editable, `systemConstants` in `tokens.ts`): state opacity/offset, focus geometry, size/icon scale, spacing insets, elevation, motion and fixed component typography (Button, field helpers, Input, Badge and Card). Both preview and CSS export consume the same map.
-- No hard-coded colors or sizes in component CSS. Values come from these layers. Variants and tones remap local custom properties (`--button-fill`, `--tone`). Filled Card uses global muted/foreground and a description derived from that surface. Badge neutral outline honors an explicit border override; semantic tones use role outlines.
+- **System constants** (`systemConstants` in `tokens.ts`): state opacity/offset, global accessible focus geometry, size/icon scale, spacing insets, shadow presets, motion and fixed component typography. Both preview and CSS export consume the same map. Focus ring color/geometry is not a decorative variant token and cannot be disabled by changing component borders.
+- No hard-coded colors or sizes in component CSS. Values come from these layers. CSS paints every public variant/tone combination from its matching `--{component}-variant-*` variables; these variables resolve to component overrides or the documented global/derived defaults. Card filled surfaces and descriptions use the Card filled variant values; semantic Badge tones use their tone/variant variables. Decorative border colors remain separate from the global accessible focus ring.
 - CSS export includes both theme selectors, raw color scale stops, and derived/system variables, not component markup or style rules. Only Google presets add a top-of-file `@import`; local presets remain network-free.
 - Adding a global token requires updating `TokenValues`, `defaultSystem`, `tokenFields`, the schema migration in `parseDesignSystem`, and `tokens.test.mjs`.
 
@@ -113,7 +115,7 @@ The shared `fontFamily` preset (`system` by default; six other local presets plu
   - View switchers use Tabs.
   - Navigation lists use `aria-current`.
 - Do not convey information with color alone. Status dots get text or a visually hidden label.
-- Accessibility target: 4.5:1 for normal text and 3:1 where UI-boundary/focus contrast is required. Generated defaults pass 133 modeled pairs per theme, including neutral and semantic Text tones; `color-audit.ts` checks finite modeled pairs against current CSS variables. Preserved legacy values and arbitrary manual combinations may fail; report them explicitly. No blanket compliance claim from a passing palette or audit. Badge text/outline and filled-card descriptions must use the derivatives for their actual surfaces.
+- Accessibility target: 4.5:1 for normal text and 3:1 where UI-boundary/focus contrast is required. Generated defaults pass 136 modeled pairs per theme, including component variant/tone surfaces, neutral and semantic Text tones; `color-audit.ts` checks finite modeled pairs against current CSS variables. Preserved legacy values and arbitrary manual combinations may fail; report them explicitly. No blanket compliance claim from a passing palette or audit. Badge text/outline and filled-card descriptions must use the derivatives for their actual surfaces.
 - Manual screen-reader and native browser-zoom acceptance is tracked in `docs/accessibility-checklist.md`.
 - Respect `prefers-reduced-motion`.
 
@@ -122,5 +124,5 @@ The shared `fontFamily` preset (`system` by default; six other local presets plu
 1. Pick the category in section 2 and implement every required prop.
 2. Build on the Base UI part and read its documentation first.
 3. Put the component in `app/studio/components/<name>.tsx`, export it from `index.ts`, and add styles to `components.module.css` using tokens only.
-4. Add a `ComponentId` and meta if it should appear in the studio, and a specimen in `preview.tsx` that shows every variant, size and state.
-5. Verify keyboard behavior, accessible names and contrast in the running app.
+4. Add a `ComponentId` and meta if it should appear in the studio, and a specimen in `preview.tsx` that shows every variant, tone, size, radius option and state relevant to that component.
+5. Verify keyboard behavior, accessible names and contrast in the running app. Confirm every editable variant/tone token is consumed by CSS and appears with its inheritance source in Develop.

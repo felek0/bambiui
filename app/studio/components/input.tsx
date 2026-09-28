@@ -21,6 +21,7 @@ export function Input({
   description,
   error,
   size,
+  radius,
   className,
   type = "text",
   startIcon,
@@ -32,6 +33,7 @@ export function Input({
     <FieldRoot
       kind="text"
       size={size}
+      radius={radius}
       disabled={disabled}
       description={description}
       error={error}

@@ -7,7 +7,7 @@ export type SwitchProps = Omit<
   BaseSwitch.Root.Props,
   "className" | "children"
 > &
-  FieldProps & {
+  Omit<FieldProps, "radius"> & {
     /** Side of the control the label sits on. Defaults to `end`. */
     labelPosition?: "start" | "end";
   };

@@ -16,12 +16,12 @@ const fresh = () => structuredClone(defaultSystem);
 const parse = (value) => parseDesignSystem(JSON.stringify(value));
 const kebab = (key) => key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
 const numericRanges = {
-  radius: [0, 48], paddingX: [0, 64], paddingY: [0, 64], gap: [0, 64],
+  radius: [0, 48], radiusSm: [0, 48], radiusLg: [0, 48], paddingX: [0, 64], paddingY: [0, 64], gap: [0, 64],
   margin: [0, 48], fontSize: [10, 32], borderWidth: [0, 6],
   controlHeightSm: [16, 80], controlHeightMd: [16, 80], controlHeightLg: [16, 80],
 };
 const geometry = {
-  radius: 8, paddingX: 16, paddingY: 10, gap: 8, margin: 0, fontSize: 14,
+  radius: 8, radiusSm: 4, radiusLg: 12, paddingX: 16, paddingY: 10, gap: 8, margin: 0, fontSize: 14,
   borderWidth: 1, controlHeightSm: 32, controlHeightMd: 36, controlHeightLg: 44,
 };
 const spacingPresets = { spacingSm: 4, spacingMd: 8, spacingLg: 16 };
@@ -64,7 +64,7 @@ test("v3 defaults contain two generated themes with shared presets and historica
   const objects = [];
   for (const mode of modes) {
     const theme = defaultSystem.themes[mode];
-    assert.deepEqual(Object.keys(theme).sort(), ["source", "global", "components", "colorScales", "typography", "fontFamily"].sort());
+    assert.deepEqual(Object.keys(theme).sort(), ["source", "global", "components", "colorScales", "typography", "fontFamily", "variantColors"].sort());
     assert.equal(theme.fontFamily, "system");
     assert.deepEqual(theme.colorScales, {});
     assert.deepEqual(theme.typography, defaultTypography);
@@ -77,8 +77,48 @@ test("v3 defaults contain two generated themes with shared presets and historica
   assert.equal(new Set(objects).size, 20);
 });
 
+test("radius aliases and opt-in component radius selectors consume the shared scale", () => {
+  const theme = fresh().themes.light;
+  const variables = toCSSVariables(theme);
+  assert.equal(variables["--ds-radius"], "8px");
+  assert.equal(variables["--ds-radius-md"], variables["--ds-radius"]);
+  assert.equal(variables["--ds-radius-sm"], "4px");
+  assert.equal(variables["--ds-radius-lg"], "12px");
+  const css = readFileSync(new URL("./components/components.module.css", import.meta.url), "utf8");
+  for (const step of ["sm", "md", "lg"]) {
+    assert.ok(css.includes(`data-radius="${step}"`));
+    assert.ok(css.includes(`var(--ds-radius-${step})`));
+  }
+  for (const component of ["button", "inputControl", "checkbox", "badge", "card"]) assert.ok(css.includes(`.${component}[data-radius=`) || css.includes(`.field[data-radius=`), component);
+});
+
+test("variant colors resolve independently by theme; Card shadow preset is shared", () => {
+  const system = fresh();
+  system.themes.light.variantColors = {
+    button: { secondary: { background: "#123456", foreground: "#ffffff", hoverBackground: "#234567" } },
+    badge: { "solid.success": { background: "#225522", foreground: "#ffffff" } },
+    card: { elevated: { background: "#eeeeee", shadow: "sm" } },
+  };
+  system.themes.dark.variantColors = {
+    button: { secondary: { background: "#abcdef" } },
+    badge: { "solid.success": { background: "#123456" } },
+    card: { elevated: { background: "#222222", shadow: "lg" } },
+  };
+  for (const mode of modes) {
+    const variables = toCSSVariables(system.themes[mode], mode);
+    assert.equal(variables["--button-variant-secondary-background"], mode === "light" ? "#123456" : "#abcdef");
+    assert.equal(variables["--badge-variant-solid-success-background"], mode === "light" ? "#225522" : "#123456");
+    assert.equal(variables["--card-variant-elevated-background"], mode === "light" ? "#eeeeee" : "#222222");
+  }
+  const shared = shareNonColorTokens(system, "light");
+  assert.equal(shared.themes.dark.variantColors.card.elevated.shadow, "sm");
+  assert.equal(shared.themes.dark.variantColors.card.elevated.background, "#222222");
+  const css = readFileSync(new URL("./components/components.module.css", import.meta.url), "utf8");
+  for (const variable of ["--button-variant-secondary-background", "--badge-variant-solid-success-background", "--card-variant-elevated-background", "--card-variant-elevated-shadow"]) assert.ok(css.includes(variable), variable);
+});
+
 test("metadata includes three shared spacing presets without changing component aliases", () => {
-  assert.equal(tokenFields.length, 30);
+  assert.equal(tokenFields.length, 32);
   assert.equal(colorKeys.length, 17);
   assert.equal(componentTokenKeys.length, 10);
   assert.deepEqual(tokenFields.map(({ key }) => key).sort(), [...Object.keys(legacyGlobal), ...Object.keys(spacingPresets)].sort());
@@ -121,7 +161,7 @@ for (const mode of modes) {
   test(`${mode}: CSS maps contain all stored, derived, and constant values`, () => {
     const theme = fresh().themes[mode];
     const variables = toCSSVariables(theme, mode);
-    assert.equal(Object.keys(variables).length, 156 + Object.keys(systemConstants).length + colorScaleRoles.length * colorScaleStops.length + typographyVariants.length * typographyFields.length + Object.keys(spacingPresets).length);
+    assert.equal(Object.keys(variables).length, 156 + Object.keys(systemConstants).length + colorScaleRoles.length * colorScaleStops.length + typographyVariants.length * typographyFields.length + Object.keys(spacingPresets).length + 2 + 1 + 153);
     for (const [key, value] of Object.entries(theme.global)) {
       assert.equal(variables[`--ds-${kebab(key)}`], typeof value === "number" ? `${value}px` : value);
     }
@@ -191,6 +231,8 @@ for (const mode of modes) {
         ...baseline,
         "--badge-border": border,
         "--badge-neutral-outline": border,
+        "--badge-variant-outline-neutral-border": border,
+        "--badge-variant-outline-neutral-outline": border,
       });
     }
     delete theme.components.badge.border;
@@ -225,6 +267,7 @@ test("system constant map includes only the current geometry and state constants
     "--ds-field-helper-line-height": "1.45", "--ds-input-line-height": "1.4",
     "--ds-badge-line-height": "1.2", "--ds-card-title-font-weight": "550",
     "--ds-card-title-letter-spacing": "-0.02em", "--ds-card-description-line-height": "1.65",
+    "--ds-shadow-sm": "0 1px 2px #00000014", "--ds-shadow-md": "0 4px 12px #00000018", "--ds-shadow-lg": "0 8px 24px #27272a1f",
     "--ds-shadow-elevated": "0 8px 24px #27272a0c", "--ds-transition-duration": "150ms",
     "--ds-control-inset": "2px", "--ds-switch-thumb-shadow": "0 1px 2px #00000029",
     "--ds-checkbox-inset": "6px", "--ds-spinner-duration": "800ms", "--ds-card-icon-border-width": "1px",
@@ -278,7 +321,7 @@ test("parser validates JSON, workspace name/version and all required object shap
   }
   const objectPaths = [[], ["themes"]];
   for (const mode of modes) {
-    objectPaths.push(["themes", mode], ["themes", mode, "global"], ["themes", mode, "components"]);
+    objectPaths.push(["themes", mode], ["themes", mode, "global"], ["themes", mode, "components"], ["themes", mode, "variantColors"]);
     for (const id of componentIds) objectPaths.push(["themes", mode, "components", id]);
   }
   for (const path of objectPaths) {
@@ -289,7 +332,7 @@ test("parser validates JSON, workspace name/version and all required object shap
       assert.throws(() => parse(system), /Unknown field/);
     }
     const target = path.reduce((value, part) => value[part], fresh());
-    for (const key of Object.keys(target).filter((key) => !["colorScales", "typography", "fontFamily", ...(path.at(-1) === "global" ? Object.keys(spacingPresets) : []), ...(path.at(-1) === "components" ? ["text"] : [])].includes(key))) {
+    for (const key of Object.keys(target).filter((key) => !["colorScales", "typography", "fontFamily", "variantColors", ...(path.at(-1) === "global" ? [...Object.keys(spacingPresets), "radiusSm", "radiusLg"] : []), ...(path.at(-1) === "components" ? ["text"] : [])].includes(key))) {
       const system = fresh();
       delete path.reduce((value, part) => value[part], system)[key];
       assert.throws(() => parse(system), undefined, `${path.join(".")}.${key} required`);
@@ -332,7 +375,7 @@ for (const version of [1, 2]) {
     assert.equal(migrated.themes.dark.global.radius, 4);
     assert.equal(migrated.themes.dark.components.card.gap, 2.5);
     assert.equal(legacy.components.card.gap, 2.5);
-    for (const key of Object.keys(legacy.global)) {
+    for (const key of Object.keys(legacy.global).filter((key) => !["radiusSm", "radiusLg", "spacingSm", "spacingMd", "spacingLg"].includes(key))) {
       const missing = structuredClone(legacy);
       delete missing.global[key];
       assert.throws(() => parse(missing), new RegExp(`global.${key}`));
@@ -387,7 +430,7 @@ test("old v3 records default missing presets without changing legacy aliases or 
   const system = fresh();
   for (const mode of modes) {
     delete system.themes[mode].fontFamily;
-    for (const key of Object.keys(spacingPresets)) delete system.themes[mode].global[key];
+    for (const key of [...Object.keys(spacingPresets), "radiusSm", "radiusLg"]) delete system.themes[mode].global[key];
   }
   system.themes.light.global.paddingX = 19;
   system.themes.light.global.paddingY = 6;
@@ -676,7 +719,7 @@ test("shared geometry and typography follow edits in either theme; palette and c
 
 test("optional extensions reject unknown keys and invalid values with specific paths", () => {
   for (const mode of modes) {
-    for (const path of ["colorScales", "typography"]) {
+    for (const path of ["colorScales", "typography", "variantColors"]) {
       const system = fresh();
       system.themes[mode][path] = null;
       assert.throws(() => parse(system), new RegExp(`themes.${mode}.${path}`));
@@ -688,6 +731,10 @@ test("optional extensions reject unknown keys and invalid values with specific p
       [["typography", "heading", "fontSize"], 0], [["typography", "label", "fontWeight"], "700"],
       [["typography", "caption", "lineHeight"], null], [["typography", "paragraph"], []],
       [["typography", "h1", "fontSize"], 7], [["typography", "h6", "fontSize"], 97],
+      [["variantColors", "unknown"], {}], [["variantColors", "button", "unknown"], {}],
+      [["variantColors", "badge", "solid.success", "unknown"], "#ffffff"],
+      [["variantColors", "button", "secondary", "background"], "red"],
+      [["variantColors", "card", "elevated", "shadow"], "xl"],
     ]) {
       const system = fresh();
       let target = system.themes[mode];

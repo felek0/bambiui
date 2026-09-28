@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Button as BaseButton } from "@base-ui/react/button";
 import { cx } from "../cx";
 import { Spinner } from "./spinner";
-import type { Size } from "./types";
+import type { Radius, Size } from "./types";
 import styles from "./components.module.css";
 
 type ButtonBaseProps = Omit<BaseButton.Props, "className"> & {
@@ -10,6 +10,8 @@ type ButtonBaseProps = Omit<BaseButton.Props, "className"> & {
   variant?: "primary" | "secondary" | "outline" | "ghost" | "destructive" | "link";
   /** Height, padding and font size from the shared size scale. Defaults to `md`. */
   size?: Size;
+  /** Selects a shared global radius step. Defaults to `md`. */
+  radius?: Radius;
   /** Shows a spinner and blocks activation while keeping the button focusable. */
   loading?: boolean;
   /** Stretches the button to the width of its container. */
@@ -31,6 +33,7 @@ export type ButtonProps = ButtonBaseProps &
 export function Button({
   variant = "primary",
   size = "md",
+  radius,
   loading = false,
   fullWidth = false,
   iconOnly = false,
@@ -51,6 +54,7 @@ export function Button({
       aria-busy={loading || undefined}
       data-variant={variant}
       data-size={size}
+      data-radius={radius}
       data-loading={loading || undefined}
       data-icon-only={iconOnly || undefined}
       data-full-width={fullWidth || undefined}

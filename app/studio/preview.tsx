@@ -124,6 +124,9 @@ function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; c
             <Button size="sm">{copy.button.small}</Button>
             <Button size="md">{copy.button.medium}</Button>
             <Button size="lg">{copy.button.large}</Button>
+            <Button radius="sm">radius sm</Button>
+            <Button radius="md">radius md</Button>
+            <Button radius="lg">radius lg</Button>
             <Button variant="outline" iconOnly aria-label={copy.button.addItem}>
               <Icon name="plus" />
             </Button>
@@ -174,6 +177,11 @@ function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; c
                 <Input label={copy.button.medium} size="md" placeholder="size=&quot;md&quot;" />
                 <Input label={copy.button.large} size="lg" placeholder="size=&quot;lg&quot;" />
               </div>
+              <div className={styles.sizeGroup}>
+                <Input label="Radius sm" radius="sm" defaultValue="radius=sm" />
+                <Input label="Radius md" radius="md" defaultValue="radius=md" />
+                <Input label="Radius lg" radius="lg" defaultValue="radius=lg" />
+              </div>
               <details className={styles.formDemoDisclosure}>
                 <summary>Controlled form example</summary>
                 <FormDemo />
@@ -199,7 +207,7 @@ function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; c
           </Card>
           {expanded && (
             <>
-              <Card variant="elevated" size="lg">
+              <Card variant="elevated" size="lg" radius="lg">
                 <Card.Icon>
                   <Icon name="plus" />
                 </Card.Icon>
@@ -217,7 +225,7 @@ function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; c
                   </Button>
                 </Card.Footer>
               </Card>
-              <Card variant="filled" size="sm">
+              <Card variant="filled" size="sm" radius="sm">
                 <Card.Header>
                   <Card.Title>{copy.card.filled}</Card.Title>
                   <Card.Description>
@@ -251,6 +259,11 @@ function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; c
               ))}
             </div>
           ))}
+          <div className={styles.states}>
+            <Badge radius="sm">radius sm</Badge>
+            <Badge radius="md">radius md</Badge>
+            <Badge radius="lg">radius lg</Badge>
+          </div>
           <div className={styles.states}>
             <Badge size="sm" dot tone="success">
               {copy.button.small}
@@ -308,6 +321,11 @@ function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; c
                 error={copy.checkbox.termsError}
               />
               <Checkbox label={copy.checkbox.smallPrint} size="sm" />
+              <div className={styles.states}>
+                <Checkbox label="Radius sm" radius="sm" />
+                <Checkbox label="Radius md" radius="md" />
+                <Checkbox label="Radius lg" radius="lg" />
+              </div>
               <Checkbox label="Read-only selection" readOnly defaultChecked />
               <Checkbox label={copy.input.unavailable} disabled defaultChecked />
             </>
@@ -713,7 +731,7 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
                 {tokenFields.filter((field) => field.type === "number").map((field) => <Link key={field.key} href="/spacing" onClick={() => onEditToken?.("spacing", `token-${field.key}`)} className={styles.spacingSample} data-spacing-token={field.key}>
                   <span className={styles.spacingSampleHeader}><span>{field.label}</span><strong>{system.themes[mode].global[field.key]}px</strong></span>
                   <span className={styles.spacingVisual} aria-hidden="true">
-                    {field.key === "radius" || field.key === "borderWidth" ? <span className={styles.shapeVisual} />
+                    {["radius", "radiusSm", "radiusLg", "borderWidth"].includes(field.key) ? <span className={styles.shapeVisual} />
                       : field.key === "paddingX" || field.key === "paddingY" ? <span className={styles.paddingVisual}><span>Content</span></span>
                       : field.key === "gap" ? <span className={styles.gapVisual}><i /><i /><i /></span>
                                             : field.key === "spacingSm" || field.key === "spacingMd" || field.key === "spacingLg" ? <span className={styles.spacingScaleVisual}><i /><i /></span>

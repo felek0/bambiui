@@ -1,6 +1,6 @@
 import type { ComponentProps, ReactNode } from "react";
 import { cx } from "../cx";
-import type { Size, Tone } from "./types";
+import type { Radius, Size, Tone } from "./types";
 import styles from "./components.module.css";
 
 export type BadgeProps = ComponentProps<"span"> & {
@@ -10,6 +10,8 @@ export type BadgeProps = ComponentProps<"span"> & {
   tone?: Tone;
   /** Defaults to `md`. */
   size?: Size;
+  /** Selects a shared global radius step. Defaults to `md`. */
+  radius?: Radius;
   /** Shows a leading status dot. */
   dot?: boolean;
   /** Decorative icon before the label. */
@@ -20,6 +22,7 @@ export function Badge({
   variant = "outline",
   tone = "neutral",
   size = "md",
+  radius,
   dot = false,
   startIcon,
   className,
@@ -33,6 +36,7 @@ export function Badge({
       data-variant={variant}
       data-tone={tone}
       data-size={size}
+      data-radius={radius}
     >
       {dot && <span className={styles.badgeDot} aria-hidden="true" />}
       {startIcon && (

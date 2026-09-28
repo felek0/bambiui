@@ -553,7 +553,7 @@ try {
   await check('shape and spacing specimens visualize every shared dimension live',async()=>{
     await navigate('design','spacing');
     assert.ok(await evaluate(`${q('.editor-fields--spacing .section-heading span')}.textContent.includes('BOTH THEMES')`));
-    assert.equal(await evaluate(`document.querySelectorAll('.editor-fields--spacing .number-fields .token-control').length`),13);
+    assert.equal(await evaluate(`document.querySelectorAll('.editor-fields--spacing .number-fields .token-control').length`),15);
     const radiusSlider=`${q('#token-radius')}.closest('.token-control').querySelector('.token-slider-trigger')`;
     assert.equal(await evaluate(`${radiusSlider}.getAttribute('aria-expanded')`),'false');
     await click(radiusSlider);
@@ -562,6 +562,8 @@ try {
     const original=await stored();
     const examples=[
       ['radius',24,'[class*="shapeVisual"]','borderTopLeftRadius'],
+      ['radiusSm',3,'[class*="shapeVisual"]','borderTopLeftRadius'],
+      ['radiusLg',32,'[class*="shapeVisual"]','borderTopLeftRadius'],
       ['paddingX',28,'[class*="paddingVisual"]','paddingLeft'],
       ['paddingY',22,'[class*="paddingVisual"]','paddingTop'],
       ['gap',18,'[class*="gapVisual"]','gap'],
@@ -628,7 +630,7 @@ try {
     assert.equal(await evaluate(`!!${q('[aria-label="Current contrast checks"]')}`),false,'component checks must not occupy the inspector');
     await click(q(trigger));
     await wait(`!!${q('[aria-label="Contrast pair results"]')}`);
-    assert.ok(await evaluate(`${q('[data-contrast-check="button.foreground"]')}?.textContent.includes('Below target')`));
+    assert.ok(await evaluate(`${q('[data-contrast-check="button.primary.text"]')}?.textContent.includes('Below target')`));
     assert.ok(await evaluate(`!!${q('[aria-label="Contrast pair results"] li:not([data-failing])')}`),'modal must show passing pairs too');
     assert.ok(await evaluate(`${q('[aria-label="Contrast pair results"]')}.children.length > 2`));
 

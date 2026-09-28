@@ -21,6 +21,7 @@ export function Checkbox({
   description,
   error,
   size,
+  radius,
   className,
   labelPosition = "end",
   disabled,
@@ -30,6 +31,7 @@ export function Checkbox({
     <FieldRoot
       kind="choice"
       size={size}
+      radius={radius}
       disabled={disabled}
       description={description}
       error={error}

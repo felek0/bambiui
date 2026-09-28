@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { auditSystemColors, colorCheckTargets } from "./color-audit.ts";
 import { contrastRatio, deriveRoleColors, generatePalette } from "./color-engine.ts";
-import { componentIds, defaultSystem, parseDesignSystem, resolveComponent, toCSSVariables } from "./tokens.ts";
+import { componentIds, componentVariantKeys, defaultSystem, parseDesignSystem, resolveComponent, toCSSVariables } from "./tokens.ts";
 
 const modes = ["light", "dark"];
 const fresh = (mode = "light") => structuredClone(defaultSystem.themes[mode]);
@@ -27,15 +27,22 @@ test("checked pairs point to real editable sources, not raw scale stops", () => 
     const targets = colorCheckTargets(check);
     for (const target of Object.values(targets)) {
       if (!target) continue;
-      const fields = target.selection === "colors" ? theme.global : resolveComponent(theme, target.selection);
-      assert.equal(typeof fields[target.key], "string", `${check.id}: ${target.selection}.${target.key}`);
+      if (target.variant) {
+        assert.ok(target.selection in componentVariantKeys, `${check.id}: variant selection`);
+        assert.ok(componentVariantKeys[target.selection].includes(target.variant), `${check.id}: ${target.variant}`);
+        assert.ok(["background", "foreground", "border", "hoverBackground", "activeBackground"].includes(target.key), `${check.id}: ${target.key}`);
+      } else {
+        const fields = target.selection === "colors" ? theme.global : resolveComponent(theme, target.selection);
+        assert.equal(typeof fields[target.key], "string", `${check.id}: ${target.selection}.${target.key}`);
+      }
     }
   }
   const targets = colorCheckTargets(byId().get("checkbox.boundary"));
   assert.deepEqual(targets.ink, { selection: "checkbox", key: "border" });
   assert.deepEqual(targets.surface, { selection: "colors", key: "background" });
   assert.deepEqual(colorCheckTargets(byId().get("text.success")).ink, { selection: "colors", key: "success", derived: true });
-  assert.deepEqual(colorCheckTargets(byId().get("badge.neutral.solid.boundary")).ink, { selection: "badge", key: "foreground" });
+  assert.deepEqual(colorCheckTargets(byId().get("badge.neutral.solid.boundary")).ink, { selection: "badge", key: "border", variant: "solid.neutral" });
+  assert.deepEqual(colorCheckTargets(byId().get("button.secondary.hover")).ink, { selection: "button", key: "hoverBackground", variant: "secondary" });
 });
 
 test("known ratios and unrounded threshold decisions", () => {
@@ -59,6 +66,7 @@ test("both normalized defaults pass finite, deterministic, pure diagnostics", ()
     assert.deepEqual(theme, before);
     assert.deepEqual(auditSystemColors(theme, mode), checks);
     assert.equal(new Set(checks.map((c) => c.id)).size, checks.length);
+        assert.equal(checks.length, 136);
     assert.equal(checks.filter((c) => !c.component && c.minimum === 4.5).length, 17);
     for (const c of checks) {
       assert.ok(Number.isFinite(c.ratio) && c.ratio >= 1 && c.ratio <= 21);
@@ -89,7 +97,7 @@ test("equal component overrides still fail without changing globals", () => {
     for (const id of componentIds) theme.components[id] = { foreground: "#123456", background: "#123456" };
     const checks = byId(theme, mode);
     for (const id of componentIds.filter((id) => id !== "text")) {
-      const check = checks.get(`${id}.foreground`);
+      const check = checks.get(id === "button" ? "button.primary.text" : id === "badge" ? "badge.neutral.solid" : `${id}.foreground`);
       assert.equal(check.ratio, 1, id);
       assert.equal(check.passes, false, id);
       assert.equal(check.minimum, ["switch", "checkbox"].includes(id) ? 3 : 4.5);
@@ -134,8 +142,8 @@ test("input readOnly retains its surface; filled card uses global ink and descri
   pair(checks.get("input.error"), theme.global.danger, theme.global.background);
   pair(checks.get("input.invalid.boundary.inside"), theme.global.danger, "#123456", 3);
   pair(checks.get("card.description"), "#4d4d4d", "#ffffff");
-  pair(checks.get("card.filled.description"), v["--card-filled-description"], "#445566");
-  pair(checks.get("card.filled.text"), theme.global.foreground, "#445566");
+  pair(checks.get("card.filled.description"), v["--card-variant-filled-description"], v["--card-variant-filled-background"]);
+  pair(checks.get("card.filled.text"), v["--card-variant-filled-foreground"], v["--card-variant-filled-background"]);
 });
 
 test("badge derivatives use overridden badge background in both modes", () => {
@@ -220,7 +228,7 @@ test("legacy v1 and v2 migration preserves invalid manual pairs in both modes", 
     const workspace = parseDesignSystem(JSON.stringify({ version, name: "Legacy", global: version === 1 ? global : { ...fresh().global, ...global }, components: fresh().components }));
     for (const mode of modes) {
       const checks = byId(workspace.themes[mode], mode);
-      for (const id of ["global.onPrimary.primary", "global.border.background", "button.foreground", "input.boundary", "switch.unchecked.boundary", "checkbox.unchecked.boundary"]) assert.equal(checks.get(id).passes, false, `${version}/${mode}/${id}`);
+      for (const id of ["global.onPrimary.primary", "global.border.background", "button.primary.text", "input.boundary", "switch.unchecked.boundary", "checkbox.unchecked.boundary"]) assert.equal(checks.get(id).passes, false, `${version}/${mode}/${id}`);
     }
   }
 });

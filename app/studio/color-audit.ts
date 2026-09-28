@@ -3,7 +3,7 @@ import type { PaletteMode } from "./color-engine";
 import { resolveComponent, toCSSVariables } from "./tokens.ts";
 import { contrastRatio } from "./color-engine.ts";
 
-export type ColorCheckTarget = { selection: "colors" | ComponentId; key: string; derived?: boolean };
+export type ColorCheckTarget = { selection: "colors" | ComponentId; key: string; variant?: string; derived?: boolean };
 
 // A check describes rendered colors, which may be derived rather than editable.
 // Only return fields that actually influence the checked pair; scale stops do not.
@@ -33,18 +33,19 @@ export function colorCheckTargets(check: ContrastCheck): { ink?: ColorCheckTarge
     return { ink: parts.includes("placeholder") ? global("mutedForeground") : local(parts.includes("boundary") ? "border" : "foreground"), surface };
   }
   if (id === "button") {
-    if (parts[1] === "outline" && parts.includes("boundary")) return { ink: global("border"), surface };
-    if (parts[1] === "secondary" || parts[1] === "destructive") return { ink: global(parts[1] === "secondary" ? (parts.includes("boundary") ? "secondary" : "onSecondary") : (parts.includes("boundary") ? "danger" : "onDanger")), surface };
-    if (["ghost", "outline"].includes(parts[1])) return { ink: global("foreground"), surface };
-    if (parts[1] === "link") return { ink: global("primary", true), surface };
-    return { ink: local(parts.includes("boundary") ? "border" : "foreground"), surface };
+    const variant = ["primary", "secondary", "outline", "ghost", "destructive", "link"].includes(parts[1]) ? parts[1] : "primary";
+    const field = parts.includes("boundary") ? "border" : parts.includes("hover") ? "hoverBackground" : parts.includes("active") ? "activeBackground" : "foreground";
+    return { ink: { selection: "button", key: field, variant }, surface };
   }
-  if (id === "card") return { ink: parts[1] === "filled" ? global("foreground", parts[2] === "description") : local(parts[1] === "boundary" ? "border" : "foreground"), surface };
+  if (id === "card") {
+    const variant = parts[1] === "filled" ? "filled" : parts[1] === "elevated" ? "elevated" : "outlined";
+    return { ink: { selection: "card", key: parts.includes("boundary") ? "border" : parts.includes("description") ? "foreground" : "foreground", variant }, surface };
+  }
   if (id === "text") return { ink: parts[1] === "foreground" ? local("foreground") : global(parts[1], true), surface };
   if (id === "badge") {
-    const tone = parts[1] === "foreground" ? "neutral" : parts[1];
-    const key = parts[2] === "solid" && !parts.includes("boundary") ? `on${tone[0].toUpperCase()}${tone.slice(1)}` : tone;
-    return { ink: tone === "neutral" ? local(parts[2] === "solid" && !parts.includes("boundary") ? "background" : "foreground") : global(key, parts[2] !== "solid"), surface };
+    const tone = ["primary", "success", "warning", "danger", "info"].includes(parts[1]) ? parts[1] : "neutral";
+    const variant = ["solid", "subtle", "outline"].includes(parts[2]) ? parts[2] : "outline";
+    return { ink: { selection: "badge", key: parts.includes("boundary") ? "border" : "foreground", variant: `${variant}.${tone}` }, surface };
   }
   return { surface };
 }
@@ -87,7 +88,7 @@ export function auditSystemColors(theme: ThemeTokens, mode: PaletteMode = "light
       passes: ratio >= minimum, ...(component ? { component } : {}) });
   }
   function boundary(component: ComponentId, id: string, label: string, stroke: string, inside?: string) {
-    if (resolveComponent(theme, component).borderWidth <= 0) return;
+    if (resolveComponent(theme, component).borderWidth <= 0 || stroke === "transparent") return;
     add(id, `${label} on global background`, stroke, g.background, 3, component);
     if (inside !== undefined) add(`${id}.inside`, `${label} on interior surface`, stroke, inside, 3, component);
   }
@@ -116,29 +117,17 @@ export function auditSystemColors(theme: ThemeTokens, mode: PaletteMode = "light
     add(`${component}.error`, `${component} error on global surface`, g.danger, g.background, 4.5, component);
   }
 
-  const button = resolveComponent(theme, "button");
-  add("button.foreground", "Button resolved text on background", button.foreground, button.background, 4.5, "button");
-  boundary("button", "button.boundary", "Button primary border", button.border);
-  for (const [variant, ink, fill, prefix, stroke] of [
-    ["primary", button.foreground, button.background, "--button", button.border],
-    ["secondary", g.onSecondary, g.secondary, "--ds-secondary", g.secondary],
-    ["destructive", g.onDanger, g.danger, "--ds-danger", g.danger],
-  ]) {
+  for (const variant of ["primary", "secondary", "outline", "ghost", "destructive", "link"] as const) {
+    const prefix = `--button-variant-${variant}`;
+    const fill = v[`${prefix}-background`] === "transparent" ? g.background : v[`${prefix}-background`];
+    const ink = v[`${prefix}-foreground`];
     add(`button.${variant}.text`, `Button ${variant} text`, ink, fill, 4.5, "button");
     for (const state of ["hover", "active"]) {
-      add(`button.${variant}.${state}`, `Button ${variant} ${state} text`, ink, v[`${prefix}-${state}`], 4.5, "button");
+      const stateFill = v[`${prefix}-${state}-background`] === "transparent" ? g.background : v[`${prefix}-${state}-background`];
+      add(`button.${variant}.${state}`, `Button ${variant} ${state} text`, ink, stateFill, 4.5, "button");
     }
-    if (variant !== "primary") boundary("button", `button.${variant}.boundary`, `Button ${variant} border (all states)`, stroke);
+    if (variant !== "ghost" && variant !== "link") boundary("button", `button.${variant}.boundary`, `Button ${variant} border`, v[`${prefix}-border`]);
   }
-  for (const variant of ["outline", "ghost", "link"]) {
-    const ink = variant === "link" ? v["--ds-primary-on-subtle"] : g.foreground;
-    add(`button.${variant}.text`, `Button ${variant} text on global surface`, ink, g.background, 4.5, "button");
-    for (const state of ["hover", "active"]) {
-      add(`button.${variant}.${state}`, `Button ${variant} ${state} text`, ink, variant === "link" ? g.background : g.muted, 4.5, "button");
-    }
-  }
-  boundary("button", "button.outline.boundary", "Button outline border", g.border);
-  boundary("button", "button.outline.hover.boundary", "Button outline hover/active border", g.border, g.muted);
 
   const input = resolveComponent(theme, "input");
   add("input.foreground", "Input text (normal/hover/active/invalid/focus)", input.foreground, input.background, 4.5, "input");
@@ -165,25 +154,29 @@ export function auditSystemColors(theme: ThemeTokens, mode: PaletteMode = "light
   }
 
   const card = resolveComponent(theme, "card");
+  for (const variant of ["outlined", "elevated", "filled"] as const) {
+    const prefix = `--card-variant-${variant}`;
+    const background = v[`${prefix}-background`];
+    add(`card.${variant}.text`, `Card ${variant} text`, v[`${prefix}-foreground`], background, 4.5, "card");
+    add(`card.${variant}.description`, `Card ${variant} description`, v[`${prefix}-description`], background, 4.5, "card");
+    if (variant !== "filled") boundary("card", `card.${variant}.boundary`, `Card ${variant} border`, v[`${prefix}-border`], background);
+  }
   add("card.foreground", "Card outlined/elevated text", card.foreground, card.background, 4.5, "card");
   add("card.description", "Card outlined/elevated description", v["--card-description"], card.background, 4.5, "card");
-  add("card.filled.text", "Filled card global text on muted", g.foreground, g.muted, 4.5, "card");
-  add("card.filled.description", "Filled card description on muted", v["--card-filled-description"], g.muted, 4.5, "card");
-  boundary("card", "card.boundary", "Card outlined border", card.border, card.background);
+
+  boundary("card", "card.boundary", "Card outlined border", v["--card-variant-outlined-border"], card.background);
 
   const badge = resolveComponent(theme, "badge");
-  // Neutral solid reverses the component ink/surface; its ratio is symmetric.
   add("badge.foreground", "Badge neutral solid text", badge.background, badge.foreground, 4.5, "badge");
   for (const tone of ["neutral", "primary", "success", "warning", "danger", "info"] as const) {
-    const role = roles.find(([name]) => name === tone);
-    const fill = role ? g[role[0]] : badge.foreground;
-    const onFill = role ? g[role[1]] : badge.background;
-    const ink = v[`--badge-${tone}-on-subtle`];
-    add(`badge.${tone}.solid`, `Badge ${tone} solid text`, onFill, fill, 4.5, "badge");
-    add(`badge.${tone}.subtle`, `Badge ${tone} subtle text`, ink, v[`--badge-${tone}-subtle`], 4.5, "badge");
-    add(`badge.${tone}.outline`, `Badge ${tone} outline text on badge background`, ink, badge.background, 4.5, "badge");
-    boundary("badge", `badge.${tone}.solid.boundary`, `Badge ${tone} solid border`, fill);
-    boundary("badge", `badge.${tone}.outline.boundary`, `Badge ${tone} outline border`, v[`--badge-${tone}-outline`], badge.background);
+    for (const variant of ["solid", "subtle", "outline"] as const) {
+      const prefix = `--badge-variant-${variant}-${tone}`;
+      const background = v[`${prefix}-background`] === "transparent" ? g.background : v[`${prefix}-background`];
+      const foreground = v[`${prefix}-foreground`];
+      add(`badge.${tone}.${variant}`, `Badge ${tone} ${variant} text`, foreground, background, 4.5, "badge");
+      if (variant === "solid") boundary("badge", `badge.${tone}.${variant}.boundary`, `Badge ${tone} ${variant} border`, v[`${prefix}-border`]);
+      else if (variant === "outline") boundary("badge", `badge.${tone}.${variant}.boundary`, `Badge ${tone} ${variant} border`, v[`${prefix}-border`], background);
+    }
   }
   return checks;
 }

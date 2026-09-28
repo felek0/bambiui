@@ -59,14 +59,25 @@
   }
 }
 
+/* Radius scale opt-in; omitted props preserve legacy numeric component radius values. */
+.button[data-radius="sm"], .field[data-radius="sm"] .inputControl, .field[data-radius="sm"] .checkbox { border-radius: var(--ds-radius-sm); }
+.button[data-radius="md"], .field[data-radius="md"] .inputControl, .field[data-radius="md"] .checkbox { border-radius: var(--ds-radius-md); }
+.button[data-radius="lg"], .field[data-radius="lg"] .inputControl, .field[data-radius="lg"] .checkbox { border-radius: var(--ds-radius-lg); }
+.badge[data-radius="sm"] { border-radius: var(--ds-radius-sm); }
+.badge[data-radius="md"] { border-radius: var(--ds-radius-md); }
+.badge[data-radius="lg"] { border-radius: var(--ds-radius-lg); }
+.card[data-radius="sm"] { border-radius: var(--ds-radius-sm); }
+.card[data-radius="md"] { border-radius: var(--ds-radius-md); }
+.card[data-radius="lg"] { border-radius: var(--ds-radius-lg); }
+
 /* Button -------------------------------------------------------------------- */
 
 .button {
-  --button-fill: var(--button-background);
-  --button-ink: var(--button-foreground);
-  --button-stroke: var(--button-border);
-  --button-hover-fill: var(--button-hover);
-  --button-active-fill: var(--button-active);
+  --button-fill: var(--button-variant-primary-background);
+  --button-ink: var(--button-variant-primary-foreground);
+  --button-stroke: var(--button-variant-primary-border);
+  --button-hover-fill: var(--button-variant-primary-hover-background);
+  --button-active-fill: var(--button-variant-primary-active-background);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -99,37 +110,43 @@
 }
 
 .button[data-variant="secondary"] {
-  --button-fill: var(--ds-secondary);
-  --button-hover-fill: var(--ds-secondary-hover);
-  --button-active-fill: var(--ds-secondary-active);
-  --button-ink: var(--ds-on-secondary);
-  --button-stroke: var(--ds-secondary);
+  --button-fill: var(--button-variant-secondary-background);
+  --button-hover-fill: var(--button-variant-secondary-hover-background);
+  --button-active-fill: var(--button-variant-secondary-active-background);
+  --button-ink: var(--button-variant-secondary-foreground);
+  --button-stroke: var(--button-variant-secondary-border);
 }
 
 .button[data-variant="outline"] {
-  --button-fill: transparent;
-  --button-ink: var(--ds-foreground);
-  --button-stroke: var(--ds-border);
+  --button-fill: var(--button-variant-outline-background);
+  --button-hover-fill: var(--button-variant-outline-hover-background);
+  --button-active-fill: var(--button-variant-outline-active-background);
+  --button-ink: var(--button-variant-outline-foreground);
+  --button-stroke: var(--button-variant-outline-border);
 }
 
 .button[data-variant="ghost"] {
-  --button-fill: transparent;
-  --button-ink: var(--ds-foreground);
-  --button-stroke: transparent;
+  --button-fill: var(--button-variant-ghost-background);
+  --button-hover-fill: var(--button-variant-ghost-hover-background);
+  --button-active-fill: var(--button-variant-ghost-active-background);
+  --button-ink: var(--button-variant-ghost-foreground);
+  --button-stroke: var(--button-variant-ghost-border);
 }
 
 .button[data-variant="destructive"] {
-  --button-fill: var(--ds-danger);
-  --button-hover-fill: var(--ds-danger-hover);
-  --button-active-fill: var(--ds-danger-active);
-  --button-ink: var(--ds-on-danger);
-  --button-stroke: var(--ds-danger);
+  --button-fill: var(--button-variant-destructive-background);
+  --button-hover-fill: var(--button-variant-destructive-hover-background);
+  --button-active-fill: var(--button-variant-destructive-active-background);
+  --button-ink: var(--button-variant-destructive-foreground);
+  --button-stroke: var(--button-variant-destructive-border);
 }
 
 .button[data-variant="link"] {
-  --button-fill: transparent;
-  --button-ink: var(--ds-primary-on-subtle);
-  --button-stroke: transparent;
+  --button-fill: var(--button-variant-link-background);
+  --button-hover-fill: var(--button-variant-link-hover-background);
+  --button-active-fill: var(--button-variant-link-active-background);
+  --button-ink: var(--button-variant-link-foreground);
+  --button-stroke: var(--button-variant-link-border);
   min-height: 0;
   padding-inline: 0;
   text-underline-offset: 0.2em;
@@ -481,12 +498,12 @@
 
 .badge {
   /* Neutral tone uses the badge component tokens; other tones use global roles. */
-  --tone: var(--badge-foreground);
-  --on-tone: var(--badge-background);
-  --tone-border: var(--badge-border);
-  --tone-text: var(--badge-neutral-on-subtle);
-  --tone-subtle: var(--badge-neutral-subtle);
-  --tone-outline: var(--badge-neutral-outline);
+  --tone: var(--badge-variant-outline-neutral-background);
+  --on-tone: var(--badge-variant-outline-neutral-foreground);
+  --tone-border: var(--badge-variant-outline-neutral-border);
+  --tone-text: var(--badge-variant-outline-neutral-foreground);
+  --tone-subtle: var(--badge-variant-subtle-neutral-background);
+  --tone-outline: var(--badge-variant-outline-neutral-border);
   display: inline-flex;
   align-items: center;
   width: fit-content;
@@ -508,60 +525,25 @@
   flex: 0 0 auto;
 }
 
-.badge[data-variant="outline"] {
-  border-color: var(--tone-outline);
-}
-
-.badge[data-tone="primary"] {
-  --tone: var(--ds-primary);
-  --on-tone: var(--ds-on-primary);
-  --tone-subtle: var(--badge-primary-subtle);
-  --tone-text: var(--badge-primary-on-subtle);
-  --tone-outline: var(--badge-primary-outline);
-}
-
-.badge[data-tone="success"] {
-  --tone: var(--ds-success);
-  --on-tone: var(--ds-on-success);
-  --tone-subtle: var(--badge-success-subtle);
-  --tone-text: var(--badge-success-on-subtle);
-  --tone-outline: var(--badge-success-outline);
-}
-
-.badge[data-tone="warning"] {
-  --tone: var(--ds-warning);
-  --on-tone: var(--ds-on-warning);
-  --tone-subtle: var(--badge-warning-subtle);
-  --tone-text: var(--badge-warning-on-subtle);
-  --tone-outline: var(--badge-warning-outline);
-}
-
-.badge[data-tone="danger"] {
-  --tone: var(--ds-danger);
-  --on-tone: var(--ds-on-danger);
-  --tone-subtle: var(--badge-danger-subtle);
-  --tone-text: var(--badge-danger-on-subtle);
-  --tone-outline: var(--badge-danger-outline);
-}
-
-.badge[data-tone="info"] {
-  --tone: var(--ds-info);
-  --on-tone: var(--ds-on-info);
-  --tone-subtle: var(--badge-info-subtle);
-  --tone-text: var(--badge-info-on-subtle);
-  --tone-outline: var(--badge-info-outline);
-}
-
-.badge[data-variant="solid"] {
-  border-color: var(--tone);
-  background: var(--tone);
-  color: var(--on-tone);
-}
-
-.badge[data-variant="subtle"] {
-  border-color: transparent;
-  background: var(--tone-subtle);
-}
+/* Each Badge tone/variant pair consumes its own resolved colors. */
+.badge[data-variant="outline"] { border-color: var(--badge-variant-outline-neutral-border); background: var(--badge-variant-outline-neutral-background); color: var(--badge-variant-outline-neutral-foreground); }
+.badge[data-variant="subtle"] { border-color: var(--badge-variant-subtle-neutral-border); background: var(--badge-variant-subtle-neutral-background); color: var(--badge-variant-subtle-neutral-foreground); }
+.badge[data-variant="solid"] { border-color: var(--badge-variant-solid-neutral-border); background: var(--badge-variant-solid-neutral-background); color: var(--badge-variant-solid-neutral-foreground); }
+.badge[data-tone="primary"][data-variant="outline"] { border-color: var(--badge-variant-outline-primary-border); background: var(--badge-variant-outline-primary-background); color: var(--badge-variant-outline-primary-foreground); }
+.badge[data-tone="primary"][data-variant="subtle"] { border-color: var(--badge-variant-subtle-primary-border); background: var(--badge-variant-subtle-primary-background); color: var(--badge-variant-subtle-primary-foreground); }
+.badge[data-tone="primary"][data-variant="solid"] { border-color: var(--badge-variant-solid-primary-border); background: var(--badge-variant-solid-primary-background); color: var(--badge-variant-solid-primary-foreground); }
+.badge[data-tone="success"][data-variant="outline"] { border-color: var(--badge-variant-outline-success-border); background: var(--badge-variant-outline-success-background); color: var(--badge-variant-outline-success-foreground); }
+.badge[data-tone="success"][data-variant="subtle"] { border-color: var(--badge-variant-subtle-success-border); background: var(--badge-variant-subtle-success-background); color: var(--badge-variant-subtle-success-foreground); }
+.badge[data-tone="success"][data-variant="solid"] { border-color: var(--badge-variant-solid-success-border); background: var(--badge-variant-solid-success-background); color: var(--badge-variant-solid-success-foreground); }
+.badge[data-tone="warning"][data-variant="outline"] { border-color: var(--badge-variant-outline-warning-border); background: var(--badge-variant-outline-warning-background); color: var(--badge-variant-outline-warning-foreground); }
+.badge[data-tone="warning"][data-variant="subtle"] { border-color: var(--badge-variant-subtle-warning-border); background: var(--badge-variant-subtle-warning-background); color: var(--badge-variant-subtle-warning-foreground); }
+.badge[data-tone="warning"][data-variant="solid"] { border-color: var(--badge-variant-solid-warning-border); background: var(--badge-variant-solid-warning-background); color: var(--badge-variant-solid-warning-foreground); }
+.badge[data-tone="danger"][data-variant="outline"] { border-color: var(--badge-variant-outline-danger-border); background: var(--badge-variant-outline-danger-background); color: var(--badge-variant-outline-danger-foreground); }
+.badge[data-tone="danger"][data-variant="subtle"] { border-color: var(--badge-variant-subtle-danger-border); background: var(--badge-variant-subtle-danger-background); color: var(--badge-variant-subtle-danger-foreground); }
+.badge[data-tone="danger"][data-variant="solid"] { border-color: var(--badge-variant-solid-danger-border); background: var(--badge-variant-solid-danger-background); color: var(--badge-variant-solid-danger-foreground); }
+.badge[data-tone="info"][data-variant="outline"] { border-color: var(--badge-variant-outline-info-border); background: var(--badge-variant-outline-info-background); color: var(--badge-variant-outline-info-foreground); }
+.badge[data-tone="info"][data-variant="subtle"] { border-color: var(--badge-variant-subtle-info-border); background: var(--badge-variant-subtle-info-background); color: var(--badge-variant-subtle-info-foreground); }
+.badge[data-tone="info"][data-variant="solid"] { border-color: var(--badge-variant-solid-info-border); background: var(--badge-variant-solid-info-background); color: var(--badge-variant-solid-info-foreground); }
 
 .badgeDot {
   width: calc(var(--ds-icon-size) / 3);
@@ -582,28 +564,32 @@
   padding: calc(var(--card-padding-y) * var(--size-scale))
     calc(var(--card-padding-x) * var(--size-scale));
   margin: var(--card-margin);
-  border: var(--card-border-width) solid var(--card-border);
+  border: var(--card-border-width) solid var(--card-variant-outlined-border);
   border-radius: var(--card-radius);
-  background: var(--card-background);
-  color: var(--card-foreground);
+  background: var(--card-variant-outlined-background);
+  color: var(--card-variant-outlined-foreground);
+  box-shadow: var(--card-variant-outlined-shadow);
   font-size: var(--card-font-size);
   overflow-wrap: anywhere;
 }
 
 .card[data-variant="elevated"] {
-  border-color: transparent;
-  box-shadow: var(--ds-shadow-elevated);
+  border-color: var(--card-variant-elevated-border);
+  background: var(--card-variant-elevated-background);
+  color: var(--card-variant-elevated-foreground);
+  box-shadow: var(--card-variant-elevated-shadow);
 }
 
 .card[data-variant="filled"] {
-  border-color: transparent;
-  background: var(--ds-muted);
-  color: var(--ds-foreground);
+  border-color: var(--card-variant-filled-border);
+  background: var(--card-variant-filled-background);
+  color: var(--card-variant-filled-foreground);
+  box-shadow: var(--card-variant-filled-shadow);
 }
 
-.card[data-variant="filled"] .cardDescription {
-  color: var(--card-filled-description);
-}
+.card[data-variant="outlined"] .cardDescription { color: var(--card-variant-outlined-description); }
+.card[data-variant="elevated"] .cardDescription { color: var(--card-variant-elevated-description); }
+.card[data-variant="filled"] .cardDescription { color: var(--card-variant-filled-description); }
 
 .cardIcon {
   display: grid;

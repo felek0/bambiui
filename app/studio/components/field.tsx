@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Field } from "@base-ui/react/field";
 import { cx } from "../cx";
-import type { Size } from "./types";
+import type { Radius, Size } from "./types";
 import styles from "./components.module.css";
 
 /** Props shared by every labelled form control (Input, Switch, Checkbox). */
@@ -16,6 +16,8 @@ export type FieldProps = {
   error?: ReactNode;
   /** Defaults to `md`. */
   size?: Size;
+  /** Selects a shared global radius step. Defaults to `md`; omit to retain a legacy numeric component radius override. */
+  radius?: Radius;
   className?: string;
 };
 
@@ -26,12 +28,13 @@ export type FieldProps = {
 export function FieldRoot({
   kind,
   size = "md",
+  radius,
   disabled,
   description,
   error,
   className,
   children,
-}: Pick<FieldProps, "size" | "description" | "error" | "className"> & {
+}: Pick<FieldProps, "size" | "radius" | "description" | "error" | "className"> & {
   kind: "text" | "choice";
   disabled?: boolean;
   children: ReactNode;
@@ -41,6 +44,7 @@ export function FieldRoot({
       className={cx(styles.field, className)}
       data-kind={kind}
       data-size={size}
+      data-radius={radius}
       disabled={disabled}
       // Leave native constraint validation in charge unless an error is supplied.
       invalid={error ? true : undefined}

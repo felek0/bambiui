@@ -1,6 +1,6 @@
 import type { ComponentProps } from "react";
 import { cx } from "../cx";
-import type { Size } from "./types";
+import type { Radius, Size } from "./types";
 import styles from "./components.module.css";
 
 export type CardProps = ComponentProps<"article"> & {
@@ -8,11 +8,14 @@ export type CardProps = ComponentProps<"article"> & {
   variant?: "outlined" | "elevated" | "filled";
   /** Padding and gap density from the shared size scale. Defaults to `md`. */
   size?: Size;
+  /** Selects a shared global radius step. Defaults to `md`. */
+  radius?: Radius;
 };
 
 function CardRoot({
   variant = "outlined",
   size = "md",
+  radius,
   className,
   ...props
 }: CardProps) {
@@ -22,6 +25,7 @@ function CardRoot({
       className={cx(styles.card, className)}
       data-variant={variant}
       data-size={size}
+      data-radius={radius}
     />
   );
 }

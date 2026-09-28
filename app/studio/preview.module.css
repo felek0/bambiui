@@ -372,6 +372,8 @@
   background: var(--ds-muted);
 }
 
+[data-spacing-token="radiusSm"] .shapeVisual { border-radius: var(--ds-radius-sm); }
+[data-spacing-token="radiusLg"] .shapeVisual { border-radius: var(--ds-radius-lg); }
 [data-spacing-token="borderWidth"] .shapeVisual {
   border-width: var(--ds-border-width);
 }

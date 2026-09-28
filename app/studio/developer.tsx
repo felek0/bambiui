@@ -35,6 +35,7 @@ export type DeveloperViewProps = {
 type PropRow = readonly [prop: string, type: string, defaultValue: string, noteKey: NoteKey];
 
 const size: PropRow = ["size", '"sm" | "md" | "lg"', '"md"', "size"];
+const radius: PropRow = ["radius", '"sm" | "md" | "lg"', "omitted (global md by default)", "radius"];
 const content: PropRow = ["children", "ReactNode", "—", "content"];
 const className: PropRow = ["className", "string", "—", "className"];
 const icons: PropRow = ["startIcon / endIcon", "ReactNode", "—", "icons"];
@@ -64,6 +65,7 @@ const reference: Record<ComponentId, { name: string; props: readonly PropRow[] }
       ["variant", '"primary" | "secondary" | "outline" | "ghost" | "destructive" | "link"', '"primary"', "hierarchy"],
       size,
       ["disabled", "boolean", "false", "disabled"],
+      radius,
       ["loading", "boolean", "false", "loading"],
       ["fullWidth", "boolean", "false", "fullWidth"],
       ["iconOnly", "boolean", "false", "iconOnly"],
@@ -75,6 +77,7 @@ const reference: Record<ComponentId, { name: string; props: readonly PropRow[] }
     name: "Input",
     props: [
       ...fields,
+      radius,
       ["type", '"text" | "email" | "password" | "number" | "search" | "tel" | "url"', '"text"', "inputType"],
       ["placeholder", "string", "—", "placeholder"],
       ["value / defaultValue", "Base UI Input value props", "—", "inputValue"],
@@ -88,7 +91,7 @@ const reference: Record<ComponentId, { name: string; props: readonly PropRow[] }
   },
   checkbox: {
     name: "Checkbox",
-    props: [...choices, ["indeterminate", "boolean", "Base UI default", "indeterminate"]],
+    props: [...choices, radius, ["indeterminate", "boolean", "Base UI default", "indeterminate"]],
   },
   badge: {
     name: "Badge",
@@ -96,7 +99,7 @@ const reference: Record<ComponentId, { name: string; props: readonly PropRow[] }
       ["variant", '"solid" | "subtle" | "outline"', '"outline"', "fill"],
       ["tone", '"neutral" | "primary" | "success" | "warning" | "danger" | "info"', '"neutral"', "tone"],
       size,
-      ["dot", "boolean", "false", "dot"],
+      ["dot", "boolean", "false", "dot"], radius,
       ["startIcon", "ReactNode", "—", "startIcon"],
       content, className,
     ],
@@ -105,7 +108,7 @@ const reference: Record<ComponentId, { name: string; props: readonly PropRow[] }
     name: "Card",
     props: [
       ["variant", '"outlined" | "elevated" | "filled"', '"outlined"', "surface"],
-      size, content, className,
+      size, radius, content, className,
     ],
   },
   text: {
@@ -300,8 +303,8 @@ function FoundationTokens({ theme, mode, variables, kind }: {
     <section className={styles.section}>
       <h3>{colors ? "Component color tokens" : "Component numeric tokens"}</h3>
       <p>{colors
-        ? "Each component has background, foreground, and border aliases. A declared override replaces the inherited global value even if they currently match. Other variant and state colors are derived separately."
-        : "Component radius, padding, gap, margin, font size, and border width still inherit their legacy global tokens until explicitly overridden. Padding and gap overrides continue to work independently of spacingSm/Md/Lg. These aliases are shared between light and dark."}</p>
+        ? "Each component has background, foreground, and border aliases. A declared override replaces the inherited global value even if they currently match. Variant/tone-specific styles below list the actual resolved CSS variables consumed by the component."
+        : "The radius alias defaults to shared --ds-radius-md; radius=sm/md/lg selects --ds-radius-sm/md/lg on supported components. Omitting the prop preserves historical numeric component overrides. Padding, gap, margin, font size and border width keep their component aliases; spacing presets are shared across themes."}</p>
       <ScrollRegion label={colors ? "Component color aliases" : "Component numeric aliases"}>
         <table className={styles.table}>
           <caption>{colors ? `${mode} component color aliases` : "Shared component numeric aliases"}</caption>
@@ -356,6 +359,9 @@ export function DeveloperView({ selected, system, mode, cssOutput }: DeveloperVi
     .map((key) => `${prefix}${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`));
   const tokens = Object.entries(variables).filter(([name]) => editableNames.has(name));
   const derived = Object.entries(variables).filter(([name]) => name.startsWith(prefix) && !editableNames.has(name) && !(selected === "text" && name.startsWith("--text-")));
+  const variantVariables = component && ["button", "badge", "card"].includes(selected)
+    ? Object.entries(variables).filter(([name]) => name.startsWith(`--${selected}-variant-`))
+    : [];
 
   return (
     <div className={styles.root}>
@@ -422,6 +428,29 @@ export function DeveloperView({ selected, system, mode, cssOutput }: DeveloperVi
           </table>
         </ScrollRegion>
       </details>}
+
+      {variantVariables.length > 0 && component && (
+        <details className={styles.reference}>
+          <summary>Variant and tone styles</summary>
+          <p>These resolved CSS variables are consumed by the rendered variants. Values inherit from global semantic roles or derived colors unless a component-level override is set; Card shadow presets are shared across themes.</p>
+          <ScrollRegion label={`${component.name} variant and tone CSS variables`}>
+            <table className={styles.table}>
+              <caption>{component.name} resolved variant styles</caption>
+              <thead><tr><th scope="col">CSS variable</th><th scope="col">Source</th><th scope="col">Resolved value</th></tr></thead>
+              <tbody>{variantVariables.map(([name, value]) => {
+                const tokens = theme.variantColors?.[selected as "button" | "badge" | "card"] as Record<string, Record<string, string>> | undefined;
+                const suffix = name.slice(`--${selected}-variant-`.length);
+                const parts = suffix.split("-");
+                const field = parts.pop() ?? "";
+                const variantKey = selected === "badge" ? `${parts.shift()}.${parts.join("-")}` : parts.join("-");
+                const overrideKey = field.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase());
+                const override = tokens?.[variantKey]?.[overrideKey];
+                return <tr key={name}><th scope="row"><code>{name}</code></th><td>{override !== undefined ? "Component override" : "Inherited / derived"}</td><td><code>{value}</code></td></tr>;
+              })}</tbody>
+            </table>
+          </ScrollRegion>
+        </details>
+      )}
 
       {selected !== "colors" && selected !== "spacing" && derived.length > 0 && (
         <details className={styles.reference}>

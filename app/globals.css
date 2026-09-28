@@ -815,14 +815,16 @@ button:disabled {
 }
 .foundation-editor > label,
 .scale-stop-control label,
-.typography-control label {
+.typography-control label,
+.variant-token-control label {
   font-size: 12px;
   color: var(--studio-color-text-secondary);
   text-transform: capitalize;
 }
 .foundation-editor > select,
 .scale-stop-input,
-.typography-input {
+.typography-input,
+.variant-token-input {
   min-width: 0;
   min-height: 34px;
   padding: 4px 8px;
@@ -831,7 +833,17 @@ button:disabled {
   background: var(--studio-color-surface);
   color: var(--studio-color-text);
 }
-.foundation-editor > select { width: 100%; text-transform: capitalize; }
+.foundation-editor > select,
+.component-variant-editor > select { width: 100%; text-transform: capitalize; }
+.component-variant-editor { display: grid; gap: 10px; }
+.component-variant-editor > p { font-size: 11px; color: var(--studio-color-text-muted); line-height: 1.45; }
+.variant-token-control { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); align-items: center; gap: 8px; }
+.variant-token-control label { font-size: 11px; }
+.variant-token-input { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 32px; padding: 3px 5px; }
+.variant-token-input input[type="color"] { width: 24px; height: 24px; flex: none; padding: 0; }
+.variant-token-input input[type="text"] { width: 100%; min-width: 0; font-size: 12px; }
+.variant-token-input button, .variant-token-input span { flex: none; color: var(--studio-color-text-muted); font-size: 10px; }
+.variant-token-input button { color: var(--studio-color-accent-text); }
 .foundation-editor > p { font-size: 11px; color: var(--studio-color-text-muted); }
 .scale-stop-list { display: grid; gap: 12px; }
 .scale-stop-control,
@@ -840,7 +852,8 @@ button:disabled {
 .typography-input { display: flex; align-items: center; gap: 8px; }
 .scale-stop-input input[type="color"] { width: 28px; height: 26px; flex: none; padding: 0; cursor: pointer; }
 .scale-stop-input input[type="text"],
-.typography-input input { width: 100%; min-width: 0; font-size: 14px; }
+.typography-input input,
+.variant-token-input input[type="text"] { width: 100%; min-width: 0; font-size: 14px; }
 .scale-stop-input button { color: var(--studio-color-accent-text); font-size: 11px; }
 .typography-input span { color: var(--studio-color-text-muted); font-size: 11px; }
 .font-family-row,

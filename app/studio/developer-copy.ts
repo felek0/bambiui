@@ -3,6 +3,7 @@ import type { PaletteMode } from "./color-engine";
 
 const englishNotes = {
   size: "Shared size scale; density for Card.",
+  radius: "Selects the shared sm/md/lg radius token. Omit to preserve a historical numeric component override.",
   content: "Component content.",
   className: "Applied to the root; the field wrapper for labelled controls.",
   icons: "Content before / after the label or value.",

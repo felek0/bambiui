@@ -24,9 +24,15 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Read `docs/component-api.md` before creating or modifying a component in `app/studio/components/`.
 - Every component implements the full prop set for its category (`variant`, `size`, `tone`, states, content props) with the shared names and defaults defined there.
 
-## Theme token invariants
+## Theme and component token invariants
 
-- Schema v3 retains Light and Dark theme records, but only colors (including generated scales and component color overrides) may differ. Shape, spacing, sizing, and typography tokens are shared across both themes; keep edits, reset, import normalization, previews, and CSS export consistent with this invariant.
+- Schema v3 retains Light and Dark theme records. Global colors and variant/tone color overrides may differ by theme; shape, spacing, sizing, typography, component geometry and effects (including component radius selection and shadow presets) are shared. Keep edits, undo/redo, reset, import normalization, previews, contrast checks and CSS/JSON export consistent with this invariant.
+- Every public component `variant` and `tone` combination that paints a distinct surface must have an explicit documented inheritance path and, where appropriate, an editable component-level color override. Global semantic roles are defaults, not hardwired limitations: Button secondary/destructive, Badge semantic tone/variant, and Card surface variants must resolve through component CSS variables so local overrides can differ from globals.
+- A token may be exposed in the inspector, CSS/JSON reference, or Develop view only if the rendered component consumes it. Conversely, every design-relevant variant color, border, outline or shadow that users are expected to customize must have a typed token, inspector control, CSS consumer, reset/import/export behavior, and test.
+- `radius` is the legacy medium value and compatibility alias. `radiusSm`, `radius`/`radiusMd`, and `radiusLg` form one shared global scale. Shape-bearing components may accept `radius="sm" | "md" | "lg"`; the prop resolves to those shared values. Preserve old numeric component radius overrides when the prop is omitted.
+- Keep accessible focus outlines separate from decorative variant borders. Focus geometry and focus contrast remain globally accessible; component variant border colors and supported Card elevation may be customized without suppressing focus indicators.
+- When extending schema v3, accept older records, apply deterministic defaults without recoloring or changing existing values, reject unknown keys and invalid values, and normalize shared non-color data from Light. Avoid silent rounding/migration of historical component overrides.
+- Update `docs/component-api.md`, `tokens.test.mjs`, `color-audit.test.mjs`, component specimens, inspector metadata and Develop token references together whenever a component axis or token changes.
 
 ## Commit conventions
 
