@@ -394,7 +394,17 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
   const animation = useRef<number | null>(null);
   const initialized = useRef(false);
   const [zoom, setZoom] = useState(1);
+  const [hoveredUnit, setHoveredUnit] = useState<string | null>(null);
+  const hoveredUnitRef = useRef<string | null>(null);
+  const updateHoveredUnit = (next: string | null) => {
+    if (hoveredUnitRef.current === next) return;
+    hoveredUnitRef.current = next;
+    setHoveredUnit(next);
+  };
   const selectSpecimen = (id: ComponentId) => {
+    if (active && selected !== id) router.push(`/${id}`, { scroll: false });
+  };
+  const selectFoundation = (id: "colors" | "spacing") => {
     if (active && selected !== id) router.push(`/${id}`, { scroll: false });
   };
 
@@ -412,6 +422,7 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
       view.style.backgroundPosition = `${next.x}px ${next.y}px`;
       view.style.backgroundSize = `${16 * next.zoom}px ${16 * next.zoom}px`;
       view.style.setProperty("--canvas-dot-radius", `${next.zoom}px`);
+      view.style.setProperty("--canvas-selection-stroke", `${Math.min(10, 2 / next.zoom)}px`);
       view.dataset.cameraX = String(next.x);
       view.dataset.cameraY = String(next.y);
       view.dataset.cameraZoom = String(next.zoom);
@@ -525,9 +536,12 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
         const zoom = Math.max(current.zoom, 1);
         const worldX = (bounds.left - box.left + bounds.width / 2 - current.x) / current.zoom;
         const worldY = (bounds.top - box.top + bounds.height / 2 - current.y) / current.zoom;
+        const heading = target.querySelector("h2")?.getBoundingClientRect();
+        const headingY = heading ? (heading.top - box.top - current.y) / current.zoom : worldY;
+        // Keep the selected heading below the floating history/theme controls.
         moveCamera({
           x: view.clientWidth / 2 - worldX * zoom,
-          y: view.clientHeight / 2 - worldY * zoom,
+          y: Math.max(view.clientHeight / 2 - worldY * zoom, 72 - headingY * zoom),
           zoom,
         }, initialized.current);
       }
@@ -555,7 +569,8 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
         <button type="button" onClick={() => changeZoom(1)}>Reset zoom</button>
       </div>
       <p className={styles.canvasHelp} aria-hidden="true">Drag or scroll to pan · Ctrl/⌘ + scroll to zoom</p>
-      <p id={helpId} className={styles.srOnly}>On desktop, drag empty space or use the mouse wheel to pan without bounds. Hold Control or Command while scrolling to zoom at the pointer; Shift and scroll pans horizontally. Focus the canvas and use arrow keys to pan, or use Fit and zoom buttons. On mobile, scroll the page normally. Select a heading or interact with a canvas unit to edit its tokens.</p>
+      <p className={styles.selectionHint} data-canvas-selection-hint data-visible={hoveredUnit ? true : undefined} aria-hidden="true">{hoveredUnit ? `${hoveredUnit === "colors" ? "Colors" : hoveredUnit === "spacing" ? "Shape & spacing" : hoveredUnit === "text" ? "Text" : copy.components[hoveredUnit as ShowcaseId].name} · Click to edit tokens` : ""}</p>
+      <p id={helpId} className={styles.srOnly}>On desktop, drag empty space or use the mouse wheel to pan without bounds. Hold Control or Command while scrolling to zoom at the pointer; Shift and scroll pans horizontally. Focus the canvas and use arrow keys to pan, or use Fit and zoom buttons. On mobile, scroll the page normally. Hover over a section for a selection outline; click an empty area of that section to edit its tokens. Controls inside specimens remain interactive.</p>
       <div
         ref={viewport}
         className={styles.viewport}
@@ -592,16 +607,43 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
           stopAnimation();
           const view = event.currentTarget;
           drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, left: camera.current.x, top: camera.current.y };
-          view.setPointerCapture(event.pointerId);
-          view.dataset.dragging = "true";
-          view.focus({ preventScroll: true });
-          event.preventDefault();
+          if (event.button === 1) {
+            view.setPointerCapture(event.pointerId);
+            view.dataset.dragging = "true";
+            view.focus({ preventScroll: true });
+            event.preventDefault();
+          }
         }}
         onPointerMove={(event) => {
           const start = drag.current;
-          if (!start || start.id !== event.pointerId) return;
+          if (!start) {
+            const unit = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-canvas-unit]") : null;
+            updateHoveredUnit(unit?.dataset.canvasUnit ?? null);
+            return;
+          }
+          if (start.id !== event.pointerId) return;
+          if (Math.abs(event.clientX - start.x) + Math.abs(event.clientY - start.y) <= 5 && !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+          if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
+            dragged.current = true;
+            updateHoveredUnit(null);
+            event.currentTarget.setPointerCapture(event.pointerId);
+            event.currentTarget.dataset.dragging = "true";
+            event.currentTarget.focus({ preventScroll: true });
+          }
           if (Math.abs(event.clientX - start.x) + Math.abs(event.clientY - start.y) > 5) dragged.current = true;
           setCamera({ ...camera.current, x: start.left + event.clientX - start.x, y: start.top + event.clientY - start.y });
+        }}
+        onPointerLeave={() => {
+          const focused = document.activeElement instanceof Element ? document.activeElement.closest<HTMLElement>("[data-canvas-unit]") : null;
+          updateHoveredUnit(focused?.dataset.canvasUnit ?? null);
+        }}
+        onFocusCapture={(event) => {
+          const unit = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-canvas-unit]") : null;
+          updateHoveredUnit(unit?.dataset.canvasUnit ?? null);
+        }}
+        onBlurCapture={(event) => {
+          const unit = event.relatedTarget instanceof Element ? event.relatedTarget.closest<HTMLElement>("[data-canvas-unit]") : null;
+          updateHoveredUnit(unit?.dataset.canvasUnit ?? null);
         }}
         onPointerUp={(event) => {
           if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
@@ -619,7 +661,8 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
       >
         <div ref={canvas} data-canvas className={styles.canvas}>
           <div className={styles.foundations}>
-            <section data-foundation="colors" data-canvas-unit="colors" data-selected={selected === "colors" || undefined} aria-labelledby="canvas-colors-title" className={styles.foundation}>
+            <section data-foundation="colors" data-canvas-unit="colors" data-selected={selected === "colors" || undefined} aria-labelledby="canvas-colors-title" className={styles.foundation}
+              onClickCapture={(event) => { if (!(event.target instanceof Element && event.target.closest("a, button, input, select"))) selectFoundation("colors"); }}>
               <h2 id="canvas-colors-title"><Link href="/colors" aria-current={selected === "colors" ? "page" : undefined}>Colors</Link></h2>
               <p>Generated from the current theme. Select a role to edit its 50–1000 tokens.</p>
               <div className={styles.scaleRegion} role="region" aria-label="Color scale reference" tabIndex={0}>
@@ -635,7 +678,8 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
                 </div>
               </div>
             </section>
-            <section data-foundation="spacing" data-canvas-unit="spacing" data-selected={selected === "spacing" || undefined} aria-labelledby="canvas-spacing-title" className={styles.foundation}>
+            <section data-foundation="spacing" data-canvas-unit="spacing" data-selected={selected === "spacing" || undefined} aria-labelledby="canvas-spacing-title" className={styles.foundation}
+              onClickCapture={(event) => { if (!(event.target instanceof Element && event.target.closest("a, button, input, select"))) selectFoundation("spacing"); }}>
               <h2 id="canvas-spacing-title"><Link href="/spacing" aria-current={selected === "spacing" ? "page" : undefined}>Shape &amp; spacing</Link></h2>
               <p>Shared dimensions for both themes. Spacing sm/md/lg sets the gap between Card.Content items at matching sizes; legacy component padding and outer gap stay independent. Select a token to edit its value.</p>
               <div className={styles.spacingSamples}>

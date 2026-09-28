@@ -97,7 +97,7 @@ async function click(expression) {
     const destination = await evaluate(`(${expression}).closest('a')?.getAttribute('href') || null`);
   await evaluate(`(${expression}).scrollIntoView({block:'center',inline:'center',behavior:'instant'})`);
   await evaluate('new Promise(resolve => requestAnimationFrame(resolve))');
-  const point = await evaluate(`(() => {const e=${expression},r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;if(!e.contains(document.elementFromPoint(x,y)))throw Error('Occluded: '+e.outerHTML);return {x,y};})()`);
+  const point = await evaluate(`(() => {const e=${expression},r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;const hit=document.elementFromPoint(x,y);if(!e.contains(hit))throw Error('Occluded: '+e.outerHTML+'; hit: '+hit?.outerHTML.slice(0,250));return {x,y};})()`);
   await send('Input.dispatchMouseEvent', { type:'mousePressed', ...point, button:'left', clickCount:1 });
   await send('Input.dispatchMouseEvent', { type:'mouseReleased', ...point, button:'left', clickCount:1 });
   if (destination?.startsWith('/')) {
@@ -196,7 +196,7 @@ try {
   await check('header navigation and theme, full-bleed Design canvas and one visible preview',async()=>{
     assert.equal(await evaluate(`${q(viewNav)}.closest('header') === ${q('.studio-header')}`),true);
     assert.equal(await evaluate(`${q(themeControl)}.closest('.canvas-theme') !== null`),true);
-    assert.ok(await evaluate(`(()=>{const bar=${q('.canvas-theme')}.getBoundingClientRect(),preview=${q('.preview-frame')}.getBoundingClientRect();return bar.right<=preview.right && bar.top>=preview.top && bar.right>preview.right-130 && bar.top<preview.top+60})()`));
+    assert.ok(await evaluate(`(()=>{const bar=${q('.canvas-theme')}.getBoundingClientRect(),view=${q(canvas)}.getBoundingClientRect();return bar.right<=view.right && bar.top>=view.top && bar.right>view.right-130 && bar.bottom<view.bottom})()`));
     assert.deepEqual(await evaluate(`[...document.querySelectorAll(${JSON.stringify(viewNav + ' a')})].map(e=>e.textContent.trim())`),['Design','Develop']);
     assert.deepEqual(await evaluate(`[...document.querySelectorAll(${JSON.stringify(themeControl + ' button')})].map(e=>e.getAttribute('aria-label'))`),['Light','Dark']);
     assert.ok(await evaluate(`[...document.querySelectorAll(${JSON.stringify(themeControl + ' button')})].every(e=>!e.textContent.trim() && !!e.querySelector('svg'))`));
@@ -204,7 +204,7 @@ try {
     assert.ok(await evaluate(`${q('.studio-sidebar .sidebar-project input[aria-label="Design system name"]')}?.getClientRects().length > 0`),'editable name belongs to the project area');
     assert.equal(await evaluate(`!!${q('.studio-header input[aria-label="Design system name"]')}`),false);
     assert.ok(await evaluate(`!!${q('.preview-frame .canvas-history [aria-label="Undo change"] svg')} && !!${q('.preview-frame .canvas-history [aria-label="Redo change"] svg')}`));
-    assert.ok(await evaluate(`(()=>{const bar=${q('.canvas-history')}.getBoundingClientRect(),preview=${q('.preview-frame')}.getBoundingClientRect();return bar.left>=preview.left && bar.top>=preview.top && bar.left<preview.left+90 && bar.top<preview.top+90})()`));
+    assert.ok(await evaluate(`(()=>{const bar=${q('.canvas-history')}.getBoundingClientRect(),view=${q(canvas)}.getBoundingClientRect();return bar.left>=view.left && bar.top>=view.top && bar.left<view.left+90 && bar.bottom<view.bottom})()`));
     assert.equal(await evaluate(`!!${q('.breadcrumbs')} || !!${q('.viewport-controls')} || !!${q('[aria-label="Preview width"]')}`),false);
     assert.ok(await evaluate(`(()=>{const content=${q('#workspace-content')}.getBoundingClientRect(),area=${q('.workspace-panel--design')}.getBoundingClientRect(),viewport=${q(canvas)}.getBoundingClientRect();return Math.abs(area.left-content.left)<2 && Math.abs(area.right-content.right)<2 && Math.abs(area.top-content.top)<2 && Math.abs(area.bottom-content.bottom)<2 && viewport.width>=area.width-80 && viewport.height>=area.height-80})()`));
     assert.ok(await evaluate(`(()=>{const area=${q('.workspace-panel--design')}.getBoundingClientRect(),zoom=${q('[aria-label="Canvas zoom"]')}.getBoundingClientRect(),position=getComputedStyle(${q('[aria-label="Canvas zoom"]')}).position;return ['absolute','fixed','sticky'].includes(position) && zoom.width<area.width/2 && zoom.left>=area.left && zoom.right<=area.right+2 && zoom.top>area.top+area.height/2 && zoom.bottom<=area.bottom+2})()`));
@@ -231,7 +231,7 @@ try {
     await assertStudioSurfaces('light');
     assert.equal(await evaluate(`getComputedStyle(${q(canvas)}).backgroundColor`),'rgb(255, 248, 246)');
 
-    assert.ok(await evaluate(`(()=>{const area=${q('.preview-frame')}.getBoundingClientRect(),specimen=${q('.theme-pane')}.getBoundingClientRect();return specimen.left>=area.left+7 && specimen.right<=area.right-7 && specimen.top>=area.top+54 && specimen.bottom<=area.bottom-7})()`));
+    assert.ok(await evaluate(`(()=>{const area=${q('.preview-frame')}.getBoundingClientRect(),specimen=${q('.theme-pane')}.getBoundingClientRect();return specimen.left>=area.left+7 && specimen.right<=area.right-7 && specimen.top>=area.top+7 && specimen.bottom<=area.bottom-7})()`));
     assert.equal(await evaluate(`${q('.canvas-label')}`),null);
     for(const foundation of ['colors','spacing','text']) assert.ok(await evaluate(`${q(`[data-foundation="${foundation}"]`)}.getBoundingClientRect().width > 0 && ${q(`[data-foundation="${foundation}"]`)}.getBoundingClientRect().height > 0`),`visible ${foundation} foundation`);
     assert.equal(await evaluate(`getComputedStyle(${q('.theme-pane:not([hidden]) section[aria-label="Button preview"]')}).borderTopWidth`),'0px');
@@ -669,8 +669,9 @@ try {
     const point=await canvasBackground();
     const before=await evaluate(cameraState);
     await send('Input.dispatchMouseEvent',{type:'mousePressed',...point,button:'left',clickCount:1});
-    await wait(`${q(canvas)}.dataset.dragging==='true'`);
+    assert.ok(!await evaluate(`${q(canvas)}.hasAttribute('data-dragging')`),'press alone must leave sections clickable');
     await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x+130,y:point.y+110,button:'left',buttons:1});
+    await wait(`${q(canvas)}.dataset.dragging==='true'`);
     await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:point.x+130,y:point.y+110,button:'left',clickCount:1});
     const dragged=await evaluate(cameraState);
     assert.ok(dragged.x>before.x+100 && dragged.y>before.y+80,'pointer drag must pan in both directions');
@@ -679,6 +680,7 @@ try {
     for(let i=0;i<8;i++) {
       const p=await canvasBackground();
       await send('Input.dispatchMouseEvent',{type:'mousePressed',...p,button:'left',clickCount:1});
+      await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:p.x+12,y:p.y+12,button:'left',buttons:1});
       await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:p.x+650,y:p.y+550,button:'left',buttons:1});
       await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:p.x+650,y:p.y+550,button:'left',clickCount:1});
     }
@@ -724,6 +726,55 @@ try {
     await fill('[data-specimen="input"] input[type="email"]','retained@example.com');
     await capture('studio-canvas');
   });
+  await check('hover outlines sections and clicking their empty areas selects tokens',async()=>{
+    await navigate('design');
+    await delay(500);
+    await click(named('[aria-label="Canvas zoom"] button','Fit'));
+    await delay(500);
+    const foundation = '[data-foundation="colors"]';
+    const foundationPoint = await evaluate(`(()=>{const r=${q(foundation)}.getBoundingClientRect();return {x:r.right-12,y:r.top+r.height/2}})()`);
+    await send('Input.dispatchMouseEvent',{type:'mouseMoved',...foundationPoint,button:'none'});
+    assert.ok(await evaluate(`${q(foundation)}.matches(':hover')`),JSON.stringify(await evaluate(`(()=>{const r=${q(foundation)}.getBoundingClientRect(),v=${q(canvas)}.getBoundingClientRect();return {r:{x:r.x,y:r.y,width:r.width,height:r.height},v:{x:v.x,y:v.y,width:v.width,height:v.height},hit:document.elementFromPoint(${foundationPoint.x},${foundationPoint.y})?.outerHTML.slice(0,180)}})()`)));
+    assert.equal(await evaluate(`getComputedStyle(${q(foundation)}).outlineStyle`),'solid');
+    assert.ok(await evaluate(`parseFloat(getComputedStyle(${q(foundation)}).outlineWidth) > 2`),'section outline must remain visible at Fit zoom');
+    await wait(`${q('[data-canvas-selection-hint]')}?.textContent.includes('Colors · Click to edit tokens') && ${q('[data-canvas-selection-hint]')}.dataset.visible === 'true'`);
+    assert.equal(await evaluate(`getComputedStyle(${q('[data-canvas-selection-hint]')}).transitionDuration`),'0.12s, 0.12s, 0.12s');
+    await delay(200);
+    assert.equal(await evaluate(`getComputedStyle(${q('[data-canvas-selection-hint]')}).opacity`),'1');
+    assert.equal(await evaluate(`getComputedStyle(${q(foundation)},'::after').opacity`),'1');
+    await capture('studio-foundation-hover');
+    await send('Input.dispatchMouseEvent',{type:'mousePressed',...foundationPoint,button:'left',clickCount:1});
+    await send('Input.dispatchMouseEvent',{type:'mouseReleased',...foundationPoint,button:'left',clickCount:1});
+    await route('design','colors');
+    await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:foundationPoint.x-100,y:foundationPoint.y,button:'none'});
+    await evaluate(`${q(foundation+' h2 a')}.focus({preventScroll:true})`);
+    await wait(`${q('[data-canvas-selection-hint]')}?.textContent.includes('Colors · Click to edit tokens')`);
+    assert.equal(await evaluate(`getComputedStyle(${q(foundation)}).outlineStyle`),'solid','keyboard focus should reveal the same section');
+    await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+    assert.equal(await evaluate(`getComputedStyle(${q('[data-canvas-selection-hint]')}).transitionDuration`),'0s');
+    await send('Emulation.setEmulatedMedia',{features:[]});
+    await navigate('design');
+    await click(named('[aria-label="Canvas zoom"] button','Fit'));
+    await delay(500);
+    const specimen = '[data-specimen="button"]';
+    const specimenPoint = await evaluate(`(()=>{const r=${q(specimen+' header')}.getBoundingClientRect();return {x:r.right-24,y:r.top+r.height/2}})()`);
+    await send('Input.dispatchMouseEvent',{type:'mouseMoved',...specimenPoint,button:'none'});
+    assert.equal(await evaluate(`getComputedStyle(${q(specimen)}).outlineStyle`),'solid');
+    await wait(`${q('[data-canvas-selection-hint]')}?.textContent.includes('Button · Click to edit tokens')`);
+    const hint = await evaluate(`${q('[data-canvas-selection-hint]')}.textContent`);
+    await delay(200);
+    await send('Performance.enable');
+    const taskTime = async () => (await send('Performance.getMetrics')).metrics.find(metric => metric.name === 'TaskDuration').value;
+    const beforeTasks = await taskTime();
+    for (let offset = 0; offset < 80; offset++) await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:specimenPoint.x-offset/5,y:specimenPoint.y,button:'none'});
+    const hoverTaskMs = Math.round((await taskTime() - beforeTasks) * 1000);
+    console.log(`HOVER PROFILE: 80 same-section pointer moves, ${hoverTaskMs}ms main-thread task time`);
+    assert.equal(await evaluate(`${q('[data-canvas-selection-hint]')}.textContent`),hint,'moving within one section must not churn the hint');
+    await capture('studio-component-hover');
+    await send('Input.dispatchMouseEvent',{type:'mousePressed',...specimenPoint,button:'left',clickCount:1});
+    await send('Input.dispatchMouseEvent',{type:'mouseReleased',...specimenPoint,button:'left',clickCount:1});
+    await route('design','button');
+  });
   await check('Design canvas units route to their own inspectors and Develop references',async()=>{
     await navigate('design');
     assert.equal(await evaluate(`!!${q('.breadcrumbs')}`),false);
@@ -747,6 +798,7 @@ try {
     await capture('studio-spacing');
     await navigate('design','text');
     await delay(450);
+    assert.ok(await evaluate(`(()=>{const heading=${q('[data-foundation="text"] h2')}.getBoundingClientRect(),view=${q(canvas)}.getBoundingClientRect();return heading.top>=view.top+60})()`),'selected headings must stay below the floating tools');
     await click(q('[data-foundation="text"] h2 a'));
     await route('design','text');
     await click(named(viewNav + ' a','Develop'));
@@ -821,6 +873,7 @@ try {
       assert.ok(overflow.scrollWidth<=overflow.width,JSON.stringify(overflow));
       assert.ok(await evaluate(`${q(viewNav)}.getClientRects().length>0 && ${q(themeControl)}.getClientRects().length>0`));
       assert.ok(await evaluate(`${q('.studio-sidebar .sidebar-project input[aria-label="Design system name"]')}.getClientRects().length>0`));
+      if (view === 'Design') assert.ok(await evaluate(`(()=>{const canvas=${q('[data-foundation="colors"] h2')}.getBoundingClientRect(),history=${q('.canvas-history')}.getBoundingClientRect(),theme=${q('.canvas-theme')}.getBoundingClientRect(),viewport=${q('[aria-label="Component canvas"]')}.getBoundingClientRect();return history.top>=viewport.top && theme.top>=viewport.top && canvas.top>Math.max(history.bottom,theme.bottom)})()`),'mobile specimen must start below floating canvas controls');
       assert.equal(await evaluate(`!!${q('.breadcrumbs')} || !!${q('.viewport-controls')}`),false);
       await capture(`studio-375-${view.toLowerCase()}`);
     }

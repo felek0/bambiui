@@ -681,7 +681,7 @@ button:disabled {
   display: flex;
   flex-direction: column;
   width: 100%;
-  padding: 54px 8px 8px;
+  padding: 8px;
   margin: 0 auto;
   background: var(--studio-color-canvas);
 }
@@ -694,8 +694,8 @@ button:disabled {
 .canvas-history {
   position: absolute;
   z-index: 3;
-  top: 7px;
-  left: 16px;
+  top: 20px;
+  left: 24px;
   display: flex;
   gap: 3px;
   padding: 4px;
@@ -717,8 +717,8 @@ button:disabled {
 .canvas-theme {
   position: absolute;
   z-index: 3;
-  top: 10px;
-  right: 16px;
+  top: 23px;
+  right: 24px;
 }
 .canvas-label {
   display: flex;
@@ -1244,7 +1244,15 @@ button.inherit-button {
     height: auto;
   }
   .preview-frame {
-    padding: 54px 0 0;
+    padding: 0;
+  }
+  .canvas-history {
+    top: 16px;
+    left: 16px;
+  }
+  .canvas-theme {
+    top: 19px;
+    right: 16px;
   }
   .preview-frame .theme-pane {
     flex: none;
