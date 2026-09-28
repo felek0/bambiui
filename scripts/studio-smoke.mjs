@@ -549,6 +549,12 @@ try {
   });
   await check('shape and spacing specimens visualize every shared dimension live',async()=>{
     await navigate('design','spacing');
+    assert.ok(await evaluate(`${q('.editor-fields--spacing .section-heading span')}.textContent.includes('BOTH THEMES')`));
+    assert.equal(await evaluate(`document.querySelectorAll('.editor-fields--spacing .number-fields .token-control').length`),13);
+    const radiusSlider=`${q('#token-radius')}.closest('.token-control').querySelector('.token-slider-trigger')`;
+    assert.equal(await evaluate(`${radiusSlider}.getAttribute('aria-expanded')`),'false');
+    await click(radiusSlider);
+    assert.ok(await evaluate(`!!${q('#token-radius')}.closest('.token-control').querySelector('input[type="range"]')`),'shared dimension slider remains available');
     await click(named(themeControl + ' button','Light'));
     const original=await stored();
     const examples=[
@@ -982,6 +988,8 @@ try {
       if(view === 'design' && id === 'spacing') {
         await evaluate(`${q('[data-foundation="spacing"]')}.scrollIntoView({block:'start',behavior:'instant'})`);
         await capture('studio-375-spacing');
+        await evaluate(`${q('#token-editor')}.scrollIntoView({block:'start',behavior:'instant'})`);
+        await capture('studio-375-spacing-inspector');
       }
     }
     await navigate('design','button');

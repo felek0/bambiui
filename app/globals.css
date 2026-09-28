@@ -1102,6 +1102,32 @@ button:disabled {
   font-size: 11px;
   line-height: 1.4;
 }
+.editor-fields--spacing .number-fields { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+.editor-fields--spacing .token-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 88px 24px;
+  align-items: center;
+  gap: 6px;
+  min-height: 37px;
+  padding-block: 2px;
+}
+.editor-fields--spacing .number-fields .token-control > div:first-child { min-width: 0; min-height: 0; flex-wrap: nowrap; }
+.editor-fields--spacing .token-control-heading label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.editor-fields--spacing .token-input { min-width: 0; height: 30px; margin: 0; padding-inline: 5px; gap: 4px; }
+.editor-fields--spacing .token-slider-trigger {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 28px;
+  color: var(--studio-color-text-muted);
+  border-radius: 4px;
+}
+.editor-fields--spacing .token-slider-trigger:hover,
+.editor-fields--spacing .token-slider-trigger[aria-expanded="true"] { background: var(--studio-color-surface-hover); }
+.editor-fields--spacing .token-slider-trigger:focus-visible { outline: var(--studio-focus-ring); outline-offset: 1px; }
+.editor-fields--spacing .token-range,
+.editor-fields--spacing .token-control > p { grid-column: 1 / -1; }
+.editor-fields--spacing .token-range { margin: 6px 0 8px; }
 .token-control {
   min-width: 0;
 }
@@ -1551,6 +1577,9 @@ button.inherit-button {
   .editor-fields--component .token-usage-trigger,
   .editor-fields--component .token-slider-trigger { width: 28px; min-height: 32px; }
   .editor-fields--component .number-fields .token-control { grid-template-columns: minmax(0, 1fr) 90px 28px; }
+  .editor-fields--spacing .token-control { grid-template-columns: minmax(0, 1fr) 90px 28px; }
+  .editor-fields--spacing .token-input { height: 38px; }
+  .editor-fields--spacing .token-slider-trigger { width: 28px; min-height: 32px; }
 }
 /* Short, narrow layout viewports also occur at increased browser zoom. */
 @media (max-width: 900px) and (max-height: 700px) {

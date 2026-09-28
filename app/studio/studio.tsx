@@ -52,6 +52,13 @@ import { loadSystems, saveSystems, SYSTEMS_KEY, type SystemCollection } from "./
 type Selection = "overview" | "colors" | "spacing" | ComponentId;
 type View = "design" | "develop";
 
+const spacingGroups: { label: string; keys: readonly (keyof TokenValues)[] }[] = [
+  { label: "Shape", keys: ["radius", "borderWidth"] },
+  { label: "Layout spacing", keys: ["paddingX", "paddingY", "gap", "margin"] },
+  { label: "Spacing scale", keys: ["spacingSm", "spacingMd", "spacingLg"] },
+  { label: "Type & control sizing", keys: ["fontSize", "controlHeightSm", "controlHeightMd", "controlHeightLg"] },
+];
+
 const componentGroups: { label: string; ids: readonly ComponentId[] }[] = [
   { label: "Actions", ids: ["button"] },
   { label: "Forms", ids: ["input", "switch", "checkbox"] },
@@ -537,6 +544,23 @@ export default function Studio() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
+  function renderTokenField(field: TokenField) {
+    return <TokenControl
+      key={`${workspaceRevision}-${activeTheme}-${selection}-${field.key}`}
+      field={field}
+      compact={!isGlobal || selection === "spacing"}
+      value={values[field.key as keyof typeof values]}
+      impact={isGlobal ? undefined : tokenImpact(component, field.key as keyof ComponentTokens)}
+      highlighted={highlightedTarget?.selection === selection && highlightedTarget.inputId === `token-${field.key}`}
+      derivedOutline={!isGlobal && component === "badge" && field.key === "border" && !Object.hasOwn(theme.components.badge, "border")
+        ? toCSSVariables(theme, activeTheme)["--badge-neutral-outline"] : undefined}
+      overridden={isGlobal ? undefined : Object.hasOwn(theme.components[component], field.key)}
+      onChange={(value) => setToken(field.key, value)}
+      onReset={() => resetToken(field.key as keyof ComponentTokens)}
+      onFinish={finishEdit}
+    />;
+  }
+
   return (
     <div className="studio-shell" data-view={view}>
       <a className="skip-link" href="#workspace">
@@ -859,7 +883,7 @@ export default function Studio() {
       >
         <div className="editor-title">
           <Icon name={selection === "colors" ? "colors" : isGlobal ? "sliders" : component} />
-          <h2>{selection === "colors" ? "Global colors" : isGlobal ? t.inspector : t.componentTokens(t.componentNames[component])} · {activeTheme === "light" ? t.light : t.dark}</h2>
+          <h2>{selection === "spacing" ? "Shape & spacing" : `${selection === "colors" ? "Global colors" : isGlobal ? t.inspector : t.componentTokens(t.componentNames[component])} · ${activeTheme === "light" ? t.light : t.dark}`}</h2>
           {ready && (selection === "colors" || !isGlobal) && <div className="editor-title-actions">
             <ColorPairDialog key={`${collection.activeId}-${activeTheme}-${selection}`} checks={auditChecks} mode={activeTheme} component={isGlobal ? undefined : component} onNavigate={navigateToColorToken} />
             {selection === "colors" && <ColorBuilderDialog key={`${collection.activeId}-${workspaceRevision}`} system={system} onFinish={finishEdit} onApply={applyPalette} />}
@@ -867,18 +891,22 @@ export default function Studio() {
           <a className="mobile-preview-link" href="#workspace-content">{view === "design" ? t.backToPreview : t.backToCode}</a>
         </div>
 
-        <fieldset disabled={!ready} className={`editor-fields${!isGlobal || selection === "colors" ? " editor-fields--compact" : ""}${!isGlobal ? " editor-fields--component" : ""}`}>
-          <legend className="sr-only">{t.editTokens(activeTheme === "light" ? t.light : t.dark)}</legend>
-          {isGlobal && selection !== "colors" && <div className="editor-intro">
+        <fieldset disabled={!ready} className={`editor-fields${!isGlobal || selection === "colors" || selection === "spacing" ? " editor-fields--compact" : ""}${!isGlobal ? " editor-fields--component" : ""}${selection === "spacing" ? " editor-fields--spacing" : ""}`}>
+          <legend className="sr-only">{selection === "spacing" ? "Edit shared shape and spacing tokens" : t.editTokens(activeTheme === "light" ? t.light : t.dark)}</legend>
+          {isGlobal && selection === "overview" && <div className="editor-intro">
             <span className="scope-icon"><Icon name="sliders" size={18} /></span>
             <div>
-              <h3>{selection === "spacing" ? "Global shape & spacing" : t.foundations}</h3>
+              <h3>{t.foundations}</h3>
               <p>{t.foundationsHint}</p>
-              <p>{selection === "spacing" ? t.sharedThemes : t.mixedScope}</p>
+              <p>{t.mixedScope}</p>
             </div>
           </div>}
           {ready && selection === "overview" && <ColorBuilder key={workspaceRevision} system={system} onFinish={finishEdit} onApply={applyPalette} />}
           {selection === "overview" && <ContrastReport key={activeTheme} theme={theme} mode={activeTheme} />}
+          {selection === "spacing" && spacingGroups.map((group) => <section className="token-section" key={group.label}>
+            <div className="section-heading"><h3>{group.label}</h3>{group.label === "Shape" && <span>{t.sharedThemes}</span>}</div>
+            <div className="number-fields">{numberFields.filter((field) => group.keys.includes(field.key)).map(renderTokenField)}</div>
+          </section>)}
           {(
             [
               {
@@ -896,36 +924,13 @@ export default function Studio() {
                 items: numberFields,
               },
             ] as const
-          ).filter((group) => group.items.length > 0).map((group) => (
+          ).filter((group) => group.items.length > 0 && selection !== "spacing").map((group) => (
             <section className="token-section" key={group.type}>
               <div className="section-heading">
                 <h3>{group.heading}</h3>
                 <span>{group.hint}</span>
               </div>
-              <div className={group.className}>
-                {group.items.map((field) => (
-                  <TokenControl
-                    key={`${workspaceRevision}-${activeTheme}-${selection}-${field.key}`}
-                    field={field}
-                    compact={!isGlobal}
-                    value={values[field.key as keyof typeof values]}
-                    impact={isGlobal ? undefined : tokenImpact(component, field.key as keyof ComponentTokens)}
-                    highlighted={highlightedTarget?.selection === selection && highlightedTarget.inputId === `token-${field.key}`}
-                    derivedOutline={!isGlobal && component === "badge" && field.key === "border" && !Object.hasOwn(theme.components.badge, "border")
-                      ? toCSSVariables(theme, activeTheme)["--badge-neutral-outline"] : undefined}
-                    overridden={
-                      isGlobal
-                        ? undefined
-                        : Object.hasOwn(theme.components[component], field.key)
-                    }
-                    onChange={(value) => setToken(field.key, value)}
-                    onReset={() =>
-                      resetToken(field.key as keyof ComponentTokens)
-                    }
-                    onFinish={finishEdit}
-                  />
-                ))}
-              </div>
+              <div className={group.className}>{group.items.map(renderTokenField)}</div>
             </section>
           ))}
           {isGlobal && selection !== "spacing" && <section className="token-section foundation-editor" id="color-scales">
@@ -1003,7 +1008,7 @@ export default function Studio() {
               );
             }}
           >
-            {isGlobal ? t.resetGlobal : t.resetComponent}
+            {selection === "spacing" ? "Reset shared dimensions" : isGlobal ? t.resetGlobal : t.resetComponent}
           </Button>
         </fieldset>
 
