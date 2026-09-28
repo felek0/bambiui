@@ -1,8 +1,10 @@
 
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
+import { Dialog } from "@base-ui/react/dialog";
 import { Button } from "./controls";
+import { Icon } from "./icons";
 import { generatePalette, type GeneratedPalette, type PaletteMode } from "./color-engine";
-import { auditSystemColors } from "./color-audit";
+import { auditSystemColors, colorCheckTargets, type ColorCheckTarget, type ContrastCheck } from "./color-audit";
 import { colorBuilderCopy } from "./color-builder-copy";
 
 import type { ComponentId, DesignSystem, ThemeTokens } from "./tokens";
@@ -24,11 +26,13 @@ const ratioText = (ratio: number) => new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 }).format(Math.floor(ratio * 100) / 100);
 
-export function ColorBuilder({ system, onApply, onFinish }: {
+type BuilderProps = {
   system: DesignSystem;
   onApply: (palette: GeneratedPalette, group?: string) => void;
   onFinish?: () => void;
-}) {
+};
+
+export function ColorBuilder({ system, onApply, onFinish, expanded = false }: BuilderProps & { expanded?: boolean }) {
   const id = useId();
   const copy = colorBuilderCopy;
   const [draft, setDraft] = useState<string | null>(null);
@@ -45,7 +49,7 @@ export function ColorBuilder({ system, onApply, onFinish }: {
   }
 
   return (
-    <details className={styles.builder} data-palette-builder>
+    <details className={styles.builder} data-palette-builder data-expanded={expanded || undefined} open={expanded || undefined}>
       <summary id={`${id}-title`}>{copy.builder}</summary>
       <p>{copy.autoIntro}</p>
       <label htmlFor={`${id}-source`}>{copy.source}</label>
@@ -84,6 +88,88 @@ export function ColorBuilder({ system, onApply, onFinish }: {
       </p>
     </details>
   );
+}
+
+export function ColorBuilderDialog(props: BuilderProps) {
+  const copy = colorBuilderCopy;
+  return <Dialog.Root>
+    <Dialog.Trigger className={styles.contrastTrigger} aria-label={copy.openBuilder} title={copy.openBuilder}>
+      <Icon name="colors" size={16} />
+    </Dialog.Trigger>
+    <Dialog.Portal>
+      <Dialog.Backdrop className={styles.contrastBackdrop} />
+      <Dialog.Popup className={styles.contrastPopup}>
+        <div className={styles.contrastHeader}>
+          <Dialog.Title>{copy.builder}</Dialog.Title>
+          <Dialog.Close className={styles.contrastClose} aria-label={copy.closeBuilder}><Icon name="close" size={18} /></Dialog.Close>
+        </div>
+        <ColorBuilder {...props} expanded />
+      </Dialog.Popup>
+    </Dialog.Portal>
+  </Dialog.Root>;
+}
+
+export function ColorPairDialog({ checks: allChecks, mode, component, onNavigate }: { checks: ContrastCheck[]; mode: PaletteMode; component?: ComponentId; onNavigate: (target: ColorCheckTarget) => void }) {
+  const [open, setOpen] = useState(false);
+  const pending = useRef<ColorCheckTarget | null>(null);
+  function navigate(target: ColorCheckTarget) {
+    pending.current = target;
+    setOpen(false);
+  }
+  const copy = colorBuilderCopy;
+  const name = component ? title(component) : "System";
+  const checks = component ? allChecks.filter((check) => check.component === component) : allChecks;
+  const failures = checks.filter((check) => !check.passes);
+  const ordered = [...failures, ...checks.filter((check) => check.passes)];
+  const status = copy.componentPairStatus(name, failures.length, checks.length);
+
+  return <Dialog.Root open={open} onOpenChange={setOpen} onOpenChangeComplete={(isOpen) => {
+    if (!isOpen && pending.current) {
+      const target = pending.current;
+      pending.current = null;
+      onNavigate(target);
+    }
+  }}>
+    <Dialog.Trigger className={styles.contrastTrigger} aria-label={status} title={status} data-failing={failures.length > 0 || undefined}>
+      <Icon name={failures.length ? "warning" : "check"} size={16} />
+    </Dialog.Trigger>
+    <Dialog.Portal>
+      <Dialog.Backdrop className={styles.contrastBackdrop} />
+      <Dialog.Popup className={styles.contrastPopup}>
+        <div className={styles.contrastHeader}>
+          <div>
+            <Dialog.Title>{copy.componentPairs(name)} · {copy.modes[mode]}</Dialog.Title>
+            <Dialog.Description>{copy.reportHelp}</Dialog.Description>
+          </div>
+          <Dialog.Close className={styles.contrastClose} aria-label={copy.closePairs}><Icon name="close" size={18} /></Dialog.Close>
+        </div>
+        <p className={styles.contrastSummary} data-failing={failures.length > 0 || undefined}>
+          {failures.length ? copy.failures(numberText(failures.length), numberText(checks.length)) : copy.allPass(numberText(checks.length))}
+        </p>
+        <ul className={styles.contrastPairs} aria-label={copy.pairResults}>
+          {ordered.map((check) => {
+            const targets = colorCheckTargets(check);
+            return <li key={check.id} data-contrast-check={check.id} data-failing={!check.passes || undefined}>
+            <div className={styles.pairHeading}>
+              <strong>{check.label}</strong>
+              <span>{check.passes ? copy.pass : copy.belowTarget}</span>
+            </div>
+            <span>{ratioText(check.ratio)}:1 / {copy.required} {numberText(check.minimum)}:1</span>
+            <code>{check.foreground} {copy.on} {check.background}</code>
+            {targets.ink && <div className={styles.pairActions}>
+              <button type="button" onClick={() => navigate(targets.ink!)}>
+                {targets.ink.derived ? "View source" : "Edit"} {targets.ink.selection === "colors" ? "global" : title(targets.ink.selection)} {targets.ink.key} {targets.ink.derived ? "(derived color)" : ""}
+              </button>
+              {targets.surface && (targets.surface.selection !== targets.ink.selection || targets.surface.key !== targets.ink.key) && <button type="button" onClick={() => navigate(targets.surface!)}>
+                Edit {targets.surface.selection === "colors" ? "global" : title(targets.surface.selection)} {targets.surface.key}
+              </button>}
+            </div>}
+          </li>;
+          })}
+        </ul>
+      </Dialog.Popup>
+    </Dialog.Portal>
+  </Dialog.Root>;
 }
 
 export function ContrastReport({ theme, mode, component }: { theme: ThemeTokens; mode: PaletteMode; component?: ComponentId }) {

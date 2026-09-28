@@ -11,6 +11,7 @@ const paths = {
   reset: "M3 11a9 9 0 1 1 2.5 7M3 4v7h7",
   search: "M10 3a7 7 0 1 0 0 14 7 7 0 0 0 0-14m5 12 6 6",
   check: "m5 12 4 4L19 6",
+  warning: "M12 3 2 21h20L12 3z M12 9v5m0 3v1",
   plus: "M12 5v14M5 12h14",
   minus: "M5 12h14",
   code: "m8 6-6 6 6 6m8-12 6 6-6 6m-3-15-2 18",

@@ -3,6 +3,52 @@ import type { PaletteMode } from "./color-engine";
 import { resolveComponent, toCSSVariables } from "./tokens.ts";
 import { contrastRatio } from "./color-engine.ts";
 
+export type ColorCheckTarget = { selection: "colors" | ComponentId; key: string; derived?: boolean };
+
+// A check describes rendered colors, which may be derived rather than editable.
+// Only return fields that actually influence the checked pair; scale stops do not.
+export function colorCheckTargets(check: ContrastCheck): { ink?: ColorCheckTarget; surface?: ColorCheckTarget } {
+  const parts = check.id.split(".");
+  const id = parts[0];
+  const global = (key: string, derived = false): ColorCheckTarget => ({ selection: "colors", key, ...(derived && { derived }) });
+  const local = (key: string): ColorCheckTarget => ({ selection: id as ComponentId, key });
+  if (id === "global") {
+    const key = parts[1] === "primary" && parts[2] === "muted" ? "primary" : parts[1];
+    return { ink: global(key, key === "primary"),
+      surface: parts[2] && parts[2] in { background: 1, muted: 1, primary: 1, secondary: 1, success: 1, warning: 1, danger: 1, info: 1 } ? global(parts[2]) : undefined };
+  }
+  const surface = check.label.includes("on global background") || check.label.includes("on global surface") || check.label.includes("on background")
+    ? global("background") : undefined;
+  if (parts[1] === "focus") return { ink: global("primary", true), surface: global(parts[2]) };
+  if (parts[1] === "label") return { ink: global("foreground"), surface };
+  if (parts[1] === "description" && id !== "card") return { ink: global("mutedForeground"), surface };
+  if (parts[1] === "error") return { ink: global("danger"), surface };
+  if (id === "checkbox" || id === "switch") {
+    if (parts.includes("invalid")) return { ink: global("danger", true), surface };
+    if (parts.includes("unchecked")) return { ink: global(parts[1] === "unchecked" && parts[2] === "thumb" ? "foreground" : "border"), surface };
+    return { ink: local(parts[1] === "boundary" ? "border" : "foreground"), surface };
+  }
+  if (id === "input") {
+    if (parts[1] === "invalid") return { ink: global("danger"), surface };
+    return { ink: parts.includes("placeholder") ? global("mutedForeground") : local(parts.includes("boundary") ? "border" : "foreground"), surface };
+  }
+  if (id === "button") {
+    if (parts[1] === "outline" && parts.includes("boundary")) return { ink: global("border"), surface };
+    if (parts[1] === "secondary" || parts[1] === "destructive") return { ink: global(parts[1] === "secondary" ? (parts.includes("boundary") ? "secondary" : "onSecondary") : (parts.includes("boundary") ? "danger" : "onDanger")), surface };
+    if (["ghost", "outline"].includes(parts[1])) return { ink: global("foreground"), surface };
+    if (parts[1] === "link") return { ink: global("primary", true), surface };
+    return { ink: local(parts.includes("boundary") ? "border" : "foreground"), surface };
+  }
+  if (id === "card") return { ink: parts[1] === "filled" ? global("foreground", parts[2] === "description") : local(parts[1] === "boundary" ? "border" : "foreground"), surface };
+  if (id === "text") return { ink: parts[1] === "foreground" ? local("foreground") : global(parts[1], true), surface };
+  if (id === "badge") {
+    const tone = parts[1] === "foreground" ? "neutral" : parts[1];
+    const key = parts[2] === "solid" && !parts.includes("boundary") ? `on${tone[0].toUpperCase()}${tone.slice(1)}` : tone;
+    return { ink: tone === "neutral" ? local(parts[2] === "solid" && !parts.includes("boundary") ? "background" : "foreground") : global(key, parts[2] !== "solid"), surface };
+  }
+  return { surface };
+}
+
 export type ContrastCheck = {
   id: string;
   label: string;

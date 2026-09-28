@@ -3,14 +3,15 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { Dialog } from "@base-ui/react/dialog";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Button, NavItem, SegmentedControl } from "./controls";
 import { BrandMark, Icon } from "./icons";
 import { brandColor } from "./brand";
 import { Preview } from "./preview";
 import { DeveloperView } from "./developer";
-import { ColorBuilder, ContrastReport } from "./color-builder";
-import { mixColors, type PaletteMode } from "./color-engine";
+import { ColorBuilder, ColorBuilderDialog, ColorPairDialog, ContrastReport } from "./color-builder";
+import { auditSystemColors, type ColorCheckTarget } from "./color-audit";
+import { mixColors, type GeneratedPalette, type PaletteMode } from "./color-engine";
 import { copy as t, tokenImpact } from "./studio-copy";
 import {
   componentIds,
@@ -79,6 +80,7 @@ function TokenControl({
   overridden,
   derivedOutline,
   impact,
+  highlighted,
   onChange,
   onReset,
   onFinish,
@@ -88,6 +90,7 @@ function TokenControl({
   overridden?: boolean;
   derivedOutline?: string;
   impact?: string;
+  highlighted?: boolean;
   onChange: (value: string | number) => void;
   onReset: () => void;
   onFinish: () => void;
@@ -99,7 +102,7 @@ function TokenControl({
   const displayed = draft ?? String(value);
   const valid = isValidToken(field, displayed);
   return (
-    <div className="token-control">
+    <div className="token-control" data-highlighted={highlighted || undefined}>
       <div className="flex items-center justify-between gap-2">
         <label
           htmlFor={`token-${field.key}`}
@@ -250,6 +253,7 @@ export default function Studio() {
   const [ready, setReady] = useState(false);
   const [workspaceRevision, setWorkspaceRevision] = useState(0);
   const pathname = usePathname();
+  const router = useRouter();
   const segments = pathname.split("/").filter(Boolean);
   const view: View = segments[0] === "develop" ? "develop" : "design";
   const routeComponent = segments[view === "develop" ? 1 : 0];
@@ -264,7 +268,14 @@ export default function Studio() {
     return () => { delete root.dataset.studioTheme; };
   }, [activeTheme]);
   const [scaleRole, setScaleRole] = useState<ColorScaleRole>("primary");
-  const [editTarget, setEditTarget] = useState<{ selection: "colors" | "spacing"; inputId: string } | null>(null);
+  const [editTarget, setEditTarget] = useState<{ selection: Selection; inputId: string } | null>(null);
+  const [highlightedTarget, setHighlightedTarget] = useState<{ selection: Selection; inputId: string } | null>(null);
+  function navigateToColorToken(target: ColorCheckTarget) {
+    const next = { selection: target.selection, inputId: `token-${target.key}` };
+    setHighlightedTarget(next);
+    setEditTarget(next);
+    router.push(workspaceHref("design", target.selection));
+  }
 
   useEffect(() => {
     if (!ready || view !== "design" || !editTarget || selection !== editTarget.selection) return;
@@ -409,6 +420,10 @@ export default function Studio() {
   }
 
   const theme = system.themes[activeTheme];
+  const auditChecks = useMemo(() => auditSystemColors(theme, activeTheme), [theme, activeTheme]);
+  const failingChecks = auditChecks.filter((check) => !check.passes);
+  const globalIssueCount = failingChecks.filter((check) => !check.component).length;
+  const componentIssueCount = (id: ComponentId) => failingChecks.filter((check) => check.component === id).length;
   useEffect(() => {
     if (!ready) return;
     const url = googleFontUrl(theme.fontFamily);
@@ -436,6 +451,13 @@ export default function Studio() {
 
   const cssOutput = useMemo(() => exportCSS({ themes: system.themes }), [system.themes]);
   const output = format === "css" ? cssOutput : JSON.stringify(system, null, 2);
+
+  function applyPalette(palette: GeneratedPalette, group?: string) {
+    update({ ...system, themes: {
+      light: { ...system.themes.light, source: palette.source, global: { ...system.themes.light.global, ...palette.light.tokens } },
+      dark: { ...system.themes.dark, source: palette.source, global: { ...system.themes.dark.global, ...palette.dark.tokens } },
+    } }, group);
+  }
 
   function updateTheme(next: ThemeTokens, mode: PaletteMode = activeTheme, group?: string) {
     update(shareNonColorTokens({ ...system, themes: { ...system.themes, [mode]: next } }, mode), group);
@@ -703,7 +725,10 @@ export default function Studio() {
             {t.overview}
           </NavItem>
           <div className="sidebar-section-label sidebar-foundations-label">{t.sidebarFoundations.toUpperCase()}</div>
-          <NavItem icon={<Icon name="colors" />} href={workspaceHref(view, "colors")} current={selection === "colors"}>Colors</NavItem>
+          <NavItem icon={<Icon name="colors" />} href={workspaceHref(view, "colors")} current={selection === "colors"}
+            ariaLabel={ready && globalIssueCount ? `Colors, ${t.sidebarContrastWarning(globalIssueCount, activeTheme)}` : undefined}
+            end={ready && globalIssueCount > 0 && <span className="nav-indicators"><span className="nav-contrast-warning" title={t.sidebarContrastWarning(globalIssueCount, activeTheme)}><Icon name="warning" size={14} /></span></span>}
+          >Colors</NavItem>
           <NavItem icon={<Icon name="sliders" />} href={workspaceHref(view, "spacing")} current={selection === "spacing"}>Shape &amp; spacing</NavItem>
           <div className="sidebar-divider" />
           <div className="sidebar-section-label">
@@ -724,24 +749,23 @@ export default function Studio() {
               if (!matches.length) return null;
               return <div className="component-group" role="group" aria-label={group.label} key={group.label}>
                 <div className="component-group-label" aria-hidden="true">{group.label}</div>
-                {matches.map((id) => (
-                  <NavItem
+                {matches.map((id) => {
+                  const overridden = Object.keys(theme.components[id]).length > 0;
+                  const issues = ready ? componentIssueCount(id) : 0;
+                  return <NavItem
                     key={id}
                     icon={<Icon name={id} />}
                     current={selection === id}
-                    end={
-                      Object.keys(theme.components[id]).length > 0 && (
-                        <>
-                          <span className="override-dot" aria-hidden="true" title={t.customTitle} />
-                          <span className="sr-only">{t.custom}</span>
-                        </>
-                      )
-                    }
+                    ariaLabel={issues ? `${t.componentNames[id]}, ${t.sidebarContrastWarning(issues, activeTheme)}${overridden ? t.custom : ""}` : undefined}
+                    end={(overridden || issues > 0) && <span className="nav-indicators">
+                      {overridden && <><span className="override-dot" aria-hidden="true" title={t.customTitle} /><span className="sr-only">{t.custom}</span></>}
+                      {issues > 0 && <span className="nav-contrast-warning" title={t.sidebarContrastWarning(issues, activeTheme)}><Icon name="warning" size={14} /></span>}
+                    </span>}
                     href={workspaceHref(view, id)}
                   >
                     {t.componentNames[id]}
-                  </NavItem>
-                ))}
+                  </NavItem>;
+                })}
               </div>;
             })}
             {!componentIds.some((id) => t.componentNames[id].toLowerCase().includes(query.toLowerCase().trim())) && (
@@ -824,37 +848,27 @@ export default function Studio() {
         aria-label={t.editor}
       >
         <div className="editor-title">
-          <Icon name="sliders" />
-          <h2>{t.inspector} · {activeTheme === "light" ? t.light : t.dark}</h2>
+          <Icon name={selection === "colors" ? "colors" : isGlobal ? "sliders" : component} />
+          <h2>{selection === "colors" ? "Global colors" : isGlobal ? t.inspector : t.componentTokens(t.componentNames[component])} · {activeTheme === "light" ? t.light : t.dark}</h2>
+          {ready && (selection === "colors" || !isGlobal) && <div className="editor-title-actions">
+            <ColorPairDialog key={`${collection.activeId}-${activeTheme}-${selection}`} checks={auditChecks} mode={activeTheme} component={isGlobal ? undefined : component} onNavigate={navigateToColorToken} />
+            {selection === "colors" && <ColorBuilderDialog key={`${collection.activeId}-${workspaceRevision}`} system={system} onFinish={finishEdit} onApply={applyPalette} />}
+          </div>}
           <a className="mobile-preview-link" href="#workspace-content">{view === "design" ? t.backToPreview : t.backToCode}</a>
         </div>
 
-        <fieldset disabled={!ready} className="editor-fields">
+        <fieldset disabled={!ready} className={`editor-fields${!isGlobal || selection === "colors" ? " editor-fields--compact" : ""}`}>
           <legend className="sr-only">{t.editTokens(activeTheme === "light" ? t.light : t.dark)}</legend>
-          <div className="editor-intro">
-            <span className="scope-icon"><Icon name={isGlobal ? "sliders" : component} size={18} /></span>
+          {isGlobal && selection !== "colors" && <div className="editor-intro">
+            <span className="scope-icon"><Icon name="sliders" size={18} /></span>
             <div>
-              <h3>{selection === "colors" ? "Global colors" : selection === "spacing" ? "Global shape & spacing" : isGlobal ? t.foundations : t.componentTokens(t.componentNames[component])}</h3>
-              <p>{isGlobal ? t.foundationsHint : t.inheritComponent}</p>
-              <p>{selection === "spacing" ? t.sharedThemes : selection === "colors" ? t.themeOnly(activeTheme) : t.mixedScope}</p>
+              <h3>{selection === "spacing" ? "Global shape & spacing" : t.foundations}</h3>
+              <p>{t.foundationsHint}</p>
+              <p>{selection === "spacing" ? t.sharedThemes : t.mixedScope}</p>
             </div>
-          </div>
-          {ready && (
-            <div hidden={!isGlobal || selection === "spacing"}>
-              <ColorBuilder
-                key={workspaceRevision}
-                system={system}
-                onFinish={finishEdit}
-                onApply={(palette, group) => {
-                  update({ ...system, themes: {
-                    light: { ...system.themes.light, source: palette.source, global: { ...system.themes.light.global, ...palette.light.tokens } },
-                    dark: { ...system.themes.dark, source: palette.source, global: { ...system.themes.dark.global, ...palette.dark.tokens } },
-                  } }, group);
-                }}
-              />
-            </div>
-          )}
-          {selection !== "spacing" && <ContrastReport key={`${activeTheme}-${selection}`} theme={theme} mode={activeTheme} component={isGlobal ? undefined : component} />}
+          </div>}
+          {ready && selection === "overview" && <ColorBuilder key={workspaceRevision} system={system} onFinish={finishEdit} onApply={applyPalette} />}
+          {selection === "overview" && <ContrastReport key={activeTheme} theme={theme} mode={activeTheme} />}
           {(
             [
               {
@@ -885,6 +899,7 @@ export default function Studio() {
                     field={field}
                     value={values[field.key as keyof typeof values]}
                     impact={isGlobal ? undefined : tokenImpact(component, field.key as keyof ComponentTokens)}
+                    highlighted={highlightedTarget?.selection === selection && highlightedTarget.inputId === `token-${field.key}`}
                     derivedOutline={!isGlobal && component === "badge" && field.key === "border" && !Object.hasOwn(theme.components.badge, "border")
                       ? toCSSVariables(theme, activeTheme)["--badge-neutral-outline"] : undefined}
                     overridden={

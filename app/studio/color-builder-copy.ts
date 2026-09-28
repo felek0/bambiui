@@ -1,6 +1,8 @@
 // UI copy only; token names, audit IDs and CSS/JSON identifiers remain stable.
 export const colorBuilderCopy = {
   builder: "Color builder",
+  openBuilder: "Open color builder",
+  closeBuilder: "Close color builder",
   autoIntro: "Choose a brand color to update light and dark together. Component overrides and dimensions stay unchanged.",
   bothSource: "Source for both themes: ",
   differentSources: "Theme sources differ; choose a color to update both. Light source: ",
@@ -19,6 +21,11 @@ export const colorBuilderCopy = {
   reviewWarnings: (count: string) => `Review ${count} contrast warnings`,
   reviewPairs: "Review checked pairs",
   pairResults: "Contrast pair results",
+  componentPairs: (name: string) => `${name} color pairs`,
+  componentPairStatus: (name: string, failures: number, total: number) => failures
+    ? `${name} color pairs: ${failures} of ${total} need attention`
+    : `${name} color pairs: ${total} checked, no issues found`,
+  closePairs: "Close color pair results",
   pass: "Pass",
   belowTarget: "Below target",
   required: "required",

@@ -51,6 +51,7 @@ export const copy = {
     library: "Design system navigation", feel: "Make it feel like you.", workspace: "Workspace", sidebarFoundations: "Foundations", overview: "Overview",
     globalTokens: "Global tokens", components: "Components", search: "Search components", find: "Find a component…",
     customTitle: "Has custom tokens", custom: ", has custom tokens", noComponents: "No components found.",
+    sidebarContrastWarning: (count: number, mode: string) => `${count} checked color ${count === 1 ? "pair needs" : "pairs need"} attention in ${mode} theme`,
     tip: "Small tokens. Big possibilities.", tipDetail: "Start with your foundations, then make every component your own.", builtWith: "Built with Base UI",
     overviewTitle: "Your design system", componentTitle: (name: string) => name,
     overviewIntro: "One place to shape your foundations and see them in action.", componentIntro: "Fine-tune the details. Every change is reflected in real time.", live: "Live preview",
@@ -61,7 +62,7 @@ export const copy = {
     jumpToTokens: "Edit tokens", backToPreview: "Back to preview", backToCode: "Back to code",
     editor: "Design token editor", inspector: "Token inspector", scope: "Token scope", component: "Component", editTokens: (mode: string) => `Edit ${mode} theme tokens`,
     foundations: "The foundations", componentTokens: (name: string) => `${name} tokens`, foundationsHint: "Shared across every component.",
-    inheritComponent: "Most values inherit global tokens; derived colors use component roles. Reset an override to reconnect.",
+
     colors: "Colors", shape: "Shape & spacing", resetGlobal: "Reset global tokens", resetComponent: "Reset component overrides", changes: "Changes apply instantly",
     confirmGlobal: (mode: string) => `Reset ${mode} global colors, shared font family, shape and spacing? Color scale and component overrides will be kept; the other theme’s colors will not change.`,
     confirmComponent: (mode: string, name: string) => `Reset ${mode} ${name} color overrides and shared sizing overrides to global tokens?`,

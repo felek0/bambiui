@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { auditSystemColors } from "./color-audit.ts";
+import { auditSystemColors, colorCheckTargets } from "./color-audit.ts";
 import { contrastRatio, deriveRoleColors, generatePalette } from "./color-engine.ts";
 import { componentIds, defaultSystem, parseDesignSystem, resolveComponent, toCSSVariables } from "./tokens.ts";
 
@@ -20,6 +20,23 @@ function allPass(theme, mode) {
   assert.deepEqual(checks.filter((c) => !c.passes).map((c) => `${c.id}: ${c.ratio}`), [], mode);
   return checks;
 }
+
+test("checked pairs point to real editable sources, not raw scale stops", () => {
+  const theme = fresh();
+  for (const check of auditSystemColors(theme)) {
+    const targets = colorCheckTargets(check);
+    for (const target of Object.values(targets)) {
+      if (!target) continue;
+      const fields = target.selection === "colors" ? theme.global : resolveComponent(theme, target.selection);
+      assert.equal(typeof fields[target.key], "string", `${check.id}: ${target.selection}.${target.key}`);
+    }
+  }
+  const targets = colorCheckTargets(byId().get("checkbox.boundary"));
+  assert.deepEqual(targets.ink, { selection: "checkbox", key: "border" });
+  assert.deepEqual(targets.surface, { selection: "colors", key: "background" });
+  assert.deepEqual(colorCheckTargets(byId().get("text.success")).ink, { selection: "colors", key: "success", derived: true });
+  assert.deepEqual(colorCheckTargets(byId().get("badge.neutral.solid.boundary")).ink, { selection: "badge", key: "foreground" });
+});
 
 test("known ratios and unrounded threshold decisions", () => {
   const theme = fresh();

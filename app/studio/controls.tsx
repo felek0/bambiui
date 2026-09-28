@@ -89,12 +89,14 @@ SegmentedControl.Item = function SegmentedControlItem(
 export function NavItem({
   icon,
   current = false,
+  ariaLabel,
   end,
   children,
   href,
 }: {
   icon: ReactNode;
   current?: boolean;
+  ariaLabel?: string;
   end?: ReactNode;
   children: ReactNode;
   href: string;
@@ -103,6 +105,7 @@ export function NavItem({
     <Link
       className="nav-item"
       aria-current={current ? "page" : undefined}
+      aria-label={ariaLabel}
       href={href}
     >
       {icon}

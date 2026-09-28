@@ -495,12 +495,30 @@ button:disabled {
 .search-field input:focus-visible {
   outline: none;
 }
+.nav-indicators {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 6px;
+  margin-left: auto;
+}
+.nav-contrast-warning {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 23px;
+  height: 23px;
+  border: 1px solid var(--studio-color-warning);
+  border-radius: 5px;
+  background: var(--studio-color-warning-subtle);
+  color: var(--studio-color-warning);
+}
 .override-dot {
   width: 5px;
   height: 5px;
   border-radius: 50%;
   background: var(--studio-color-accent);
-  margin-left: auto;
 }
 .sidebar-bottom {
   margin-top: auto;
@@ -845,9 +863,17 @@ button:disabled {
   color: var(--studio-color-text-muted);
 }
 .editor-title h2 {
+  min-width: 0;
   font-size: 12px;
   color: var(--studio-color-text-secondary);
   font-weight: 600;
+}
+.editor-title-actions {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 6px;
+  margin-left: auto;
 }
 .mobile-editor-link,
 .mobile-preview-link { display: none; }
@@ -884,6 +910,7 @@ button:disabled {
   border-radius: 7px;
   color: var(--studio-color-text-faint);
 }
+
 .editor-intro h3 {
   font-size: 12px;
   font-weight: 600;
@@ -941,12 +968,23 @@ button:disabled {
   border-top: 1px solid var(--studio-color-border-subtle);
   margin-top: 20px;
 }
+.editor-fields--compact > .token-section:first-of-type {
+  padding-top: 0;
+  border-top: 0;
+  margin-top: 0;
+}
 .color-fields {
   display: grid;
   gap: 15px;
 }
 .token-control {
   min-width: 0;
+}
+.token-control[data-highlighted] {
+  border-radius: 6px;
+  outline: 2px solid var(--studio-color-warning);
+  outline-offset: 5px;
+  background: var(--studio-color-warning-subtle);
 }
 .token-input {
   display: flex;
@@ -1365,6 +1403,11 @@ button.inherit-button {
   }
   .editor-title {
     padding-inline: 20px;
+    flex-wrap: wrap;
+  }
+  .editor-title:has(.editor-title-actions) .mobile-preview-link {
+    flex-basis: 100%;
+    justify-content: flex-end;
   }
   .token-input input:not([type="color"]) {
     font-size: 16px;

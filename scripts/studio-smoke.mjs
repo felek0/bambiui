@@ -361,10 +361,16 @@ try {
   });
   await check('one preset applies both themes atomically and preserves geometry and overrides',async()=>{
     await navigate('design','colors');
-    await click(q('[data-palette-builder] > summary'));
+    assert.equal(await evaluate(`!!${q('.editor-intro')}`),false,'Colors uses the compact inspector header');
+    assert.equal(await evaluate(`!!${q('[aria-label="Current contrast checks"]')}`),false,'Colors report is not inline');
+    assert.ok(await evaluate(`${q('.editor-title h2')}.textContent.startsWith('Global colors · ')`));
+    assert.ok(await evaluate(`(()=>{const buttons=[...document.querySelectorAll('.editor-title-actions button')],header=${q('.editor-title')}.getBoundingClientRect();return buttons.length===2 && buttons.every(button=>button.getBoundingClientRect().right<=header.right)})()`),'color actions belong at the right edge of the title');
+    await click(q('[aria-label="Open color builder"]'));
+    await wait(`!!${q('[data-palette-builder][open]')}`);
     const before=await stored();
     await click(q('[aria-label="Apply Iris to both themes"]'));
     const after=await stored();
+    await click(q('[aria-label="Close color builder"]'));
     for(const mode of ['light','dark']) {
       assert.equal(after.themes[mode].source,'#7660d5');
       assert.equal(after.themes[mode].global.radius,before.themes[mode].global.radius);
@@ -376,6 +382,7 @@ try {
     assert.notEqual(after.themes.light.global.background,after.themes.dark.global.background);
   });
   await check('valid hex applies immediately; invalid input leaves persisted palettes unchanged',async()=>{
+    await click(q('[aria-label="Open color builder"]'));
     await fill('input[id$="-source"]','#abc');
     assert.equal(await evaluate(`${q('input[id$="-source"]')}.getAttribute('aria-invalid')`),'true');
     const before=await stored();
@@ -386,6 +393,7 @@ try {
     await fill('input[id$="-source"]','#gggggg');
     assert.deepEqual(await stored(),after);
     await fill('input[id$="-source"]','#287c60');
+    await click(q('[aria-label="Close color builder"]'));
   });
   await check('editing the selected global background recolors the grid without touching the other theme',async()=>{
     const before=await stored();
@@ -579,13 +587,49 @@ try {
     for(const [token] of examples) await fill(`#token-${token}`,String(original.themes.light.global[token]));
   });
   await check('contrast warnings follow manual edits and exported CSS/JSON keep both themes',async()=>{
+    await navigate('design');
+    assert.ok(await evaluate(`!!${q('[aria-label="Current contrast checks"] summary')}`),'Overview keeps its global contrast report');
+    await navigate('design','colors');
+    assert.equal(await evaluate(`!!${q('[aria-label="Current contrast checks"]')}`),false,'Colors no longer has an inline report');
+    const globalPairs='.editor-title-actions button[aria-label*="System color pairs"]';
+    await click(q(globalPairs));
+    await wait(`!!${q('[aria-label="Contrast pair results"]')}`);
+    assert.ok(await evaluate(`${q('[aria-label="Contrast pair results"]')}.children.length > 50`),'global dialog shows every checked pair');
+    await click(q('[aria-label="Close color pair results"]'));
+    const globalForeground=await evaluate(`${q('#token-foreground')}.value`);
+    await fill('#token-foreground',await evaluate(`${q('#token-background')}.value`));
+    await wait(`!!${q('.studio-sidebar a[href="/colors"] .nav-contrast-warning')}`);
+    assert.ok((await evaluate(`${q('.studio-sidebar a[href="/colors"]')}.getAttribute('aria-label')`)).includes('need attention'));
+    assert.equal(await evaluate(`${q(globalPairs)}.hasAttribute('data-failing')`),true,'Colors nav and modal use the same global pairs');
+    await fill('#token-foreground',globalForeground);
     await navigate('design','button');
     const fillColor = await evaluate(`${q('#token-background')}.value`);
     await fill('#token-foreground',fillColor);
-    assert.equal(await evaluate(`${q('[aria-label="Current contrast checks"]')}.hasAttribute('data-failing')`),true);
-    assert.ok(await evaluate(`${q('[aria-label="Current contrast checks"] summary')}.textContent.includes('warnings')`));
-    await click(q('[aria-label="Current contrast checks"] summary'));
+    const trigger='.editor-title-actions button[aria-label*="color pairs"]';
+    assert.ok(await evaluate(`${q('.editor-title h2')}.textContent.startsWith('Button tokens · ')`));
+    assert.equal(await evaluate(`!!${q('.editor-intro')}`),false,'component inspector must not repeat its title or description');
+    assert.equal(await evaluate(`${q('.editor-title > svg path')}.getAttribute('d') === ${q('.studio-sidebar a[href="/button"] svg path')}.getAttribute('d')`),true,'inspector title uses the component icon');
+    assert.ok(await evaluate(`(()=>{const button=${q(trigger)}.getBoundingClientRect(),header=${q('.editor-title')}.getBoundingClientRect();return Math.abs(header.right-button.right-18)<3})()`),'component color pair action aligns to the inspector right edge');
+    assert.equal(await evaluate(`${q(trigger)}.hasAttribute('data-failing')`),true);
+    assert.ok((await evaluate(`${q(trigger)}.getAttribute('aria-label')`)).includes('need attention'));
+    const buttonLink='.studio-sidebar a[href="/button"]';
+    await wait(`!!${q(`${buttonLink} .nav-contrast-warning`)}`);
+    assert.ok((await evaluate(`${q(buttonLink)}.getAttribute('aria-label')`)).includes('need attention'));
+    assert.ok(await evaluate(`!!${q(`${buttonLink} .override-dot`)}`),'contrast warning must coexist with the override marker');
+    assert.equal(await evaluate(`!!${q('[aria-label="Current contrast checks"]')}`),false,'component checks must not occupy the inspector');
+    await click(q(trigger));
+    await wait(`!!${q('[aria-label="Contrast pair results"]')}`);
     assert.ok(await evaluate(`${q('[data-contrast-check="button.foreground"]')}?.textContent.includes('Below target')`));
+    assert.ok(await evaluate(`!!${q('[aria-label="Contrast pair results"] li:not([data-failing])')}`),'modal must show passing pairs too');
+    assert.ok(await evaluate(`${q('[aria-label="Contrast pair results"]')}.children.length > 2`));
+
+    await click(q('[aria-label="Close color pair results"]'));
+    await wait(`!${q('[aria-label="Contrast pair results"]')}`);
+    assert.equal(await evaluate(`document.activeElement===${q(trigger)}`),true,'closing the modal returns focus to the status icon');
+    const initialMode=await evaluate(`document.documentElement.dataset.studioTheme`);
+    await click(named(themeControl + ' button',initialMode === 'light' ? 'Dark' : 'Light'));
+    assert.equal(await evaluate(`!!${q(`${buttonLink} .nav-contrast-warning`)}`),await evaluate(`${q(trigger)}.hasAttribute('data-failing')`),'sidebar warning follows the active theme');
+    await click(named(themeControl + ' button',initialMode === 'light' ? 'Light' : 'Dark'));
     const data=await stored();
     await click(q('[aria-label="Export tokens"]'));
     await click(named('[aria-label="Export format"] button','JSON'));
@@ -597,8 +641,26 @@ try {
     await click(q('[aria-label="Close export dialog"]'));
     await wait(`!${q('.export-dialog')}`);
   });
+  await check('contrast pair actions open the correct component and highlight editable sources',async()=>{
+    await navigate('design','colors');
+    const globalBackground = await evaluate(`${q('#token-background')}.value`);
+    await navigate('design','checkbox');
+    await fill('#token-border',globalBackground);
+    await navigate('design','colors');
+    await click(q('.editor-title-actions button[aria-label*="System color pairs"]'));
+    await wait(`!!${q('[data-contrast-check="checkbox.boundary"]')}`);
+    assert.ok(await evaluate(`!!${q('[data-contrast-check="checkbox.boundary"][data-failing]')}`));
+    await click(q('[data-contrast-check="checkbox.boundary"] button'));
+    await wait(`location.pathname==='/checkbox' && document.activeElement?.id==='token-border' && !!${q('#token-border')}.closest('[data-highlighted]')`);
+    assert.ok(await evaluate(`!!${q('[data-specimen="checkbox"][data-selected]')}`));
+    await click(q('.editor-title-actions button[aria-label*="Checkbox color pairs"]'));
+    await click(named('[data-contrast-check="checkbox.boundary"] button','Edit global background'));
+    await wait(`location.pathname==='/colors' && document.activeElement?.id==='token-background' && !!${q('#token-background')}.closest('[data-highlighted]')`);
+    await reload();
+  });
   await check('same expanded demo tree survives theme, routes and history in the persistent layout',async()=>{
     await navigate('design','button');
+    await stableCamera();
     await click(named(themeControl + ' button','Light'));
     await click(named('[data-specimen="button"] button','Get started'));
     await navigate('design','input');
@@ -902,6 +964,7 @@ try {
       assert.ok(await evaluate('document.documentElement.scrollWidth <= innerWidth'),`mobile overflow: ${view}/${id}`);
       assert.ok(await evaluate(`${q(viewNav)}.getBoundingClientRect().right <= innerWidth && ${q(themeControl)}.getBoundingClientRect().right <= innerWidth`),`view/theme controls overflow: ${view}/${id}`);
       if(view === 'design') assert.ok(await evaluate(`${q(`[data-canvas-unit="${id}"]`)}.getClientRects().length>0`));
+      if(view === 'design' && (id === 'colors' || ids.includes(id))) assert.ok(await evaluate(`(()=>{const h=${q('.editor-title')}.getBoundingClientRect(),a=${q('.editor-title-actions')}.getBoundingClientRect(),back=${q('.mobile-preview-link')}.getBoundingClientRect();return Math.abs(h.right-a.right-20)<3 && back.top>=a.bottom})()`),`mobile inspector actions and preview link must not compete: ${id}`);
       if(view === 'design' && id === 'spacing') {
         await evaluate(`${q('[data-foundation="spacing"]')}.scrollIntoView({block:'start',behavior:'instant'})`);
         await capture('studio-375-spacing');
@@ -921,9 +984,10 @@ try {
       assert.equal(await evaluate(`[...document.querySelectorAll('.theme-pane')].filter(e=>e.getClientRects().length).length`),1);
     }
     await navigate('design','colors');
-    if(!await evaluate(`${q('[data-palette-builder]')}.open`))await click(q('[data-palette-builder] > summary'));
+    await click(q('[aria-label="Open color builder"]'));
     const {nodes}=await send('Accessibility.getFullAXTree');
-    for(const name of ['Design theme','Light','Dark','Source brand color'])assert.ok(nodes.some(node=>!node.ignored && node.name?.value===name),`AX name: ${name}`);
+    for(const name of ['Source brand color','Close color builder'])assert.ok(nodes.some(node=>!node.ignored && node.name?.value===name),`AX name: ${name}`);
+    await click(q('[aria-label="Close color builder"]'));
   });
   await check('mobile document scroll and touch gestures remain native',async()=>{
     await send('Emulation.setDeviceMetricsOverride',{width:375,height:812,deviceScaleFactor:1,mobile:true});
@@ -995,8 +1059,9 @@ try {
     await click(q('[aria-label="Undo change"]'));
     assert.deepEqual(await stored(),before);
     await navigate('design','colors');
-    if(!await evaluate(`${q('[data-palette-builder]')}.open`)) await click(q('[data-palette-builder] > summary'));
+    await click(q('[aria-label="Open color builder"]'));
     await click(q('[aria-label="Apply Ocean to both themes"]'));
+    await click(q('[aria-label="Close color builder"]'));
     assert.equal((await stored()).themes.dark.source,'#247db3');
     await click(q('[aria-label="Undo change"]'));
     assert.deepEqual(await stored(),before);
