@@ -13,6 +13,12 @@ Bu belge özgün incelemenin bulgularını ve o tarihteki doğrulama sonucunu ko
 
 Güncel doğrulama: 114 unit/snippet testi, lint, TypeScript, production build ve Chromium smoke başarılı. İzole Checkbox Server Component build'i önceki fazda geçti; bu değişiklikte yeniden çalıştırılmadı. Bu sonuçlar manuel erişilebilirlik kabulü veya hydration tarayıcı testi yerine geçmez.
 
+## Güncel görünüm kararı · kullanıcı geri bildirimi sonrası
+
+Son onaylanan karar: Studio sabit nötr yüzeyler kullanır. Header, sidebar, inspector ve canvas dış zemini Light'ta `#FAFAFA`, Dark'ta `#202020` olur; canvas araçları, Develop ve export penceresi aynı yüzey ailesini izler. Kullanıcının background veya primary renginden editör rengi türetilmez. Alanlar ince çizgiler, boşluk ve seçili durumlarla ayrılır. Önizleme kendi paletini, logo marka rengini, durum göstergeleri semantik renklerini korur. Kullanıcının tokenları/export çıktısı değiştirilmez. Önceki renk türetme denemeleri bu kararın yerini tutmaz.
+
+Header/sidebar/inspector, dark export portalı ve tema geçişi Chromium smoke ile doğrulandı; son lint ve production build/TypeScript başarılı. Desktop Light/Dark ve mobil Dark görüntüleri incelendi. Önceki bölümlerdeki tek açık editör önerileri tarihsel değerlendirmedir; bu karar onların yerini alır. Manuel erişilebilirlik kabulü hâlâ açıktır.
+
 ## Kapsam ve yöntem
 
 Hedef: local-first tasarım sistemi playground'unda foundation düzenleme → komponent üzerinde doğrulama → geliştirici referansı → CSS/JSON aktarımı akışının güvenilirliği.
@@ -143,3 +149,45 @@ Kabul: Eklenen her tokenın tanımlı tüketicisi, birimi, varsayılanı, tema k
 - Manuel VoiceOver, browser-native zoom ve kullanıcı görev testi yapılmadı.
 
 Smoke başarısızlığı için ilk adım: Kamera hareketi sonrası hedefin viewport içinde ve doğru hit target olduğunu doğrulamak, sonra aynı etkileşimi görünür hedef üzerinden tekrar üretmek. Kanıt olmadan yalnız timeout artırmak veya uygulama navigasyonunu değiştirmek çözüm sayılmaz.
+
+## Görsel yön denemesi: Studio ile Design önizlemesinin sınırı
+
+Durum (2026-09-27): **Orta-koyu matte prototipi kullanıcı geri bildirimiyle geri alındı.** Uygulanacak görsel yön henüz kararlaştırılmadı; önceki açık Studio görünümü ve marka renkli logo korundu. İnceleme görsellerinde açık önizleme beyaz sidebar/inspector ile birleşiyor; koyu önizleme ise açık editörün yanında geniş, siyah bir blok gibi duruyor. Bu, öncelikle **örneğin sınırı ve çalışma alanının kime ait olduğunun anlaşılması** sorunu. Ekran görüntüleri kullanıcı tercihini veya erişilebilirlik kabulünü tek başına kanıtlamaz.
+
+### Seçenekler ve tercih
+
+| Seçenek | Avantaj | Risk / karar |
+| --- | --- | --- |
+| Editör kromunu kullanıcının `primary` rengine uydurmak | Marka hissi verebilir | Düzenleme sırasında kontrollerin rengi ve kontrastı oynar; Studio ile tasarlanan sistemi karıştırır. **Reddedildi.** Logo küçük marka vurgusu olarak renkli kalabilir. |
+| Tüm Studio'yu sabit koyu yapmak | Açık örneği belirginleştirir | Koyu örnek yine editöre karışabilir; uzun inspector/code okumasını ve tüm kontrol yüzeylerini yeniden tasarlamayı gerektirir. Mevcut tek açık editör kararını değiştirir. **Şimdilik seçilmedi.** |
+| Açık nötr editörü koruyup Design alanında sabit orta-koyu nötr bir çalışma zemini (matte) ve sınırlı, gerçek renkli örnek kullanmak | Açık/koyu örneğe ayrı bir sahne ve tutarlı editör kimliği verir; Develop ve token editörü değişmez | Alan kaybı ve siyaha/matte rengine yakın örnekte sınır kaybı riski. **Prototiplendi ve görsel olarak reddedildi; yeniden uygulanmamalı.** |
+
+**İlke:** Studio araçları Studio renkleriyle, örnek yalnız kullanıcı `--ds-*` renkleriyle çizilir. Zemini orta-koyu seçmek önizlemeyi karartmak, üzerine opak katman koymak veya kullanıcı tokenını değiştirmek anlamına gelmez. Matte tek başına her renkte ayırt edicilik garantisi vermez; görünür bir çerçeve/keyline gerekir. Editör için yeni kullanıcı tarafından düzenlenebilir token, kalıcı görünüm ayarı veya kullanıcı `primary` renginden türetilen kontrol rengi eklenmez. İleride ayrı bir Studio koyu modu ancak bağımsız tercih ve görev testiyle değerlendirilebilir; Light/Dark önizleme anahtarı Studio görünüm anahtarı değildir.
+
+### Reddedilen prototipin uygulama taslağı (yeniden uygulama talimatı değildir)
+
+1. **Sınırı ayır ve prototiple:** `app/globals.css` içindeki `.workspace-content[data-design] .preview-canvas` ve `.preview-frame` üzerinde kullanıcı `--preview-background` / `--preview-foreground` boyamasını kaldırıp sabit Studio matte ve Studio metin rengi kullan. `app/studio/studio.tsx` içindeki `previewColors` aktarımını yalnız gerçekten gerekli tüketicilere indir; `app/studio/preview.tsx` içindeki `ThemePane` / `app/studio/preview.module.css` içindeki `.viewport` kullanıcı `--ds-background` ve diğer renklerle **gerçek önizleme** olarak kalsın. Develop, inspector, kaydedilen tema ve CSS/JSON export bu değişimden etkilenmesin.
+2. **Sahneyi sınırla:** Desktop'ta üstteki Undo/Redo ve Light/Dark kontrollerinin üst şeridini matte üzerinde bırak; önizleme viewport'una ölçülü kenar boşluğu ve belirgin, temadan bağımsız çerçeve ver. `width: 100%` ve `height: 100%` zincirini göz önünde bulundurarak kullanılabilir pan/zoom alanını veya Fit hesaplarını kazara küçültme; görünür alan değişirse Fit geometrisini uyumlu kıl. Çok açık, çok koyu ve matte ile aynı renkte arka planlarda çerçeveyi doğrula; gerekirse sabit çift katmanlı açık/koyu keyline veya yalnız sınırın yerel aydınlığına göre çizilen çizgi kullan, kontrol paletini `primary`'ye bağlama. Focus çizgisi ve forced-colors sınırı kaybolmamalı.
+3. **Dar ekrana ayrı davran:** 375px ve 200% native zoom/reflow'da gutter'ı küçült, örneği ekrana sığdır; `@media (max-width: 760px)` içindeki doğal akış ve `@media (max-width: 640px)` içindeki sayfa kaydırmasını koru. Yeni yatay taşma, zorunlu iç içe scroll veya üst kontrollerle içerik çakışması yaratma.
+4. **Doğrula, sonra karar ver:** Desktop ve 375px ekran görüntülerini Light/Dark ile karşılaştır; beyaz, siyah, matte ile eşleşen, doygun ve düşük kontrastlı özel arka planlarla sınırı test et. Pan/zoom/Fit, örneğe tıklama, tokena gitme, tema değiştirme, klavye odağı ve görünür kontrol isimleri için smoke/regresyon kontrolü yap. VoiceOver, forced-colors ve native %200 zoom'u manuel kabul et; bunlar yapılmadan erişilebilirlik tamamlandı deme. Kısa görev denemesinde kullanıcının 'Studio aracı mı, tasarlanan sistem mi?' ayrımını ve Light/Dark geçişinin neyi değiştirdiğini doğru okuyup okumadığını gözle; sonuçlara göre matte tonunu veya çerçeveyi ayarla, otomatik olarak bütün editörü koyulaştırma.
+
+**O prototip için teknik kabul taslağı (görsel kabul sağlanmadı):** Her iki tema ve uç renklerde örnek sınırı görünür; Studio araçlarının metni/ikonları ve focus durumu kullanıcının renklerinden bağımsız, okunur kalır (normal metin için en az 4.5:1, anlam taşıyan sınır/ikonlar için en az 3:1 hedefle ve test et). Önizlemenin piksel renkleri, export, tema kayıtları ve Develop çıktısı değişmez. Desktop pan/zoom/Fit ile mobil doğal kaydırma çalışır; 375px ve native %200'de içerik/kontrol çakışmaz. Önceki prototip otomatik testleri geçse de görsel geri bildirim olumsuzdu; otomatik test görsel kabul değildir. Manuel VoiceOver/forced-colors/%200 zoom ve kullanıcı görev testi hâlâ açık.
+
+**Geri bildirim sonrası ikinci deneme:** Sorun yalnız canvas çevresindeki koyu çerçevenin açık nötr Studio ile uyumsuzluğu olarak netleşti. Koyu matte/çift katmanlı çerçeve yerine mevcut Studio canvas yüzeyi (`--studio-color-canvas`) kontrollerin arkasında sürdürülür; tema rengi yalnız önizlemede kalır, sınır tek ince nötr çizgidir ve desktop gutter 8px'tir. Mobil doğal akış korunur. Bu uygulama da görsel olarak kullanıcı tarafından henüz onaylanmadı.
+
+### Bütünsel renk ve yerleşim iyileştirmesi · 2026-09-27
+
+Kaynak CSS, desktop Light/Dark, mobil canvas ve inspector görüntüleri değerlendirildi. Açık nötr Studio korunuyor; marka logosu ve anlam taşıyan başarı/uyarı renkleri nötrleştirilmiyor. Kullanıcı paleti, tipografisi ve komponent ölçüleri değiştirilmiyor.
+
+| Bulgu | Uygulanan iyileştirme |
+| --- | --- |
+| Menü seçimi ve hover aynı derecede silik | Seçime daha belirgin nötr yüzey, kalın metin ve ince sol işaret; hover daha hafif kaldı. |
+| Inspector kapsam/override metinleri 8–9px, font alanları ikinci kez içeri girintili | Kritik yardımcı metinler 10–11px'e çıkarıldı; foundation alanları diğer tokenlarla hizalandı. |
+| Panellerin aralıkları ve kontrollerin yükseklikleri tutarsız | Sidebar/inspector genişlikleri dengelendi; header kompaktlaştırıldı, inspector başlığı canvas kontrol şeridiyle hizalandı; ortak kontrol yüksekliği 36px oldu. İki sütunlu sayısal alanların etiket/override satırlarına aynı yükseklik ayrıldı. |
+| Color builder ve kontrast özetinde gereksiz boşluk | Bölüm ve içerik aralıkları sıkılaştırıldı; açılan kontrast listesi 240px ile sınırlandı. Uyarı renkleri ve presetlerin 36px hedefi korundu. |
+| Mobil header rastgele satır kırıyor | Marka ve Design/Develop ilk satır, token bağlantısı ve dosya işlemleri ikinci satır; mevcut DOM/klavye sırası korundu. |
+| Canvas araçları örneğin fontunu miras alıyor | Araçlar açıkça Studio fontunu kullanıyor; viewport focus göstergesi de kullanıcı foreground'undan bağımsızlaştırıldı. |
+| Dar desktop'ta yardım ve zoom aynı alanı kaplıyor | Dar canvas container'ında yardım üst sıraya taşındı; 820/980/1100px genişliklerinde çakışmazlık testi eklendi. |
+| Studio 640px, örnek 760px'te doğal akışa geçiyor | Eşikler 760px'te eşitlendi; 700px'te inspector'ın örneği takip ettiği ve sayfanın taşmadığı sınandı. |
+
+Doğrulama: 114 unit/snippet testi, lint, production build/TypeScript ve Chromium smoke geçti. Görsel kontrol otomatik erişilebilirlik kabulünün yerine geçmez; VoiceOver, native %200 zoom ve forced-colors manuel kabulü açık. Yeni görsel yönün kullanıcı onayı da ayrıca gerekli.

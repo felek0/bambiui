@@ -1,39 +1,51 @@
 .builder,
 .report {
   min-width: 0;
-  padding-block: 16px;
+  padding-block: 10px;
   border-top: 1px solid var(--studio-color-border);
   color: var(--studio-color-text);
   font-size: 12px;
-  line-height: 1.6;
+  line-height: 1.5;
   overflow-wrap: anywhere;
 }
 
 .builder > summary,
 .report h3 {
+  margin: 0;
   font-size: 12px;
   font-weight: 600;
 }
 
 .builder p,
 .report p {
+  margin: 0;
   color: var(--studio-color-text-secondary);
   font-size: 11px;
 }
 
 .report[data-failing] {
-  border-left: 3px solid var(--studio-color-warning);
-  padding-left: 10px;
+  border-left: 2px solid var(--studio-color-warning);
+  padding-inline: 8px;
   background: var(--studio-color-warning-subtle);
 }
-.report[data-failing] > p { color: var(--studio-color-warning); }
+
+.report[data-failing] > p {
+  color: var(--studio-color-warning);
+  font-weight: 500;
+}
 
 .builder > summary {
+  padding-block: 2px;
   cursor: pointer;
 }
 
-.builder[open] > :not(summary) { margin-top: 12px; }
-.report > * + * { margin-top: 5px; }
+.builder[open] > p:first-of-type { margin-top: 6px; }
+.builder > label { margin-top: 8px; }
+.builder > .sourceInput { margin-top: 4px; }
+.builder > .sourceInput + p { margin-top: 4px; }
+.builder > .presets { margin-top: 8px; }
+.builder > .feedback { margin-top: 8px; }
+.report > * + * { margin-top: 4px; }
 
 .builder > summary:focus-visible {
   outline: var(--studio-focus-ring);
@@ -41,30 +53,43 @@
 }
 
 .builder label {
+  display: block;
   font-weight: 500;
 }
 
 .sourceInput {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px;
+  gap: 6px;
+  padding: 3px 6px;
   border: 1px solid var(--studio-color-border-strong);
   border-radius: 7px;
   background: var(--studio-color-surface);
 }
 
 .sourceInput input[type="color"] {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
+  padding: 2px;
   flex-shrink: 0;
+  border: 1px solid var(--studio-color-border);
+  border-radius: 4px;
+  background: var(--studio-color-surface);
+  cursor: pointer;
 }
 
 .sourceInput input[type="text"] {
   width: 100%;
   min-width: 0;
-  min-height: 32px;
+  min-height: 28px;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--studio-color-text);
   font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .sourceInput:has([aria-invalid="true"]) {
@@ -75,8 +100,8 @@
 .details summary:focus-visible,
 .checks:focus-visible,
 .builder button:focus-visible {
-  outline: 2px solid var(--studio-color-text);
-  outline-offset: 3px;
+  outline: var(--studio-focus-ring);
+  outline-offset: var(--studio-focus-ring-offset);
 }
 
 .presets,
@@ -86,10 +111,16 @@
   gap: 8px;
 }
 
+.presets {
+  gap: 6px;
+}
+
 .presets button {
   height: auto;
   min-height: 36px;
-  padding: 6px 8px;
+  max-width: 100%;
+  padding: 4px 7px;
+  white-space: normal;
 }
 
 .presets button > span {
@@ -114,6 +145,20 @@
   white-space: normal;
 }
 
+.feedback {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--studio-color-border);
+}
+
+.feedback code {
+  color: var(--studio-color-text);
+  font-size: 11px;
+}
+
 .feedback:empty {
   display: none;
 }
@@ -123,13 +168,13 @@
 }
 
 .details > summary {
-  padding-block: 8px;
+  padding-block: 4px;
   cursor: pointer;
   font-weight: 500;
 }
 
 .details > p {
-  margin-block: 8px;
+  margin-block: 4px 6px;
 }
 
 .details .warning {
@@ -228,26 +273,35 @@
 
 .checks {
   display: grid;
-  gap: 12px;
-  max-height: 360px;
+  gap: 6px;
+  max-height: 240px;
+  margin: 0;
+  padding: 2px;
   overflow: auto;
+  scrollbar-gutter: stable;
   list-style: none;
 }
 
 .checks li {
   display: grid;
-  gap: 4px;
-  padding: 10px;
-  border: 1px solid var(--studio-color-border-strong);
+  gap: 2px;
+  padding: 6px 8px;
+  border: 1px solid var(--studio-color-border);
   border-radius: 6px;
   background: var(--studio-color-surface);
   font-size: 11px;
 }
 
 .checks strong {
-  font-weight: 500;
+  font-weight: 600;
+}
+
+.checks span {
+  color: var(--studio-color-text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
 .checks code {
-  font-size: 10px;
+  color: var(--studio-color-text-secondary);
+  font-size: 11px;
 }

@@ -26,6 +26,13 @@
 }
 
 
+.canvasControls,
+.canvasHelp {
+  font-family: var(--studio-font-family);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .canvasControls {
   position: absolute;
   z-index: 2;
@@ -39,7 +46,7 @@
   border-radius: 8px;
   background: var(--studio-color-surface);
   color: var(--studio-color-text);
-  color-scheme: light;
+  color-scheme: var(--studio-color-scheme);
   box-shadow: 0 3px 12px var(--studio-color-shadow);
 }
 
@@ -54,7 +61,7 @@
   border-radius: 8px;
   background: var(--studio-color-surface);
   color: var(--studio-color-text-secondary);
-  color-scheme: light;
+  color-scheme: var(--studio-color-scheme);
   box-shadow: 0 3px 12px var(--studio-color-shadow);
   pointer-events: none;
 }
@@ -96,8 +103,8 @@
 }
 
 .viewport:focus-visible {
-  outline: 2px solid var(--ds-foreground);
-  outline-offset: 2px;
+  outline: var(--studio-focus-ring);
+  outline-offset: 3px;
 }
 
 .viewport {
@@ -560,6 +567,12 @@
 }
 
 
+
+@container (max-width: 640px) {
+  .canvasHelp {
+    bottom: 64px;
+  }
+}
 
 @media (max-width: 760px) {
   .preview {

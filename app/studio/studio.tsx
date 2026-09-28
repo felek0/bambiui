@@ -251,6 +251,11 @@ export default function Studio() {
     : componentIds.find((id) => id === routeComponent) ?? "overview";
   const [query, setQuery] = useState("");
   const [activeTheme, setActiveTheme] = useState<PaletteMode>("light");
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.studioTheme = activeTheme;
+    return () => { delete root.dataset.studioTheme; };
+  }, [activeTheme]);
   const [scaleRole, setScaleRole] = useState<ColorScaleRole>("primary");
   const [editTarget, setEditTarget] = useState<{ selection: "colors" | "spacing"; inputId: string } | null>(null);
 
@@ -350,8 +355,6 @@ export default function Studio() {
     return () => stylesheet.remove();
   }, [ready, theme.fontFamily]);
   const previewColors = {
-    "--preview-background": theme.global.background,
-    "--preview-foreground": theme.global.foreground,
     "--preview-grid-dot": mixColors(theme.global.foreground, theme.global.background, 0.18),
   } as CSSProperties;
   const isGlobal = selection === "overview" || selection === "colors" || selection === "spacing";

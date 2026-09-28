@@ -24,6 +24,15 @@ const viewNav = '.studio-header nav.view-switch';
 const themeControl = '[aria-label="Design theme"]';
 const camera = '[data-canvas]';
 
+async function assertStudioSurfaces(mode) {
+  const surface = mode === 'dark' ? 'rgb(32, 32, 32)' : 'rgb(250, 250, 250)';
+  await wait(`getComputedStyle(${q('.preview-frame')}).backgroundColor === ${JSON.stringify(surface)}`);
+  for (const selector of ['.studio-header','#token-editor','.studio-sidebar','.preview-frame']) {
+    assert.equal(await evaluate(`getComputedStyle(${q(selector)}).backgroundColor`),surface,`${selector} must retain the fixed editor surface`);
+  }
+  assert.equal(await evaluate(`getComputedStyle(${q('.theme-pane')}).borderColor`),mode === 'dark' ? 'rgb(133, 133, 143)' : 'rgb(113, 113, 122)');
+}
+
 const moved = (a,b) => Math.hypot(a.x-b.x,a.y-b.y);
 async function wheel(point, deltaX, deltaY, modifiers = 0) {
   await send('Input.dispatchMouseEvent',{type:'mouseWheel',...point,deltaX,deltaY,modifiers});
@@ -209,7 +218,7 @@ try {
     assert.equal(await evaluate(`document.querySelectorAll('[data-ds-theme="dark"]').length`),0);
     assert.equal(await evaluate(`getComputedStyle(document.documentElement).colorScheme`),'light');
     assert.equal(await evaluate(`getComputedStyle(document.documentElement).getPropertyValue('--studio-color-accent').trim()`),'#3f3f46');
-    assert.equal(await evaluate(`getComputedStyle(document.documentElement).getPropertyValue('--studio-color-border').trim()`),'#e4e4e7');
+    assert.equal(await evaluate(`document.documentElement.style.getPropertyValue('--studio-color-border')`),'');
     assert.equal(await evaluate(`getComputedStyle(${q('.brand-mark')}).color`),'rgb(232, 103, 60)');
     assert.equal(await evaluate(`getComputedStyle(${q('.header-actions .studio-button[data-variant="primary"]')}).backgroundColor`),'rgb(63, 63, 70)');
     assert.equal(await evaluate(`getComputedStyle(${q('.header-actions .studio-button[data-variant="primary"]')}).color`),'rgb(255, 255, 255)');
@@ -218,8 +227,11 @@ try {
     assert.notEqual(await evaluate(`getComputedStyle(document.documentElement).getPropertyValue('--studio-color-accent').trim()`),await evaluate(`${q('[data-ds-theme="light"]')}.style.getPropertyValue('--ds-primary').trim()`));
     assert.equal(await evaluate(`${q('[data-ds-theme="light"]')}.style.getPropertyValue('--ds-on-primary').trim()`),'#291b15');
     assert.equal(await evaluate(`${q('#workspace-content')}.dataset.design`),'true');
-    assert.equal(await evaluate(`${q('#workspace-content')}.style.getPropertyValue('--preview-background').trim()`),'#fff8f6');
-    assert.equal(await evaluate(`${q('#workspace-content')}.style.getPropertyValue('--preview-background').trim()`),await evaluate(`${q('[data-ds-theme="light"]')}.style.getPropertyValue('--ds-background').trim()`));
+    assert.equal(await evaluate(`${q('#workspace-content')}.style.getPropertyValue('--preview-background').trim()`),'');
+    await assertStudioSurfaces('light');
+    assert.equal(await evaluate(`getComputedStyle(${q(canvas)}).backgroundColor`),'rgb(255, 248, 246)');
+
+    assert.ok(await evaluate(`(()=>{const area=${q('.preview-frame')}.getBoundingClientRect(),specimen=${q('.theme-pane')}.getBoundingClientRect();return specimen.left>=area.left+7 && specimen.right<=area.right-7 && specimen.top>=area.top+54 && specimen.bottom<=area.bottom-7})()`));
     assert.equal(await evaluate(`${q('.canvas-label')}`),null);
     for(const foundation of ['colors','spacing','text']) assert.ok(await evaluate(`${q(`[data-foundation="${foundation}"]`)}.getBoundingClientRect().width > 0 && ${q(`[data-foundation="${foundation}"]`)}.getBoundingClientRect().height > 0`),`visible ${foundation} foundation`);
     assert.equal(await evaluate(`getComputedStyle(${q('.theme-pane:not([hidden]) section[aria-label="Button preview"]')}).borderTopWidth`),'0px');
@@ -311,7 +323,12 @@ try {
     await click(named(themeControl + ' button','Dark'));
     assert.ok(await evaluate(`${q('.editor-title')}.textContent.includes('Dark')`));
     assert.equal(await evaluate(`${q('.theme-pane:not([hidden])')}.getAttribute('aria-label')`),'Dark preview');
-    assert.equal(await evaluate(`${q('#workspace-content')}.style.getPropertyValue('--preview-background').trim()`),await evaluate(`${q('[data-ds-theme="dark"]')}.style.getPropertyValue('--ds-background').trim()`));
+    await assertStudioSurfaces('dark');
+    assert.equal(await evaluate(`getComputedStyle(document.documentElement).colorScheme`),'dark');
+    assert.notEqual(await evaluate(`getComputedStyle(${q(canvas)}).backgroundColor`),'rgb(255, 248, 246)');
+    await click(q('[aria-label="Export tokens"]'));
+    assert.equal(await evaluate(`getComputedStyle(${q('.export-dialog')}).backgroundColor`),await evaluate(`getComputedStyle(${q('.studio-header')}).backgroundColor`),'portals must use the same chrome theme');
+    await click(q('[aria-label="Close export dialog"]'));
     assert.equal(await evaluate(`${q('.theme-pane [data-ds-theme]')}.dataset.dsTheme`),'dark');
     await capture('studio-desktop-dark');
     await navigate('design','button');
@@ -363,7 +380,13 @@ try {
   await check('editing the selected global background recolors the grid without touching the other theme',async()=>{
     const before=await stored();
     await fill('#token-background','#123456');
-    assert.equal(await evaluate(`${q('#workspace-content')}.style.getPropertyValue('--preview-background').trim()`),'#123456');
+    assert.equal(await evaluate(`${q('[data-ds-theme="dark"]')}.style.getPropertyValue('--ds-background').trim()`),'#123456');
+    await assertStudioSurfaces('dark');
+    for (const [background, rendered] of [['#ffffff','rgb(255, 255, 255)'],['#000000','rgb(0, 0, 0)'],['#fafafa','rgb(250, 250, 250)']]) {
+      await fill('#token-background',background);
+      assert.equal(await evaluate(`getComputedStyle(${q(canvas)}).backgroundColor`),rendered);
+      await assertStudioSurfaces('dark');
+    }
     assert.deepEqual((await stored()).themes.light,before.themes.light);
     await fill('#token-background',before.themes.dark.global.background);
   });
@@ -396,6 +419,7 @@ try {
     await wait(`${q('[data-ds-theme="light"]')}.style.getPropertyValue('--ds-font-family').includes('Menlo')`);
     for(const mode of ['light','dark']) assert.equal((await stored()).themes[mode].fontFamily,'mono');
     assert.ok((await evaluate(`getComputedStyle(${q('[data-specimen="text"] [data-variant="paragraph"]')}).fontFamily`)).includes('Menlo'));
+    assert.equal(await evaluate(`getComputedStyle(${q('[aria-label="Canvas zoom"]')}).fontFamily`),await evaluate('getComputedStyle(document.body).fontFamily'),'canvas tools must not inherit the specimen font');
     await click(q('[aria-label="Export tokens"]'));
     assert.ok((await evaluate(`${q('[aria-label="Exported tokens"]')}.textContent`)).includes('--ds-font-family: ui-monospace'));
     await click(q('[aria-label="Close export dialog"]'));
@@ -772,6 +796,19 @@ try {
       await capture(`studio-develop-${id}`);
     }
     await navigate('design','button');
+  });
+  await check('narrow desktop tools do not overlap; 700px uses natural page layout',async()=>{
+    for (const width of [1100,980,820]) {
+      await send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});
+      await delay(100);
+      assert.ok(await evaluate(`(()=>{const help=${q('[class*="canvasHelp"]')}.getBoundingClientRect(),zoom=${q('[aria-label="Canvas zoom"]')}.getBoundingClientRect();return help.right<=zoom.left || help.left>=zoom.right || help.bottom<=zoom.top || help.top>=zoom.bottom})()`),`canvas tools overlap at ${width}px`);
+      assert.ok(await evaluate('document.documentElement.scrollWidth <= innerWidth'),`overflow at ${width}px`);
+    }
+    await send('Emulation.setDeviceMetricsOverride',{width:700,height:900,deviceScaleFactor:1,mobile:false});
+    await delay(100);
+    assert.equal(await evaluate(`getComputedStyle(${q(canvas)}).overflowY`),'visible');
+    assert.ok(await evaluate(`(()=>{const editor=${q('#token-editor')}.getBoundingClientRect(),workspace=${q('.studio-main')}.getBoundingClientRect();return editor.top>=workspace.bottom-1})()`),'inspector must follow the naturally scrolling preview');
+    assert.ok(await evaluate('document.documentElement.scrollWidth <= innerWidth'));
   });
   await check('responsive layout, English accessible names and selectable preview themes',async()=>{
     await send('Emulation.setDeviceMetricsOverride',{width:375,height:812,deviceScaleFactor:1,mobile:false});
