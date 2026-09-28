@@ -81,6 +81,7 @@ function TokenControl({
   derivedOutline,
   impact,
   highlighted,
+  compact = false,
   onChange,
   onReset,
   onFinish,
@@ -91,6 +92,7 @@ function TokenControl({
   derivedOutline?: string;
   impact?: string;
   highlighted?: boolean;
+  compact?: boolean;
   onChange: (value: string | number) => void;
   onReset: () => void;
   onFinish: () => void;
@@ -98,14 +100,17 @@ function TokenControl({
   const label = t.tokenLabels[field.key];
   const [draft, setDraft] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [usageOpen, setUsageOpen] = useState(false);
+  const [sliderOpen, setSliderOpen] = useState(false);
   const isColor = field.type === "color";
   const displayed = draft ?? String(value);
   const valid = isValidToken(field, displayed);
   return (
-    <div className="token-control" data-highlighted={highlighted || undefined}>
-      <div className="flex items-center justify-between gap-2">
+    <div className="token-control" data-highlighted={highlighted || undefined} data-compact={compact || undefined}>
+      <div className="token-control-heading flex items-center justify-between gap-2">
         <label
           htmlFor={`token-${field.key}`}
+          title={compact ? label : undefined}
           className="text-[12px] studio-text-secondary"
         >
           {label}
@@ -124,15 +129,17 @@ function TokenControl({
             }}
           >
             <Icon name="reset" size={11} />
-            {t.override}
+            {!compact && t.override}
           </button>
         )}
         {overridden === false && (
           <span className="inherit-button" title={t.inheritedTip}>
             <Icon name="link" size={11} />
-            {t.inherited}
+            {!compact && t.inherited}
           </span>
         )}
+        {compact && overridden !== undefined && <span className="sr-only" id={`source-${field.key}`}>{overridden ? "Component override" : t.inheritedTip}</span>}
+        {compact && impact && <button type="button" className="token-usage-trigger" aria-label={`${label} usage details`} title={`${label} usage details`} aria-expanded={usageOpen} aria-controls={usageOpen ? `token-${field.key}-usage` : undefined} onClick={() => setUsageOpen(!usageOpen)}>ⓘ</button>}
       </div>
       <div className="token-input" onBlurCapture={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget)) onFinish();
@@ -157,7 +164,7 @@ function TokenControl({
           step="any"
           spellCheck={false}
           aria-invalid={!valid}
-          aria-describedby={!valid ? `error-${field.key}` : undefined}
+          aria-describedby={[compact && overridden !== undefined ? `source-${field.key}` : null, !valid ? `error-${field.key}` : null].filter(Boolean).join(" ") || undefined}
           value={displayed}
           onChange={(event) => {
             const next = event.target.value;
@@ -169,12 +176,13 @@ function TokenControl({
         />
         <span>{isColor ? "HEX" : "px"}</span>
       </div>
+      {compact && !isColor && <button type="button" className="token-slider-trigger" aria-label={`${sliderOpen ? "Hide" : "Show"} ${label} slider`} title={`${sliderOpen ? "Hide" : "Show"} ${label} slider`} aria-expanded={sliderOpen} aria-controls={sliderOpen ? `token-${field.key}-slider` : undefined} onClick={() => setSliderOpen(!sliderOpen)}><Icon name="sliders" size={14} /></button>}
       {derivedOutline && <p className="text-[11px] studio-text-secondary">{t.derivedOutline}: {derivedOutline}</p>}
-      {impact && <p className="text-[11px] studio-text-secondary">{impact}</p>}
-      {!isColor && (
+      {!isColor && (!compact || sliderOpen) && (
         <input
           onBlur={onFinish}
           className="token-range"
+          id={`token-${field.key}-slider`}
           type="range"
           aria-label={t.slider(label)}
           min={field.min}
@@ -186,6 +194,7 @@ function TokenControl({
           }}
         />
       )}
+      {compact && impact && usageOpen && <p className="token-usage-copy" id={`token-${field.key}-usage`}>{impact}</p>}
       {!valid && (
         <p className="text-[10px] studio-text-danger" id={`error-${field.key}`}>
           {isColor
@@ -857,7 +866,7 @@ export default function Studio() {
           <a className="mobile-preview-link" href="#workspace-content">{view === "design" ? t.backToPreview : t.backToCode}</a>
         </div>
 
-        <fieldset disabled={!ready} className={`editor-fields${!isGlobal || selection === "colors" ? " editor-fields--compact" : ""}`}>
+        <fieldset disabled={!ready} className={`editor-fields${!isGlobal || selection === "colors" ? " editor-fields--compact" : ""}${!isGlobal ? " editor-fields--component" : ""}`}>
           <legend className="sr-only">{t.editTokens(activeTheme === "light" ? t.light : t.dark)}</legend>
           {isGlobal && selection !== "colors" && <div className="editor-intro">
             <span className="scope-icon"><Icon name="sliders" size={18} /></span>
@@ -897,6 +906,7 @@ export default function Studio() {
                   <TokenControl
                     key={`${workspaceRevision}-${activeTheme}-${selection}-${field.key}`}
                     field={field}
+                    compact={!isGlobal}
                     value={values[field.key as keyof typeof values]}
                     impact={isGlobal ? undefined : tokenImpact(component, field.key as keyof ComponentTokens)}
                     highlighted={highlightedTarget?.selection === selection && highlightedTarget.inputId === `token-${field.key}`}

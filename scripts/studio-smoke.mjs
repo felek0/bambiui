@@ -645,6 +645,14 @@ try {
     await navigate('design','colors');
     const globalBackground = await evaluate(`${q('#token-background')}.value`);
     await navigate('design','checkbox');
+    const usage = `${q('#token-border')}.closest('.token-control').querySelector('.token-usage-trigger')`;
+    assert.equal(await evaluate(`${usage}.getAttribute('aria-expanded')`),'false','usage guidance starts compact');
+    await click(usage);
+    assert.ok(await evaluate(`${usage}.getAttribute('aria-expanded')==='true' && ${q('#token-border')}.closest('.token-control').textContent.includes('Checked box only')`),'token usage guidance remains available');
+    const slider = `${q('#token-radius')}.closest('.token-control').querySelector('.token-slider-trigger')`;
+    assert.equal(await evaluate(`${slider}.getAttribute('aria-expanded')`),'false');
+    await click(slider);
+    assert.ok(await evaluate(`!!${q('#token-radius')}.closest('.token-control').querySelector('input[type="range"]')`),'numeric slider remains available');
     await fill('#token-border',globalBackground);
     await navigate('design','colors');
     await click(q('.editor-title-actions button[aria-label*="System color pairs"]'));
@@ -976,6 +984,10 @@ try {
     assert.equal(await evaluate('location.hash'),'#token-editor');
     assert.equal(await evaluate('document.activeElement.id'),'token-editor');
     await capture('studio-375-inspector');
+    await send('Emulation.setDeviceMetricsOverride',{width:320,height:812,deviceScaleFactor:1,mobile:false});
+    assert.ok(await evaluate('document.documentElement.scrollWidth <= innerWidth'),'compact component inspector must fit 320px');
+    assert.ok(await evaluate(`(()=>{const row=${q('.color-fields .token-input')}.getBoundingClientRect(),input=${q('.color-fields .token-input input[type="text"]')}.getBoundingClientRect();return row.right<=innerWidth && input.width>=65})()`),'compact color field must keep its hex value editable');
+    await send('Emulation.setDeviceMetricsOverride',{width:375,height:812,deviceScaleFactor:1,mobile:false});
     await click(q('.mobile-preview-link'));
     assert.equal(await evaluate('document.activeElement.id'),'workspace-content');
     for(const mode of ['light','dark']) {
