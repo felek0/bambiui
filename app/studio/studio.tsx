@@ -251,7 +251,7 @@ function TypographyControl({ variant, field, value, onChange, onFinish }: {
         aria-label={label} aria-invalid={!valid}
         onChange={(event) => { setDraft(event.target.value); const next = Number(event.target.value); if (event.target.value.trim() && Number.isFinite(next) && next >= field.min && next <= field.max) onChange(next); }}
         onBlur={() => { setDraft(null); onFinish(); }} />
-      <span>{field.unit || "—"}</span>
+      {field.unit && <span>{field.unit}</span>}
     </div>
     {!valid && <span className="studio-text-danger">Use a value from {field.min} to {field.max}.</span>}
   </div>;
@@ -277,6 +277,7 @@ export default function Studio() {
     return () => { delete root.dataset.studioTheme; };
   }, [activeTheme]);
   const [scaleRole, setScaleRole] = useState<ColorScaleRole>("primary");
+  const [selectedTypography, setSelectedTypography] = useState<TypographyVariant>("heading");
   const [editTarget, setEditTarget] = useState<{ selection: Selection; inputId: string } | null>(null);
   const [highlightedTarget, setHighlightedTarget] = useState<{ selection: Selection; inputId: string } | null>(null);
   function navigateToColorToken(target: ColorCheckTarget) {
@@ -943,7 +944,7 @@ export default function Studio() {
           </section>}
           {(selection === "overview" || selection === "text") && <section className="token-section foundation-editor" id="font-family-tokens">
             <div className="section-heading"><h3>Font family</h3><span>{t.sharedThemes}</span></div>
-            <label htmlFor="font-family-preset">Font family preset</label>
+            <div className="font-family-row"><label htmlFor="font-family-preset">Font family</label>
             <select id="font-family-preset" value={theme.fontFamily} onChange={(event) => updateTheme({ ...theme, fontFamily: event.target.value as ThemeTokens["fontFamily"] })}>
               <optgroup label="Local fonts">
                 {fontFamilyPresets.filter((preset) => !googleFontUrl(preset)).map((preset) => <option key={preset} value={preset}>{fontFamilyLabels[preset]}</option>)}
@@ -951,25 +952,26 @@ export default function Studio() {
               <optgroup label="Google Fonts · requires internet">
                 {fontFamilyPresets.filter((preset) => googleFontUrl(preset)).map((preset) => <option key={preset} value={preset}>{fontFamilyLabels[preset]}</option>)}
               </optgroup>
-            </select>
-            <p style={{ fontFamily: resolveFontFamily(theme), fontSize: 18, lineHeight: 1.4 }}>The quick brown fox jumps over the lazy dog.</p>
-            <p>Shared by both themes. Google Fonts load only when selected, sending a request to Google; an internet connection is required. Local presets make no font request. Exported CSS imports the selected Google font; offline viewers use its fallback.</p>
-            {selection === "text" && <Button type="button" onClick={() => updateTheme({ ...theme, fontFamily: defaultSystem.themes[activeTheme].fontFamily })}>Reset font family</Button>}
+            </select></div>
+            <div className="font-family-preview"><p style={{ fontFamily: resolveFontFamily(theme), fontSize: 18, lineHeight: 1.4 }}>Aa Bb 123</p>
+            {selection === "text" && theme.fontFamily !== defaultSystem.themes[activeTheme].fontFamily && <Button type="button" variant="ghost" onClick={() => updateTheme({ ...theme, fontFamily: defaultSystem.themes[activeTheme].fontFamily })}>Reset font family</Button>}</div>
+            {selection === "text" ? <><p>Google Fonts presets request Google when selected.</p><details className="font-family-help"><summary>About font loading</summary><p>Shared by both themes. Google Fonts load only when selected, sending a request to Google; an internet connection is required. Local presets make no font request. Exported CSS imports the selected Google font; offline viewers use its fallback.</p></details></> : <p>Shared by both themes. Google Fonts load only when selected, sending a request to Google; an internet connection is required. Local presets make no font request. Exported CSS imports the selected Google font; offline viewers use its fallback.</p>}
           </section>}
           {selection === "text" && !isGlobal && <section className="token-section foundation-editor" id="typography-tokens">
             <div className="section-heading"><h3>Text styles</h3><span>{t.sharedThemes}</span></div>
-            <p>Typography tokens are shared by both themes and every Text variant.</p>
-            {typographyVariants.map((variant) => <details className="typography-variant" key={variant} open={variant === "heading" || variant === "h1" || undefined}>
-              <summary>{variant === "heading" ? "Legacy heading" : variant.toUpperCase()}</summary>
-              <div className="typography-controls">
-                {typographyFields.map((field) => <TypographyControl key={`${workspaceRevision}-${activeTheme}-${variant}-${field.key}`} variant={variant} field={field}
-                  value={resolveTypography(theme, variant)[field.key]}
-                  onChange={(value) => setTypography(variant, field.key, value)} onFinish={finishEdit} />)}
-                <Button type="button" onClick={() => updateTheme({ ...theme, typography: { ...theme.typography, [variant]: { ...defaultTypography[variant] } } })}>
-                  Reset {variant}
-                </Button>
-              </div>
-            </details>)}
+            <div className="typography-style-row"><label htmlFor="typography-variant">Style</label>
+              <select id="typography-variant" value={selectedTypography} onChange={(event) => setSelectedTypography(event.target.value as TypographyVariant)}>
+                {typographyVariants.map((variant) => <option key={variant} value={variant}>{variant === "heading" ? "Legacy heading" : variant.toUpperCase()}</option>)}
+              </select>
+            </div>
+            <div className="typography-controls">
+              {typographyFields.map((field) => <TypographyControl key={`${workspaceRevision}-${activeTheme}-${selectedTypography}-${field.key}`} variant={selectedTypography} field={field}
+                value={resolveTypography(theme, selectedTypography)[field.key]}
+                onChange={(value) => setTypography(selectedTypography, field.key, value)} onFinish={finishEdit} />)}
+            </div>
+            {typographyFields.some((field) => resolveTypography(theme, selectedTypography)[field.key] !== defaultTypography[selectedTypography][field.key]) && <Button type="button" variant="ghost" className="typography-reset" onClick={() => updateTheme({ ...theme, typography: { ...theme.typography, [selectedTypography]: { ...defaultTypography[selectedTypography] } } })}>
+              Reset {selectedTypography}
+            </Button>}
           </section>}
           <Button
             className="reset-button"
@@ -1004,7 +1006,7 @@ export default function Studio() {
             {isGlobal ? t.resetGlobal : t.resetComponent}
           </Button>
         </fieldset>
-        <div className="editor-footer"><span className="tiny-orbit" />{t.changes}</div>
+
       </aside>
     </div>
   );

@@ -489,9 +489,11 @@ try {
   });
   await check('H1–H6 typography controls independently update the single Text canvas unit and Develop',async()=>{
     await navigate('design','text');
+    assert.equal(await evaluate(`${q('#typography-variant')}.options.length`),10,'all typography styles remain selectable');
     for(const [variant,size] of [['h1',54],['h2',45],['h3',36],['h4',30],['h5',25],['h6',22]]) {
-      const details=`.typography-variant:has(#typography-${variant}-fontSize)`;
-      if(!await evaluate(`${q(details)}.open`)) await click(q(`${details} summary`));
+      await evaluate(`(()=>{const select=${q('#typography-variant')};select.value=${JSON.stringify(variant)};select.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+      await wait(`!!${q(`#typography-${variant}-fontSize`)}`);
+      assert.equal(await evaluate(`document.querySelectorAll('.typography-control').length`),4,'only the selected style is editable at once');
       await fill(`#typography-${variant}-fontSize`,String(size));
       assert.equal(await evaluate(`getComputedStyle(${q(`[data-specimen="text"] [data-variant="${variant}"]`)}).fontSize`),`${size}px`);
       for(const mode of ['light','dark']) assert.equal((await stored()).themes[mode].typography[variant].fontSize,size);
@@ -973,6 +975,10 @@ try {
       assert.ok(await evaluate(`${q(viewNav)}.getBoundingClientRect().right <= innerWidth && ${q(themeControl)}.getBoundingClientRect().right <= innerWidth`),`view/theme controls overflow: ${view}/${id}`);
       if(view === 'design') assert.ok(await evaluate(`${q(`[data-canvas-unit="${id}"]`)}.getClientRects().length>0`));
       if(view === 'design' && (id === 'colors' || ids.includes(id))) assert.ok(await evaluate(`(()=>{const h=${q('.editor-title')}.getBoundingClientRect(),a=${q('.editor-title-actions')}.getBoundingClientRect(),back=${q('.mobile-preview-link')}.getBoundingClientRect();return Math.abs(h.right-a.right-20)<3 && back.top>=a.bottom})()`),`mobile inspector actions and preview link must not compete: ${id}`);
+      if(view === 'design' && id === 'text') {
+        await evaluate(`${q('#typography-tokens')}.scrollIntoView({block:'start',behavior:'instant'})`);
+        await capture('studio-375-text');
+      }
       if(view === 'design' && id === 'spacing') {
         await evaluate(`${q('[data-foundation="spacing"]')}.scrollIntoView({block:'start',behavior:'instant'})`);
         await capture('studio-375-spacing');

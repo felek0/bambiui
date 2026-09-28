@@ -63,7 +63,7 @@ export const copy = {
     editor: "Design token editor", inspector: "Token inspector", scope: "Token scope", component: "Component", editTokens: (mode: string) => `Edit ${mode} theme tokens`,
     foundations: "The foundations", componentTokens: (name: string) => `${name} tokens`, foundationsHint: "Shared across every component.",
 
-    colors: "Colors", shape: "Shape & spacing", resetGlobal: "Reset global tokens", resetComponent: "Reset component overrides", changes: "Changes apply instantly",
+    colors: "Colors", shape: "Shape & spacing", resetGlobal: "Reset global tokens", resetComponent: "Reset component overrides",
     confirmGlobal: (mode: string) => `Reset ${mode} global colors, shared font family, shape and spacing? Color scale and component overrides will be kept; the other theme’s colors will not change.`,
     confirmComponent: (mode: string, name: string) => `Reset ${mode} ${name} color overrides and shared sizing overrides to global tokens?`,
     override: "Override", inherited: "Global", derivedOutline: "Neutral outline (derived)", resetOverride: (name: string) => `Reset ${name.toLowerCase()} override`, resetTip: "Reset to global token", inheritedTip: "Inherited from global tokens",
