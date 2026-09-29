@@ -37,9 +37,11 @@ test("checked pairs point to real editable sources, not raw scale stops", () => 
       }
     }
   }
-  const targets = colorCheckTargets(byId().get("checkbox.boundary"));
-  assert.deepEqual(targets.ink, { selection: "checkbox", key: "border" });
+  const targets = colorCheckTargets(byId().get("checkbox.checked.boundary"));
+  assert.deepEqual(targets.ink, { selection: "checkbox", key: "border", variant: "checked" });
   assert.deepEqual(targets.surface, { selection: "colors", key: "background" });
+  assert.deepEqual(colorCheckTargets(byId().get("checkbox.invalid-unchecked.boundary")).ink,
+    { selection: "checkbox", key: "border", variant: "invalidUnchecked" });
   assert.deepEqual(colorCheckTargets(byId().get("text.success")).ink, { selection: "colors", key: "success", derived: true });
   assert.deepEqual(colorCheckTargets(byId().get("badge.neutral.solid.boundary")).ink, { selection: "badge", key: "border", variant: "solid.neutral" });
   assert.deepEqual(colorCheckTargets(byId().get("button.secondary.hover")).ink, { selection: "button", key: "hoverBackground", variant: "secondary" });
@@ -66,7 +68,7 @@ test("both normalized defaults pass finite, deterministic, pure diagnostics", ()
     assert.deepEqual(theme, before);
     assert.deepEqual(auditSystemColors(theme, mode), checks);
     assert.equal(new Set(checks.map((c) => c.id)).size, checks.length);
-        assert.equal(checks.length, 136);
+    assert.equal(checks.length, 150);
     assert.equal(checks.filter((c) => !c.component && c.minimum === 4.5).length, 17);
     for (const c of checks) {
       assert.ok(Number.isFinite(c.ratio) && c.ratio >= 1 && c.ratio <= 21);
@@ -96,8 +98,12 @@ test("equal component overrides still fail without changing globals", () => {
     const theme = fresh(mode);
     for (const id of componentIds) theme.components[id] = { foreground: "#123456", background: "#123456" };
     const checks = byId(theme, mode);
+    const checkIds = {
+      button: "button.primary.text", input: "input.default.text", card: "card.outlined.text",
+      badge: "badge.neutral.solid", switch: "switch.checked.text", checkbox: "checkbox.checked.text",
+    };
     for (const id of componentIds.filter((id) => id !== "text")) {
-      const check = checks.get(id === "button" ? "button.primary.text" : id === "badge" ? "badge.neutral.solid" : `${id}.foreground`);
+      const check = checks.get(checkIds[id]);
       assert.equal(check.ratio, 1, id);
       assert.equal(check.passes, false, id);
       assert.equal(check.minimum, ["switch", "checkbox"].includes(id) ? 3 : 4.5);
@@ -136,7 +142,7 @@ test("input readOnly retains its surface; filled card uses global ink and descri
   theme.global.muted = "#445566";
   const checks = byId(theme);
   const v = toCSSVariables(theme);
-  pair(checks.get("input.placeholder"), theme.global.mutedForeground, "#123456");
+  pair(checks.get("input.default.placeholder"), theme.global.mutedForeground, "#123456");
   pair(checks.get("input.readonly.placeholder"), theme.global.mutedForeground, "#123456");
   pair(checks.get("input.readonly.text"), "#ff0000", "#123456");
   pair(checks.get("input.error"), theme.global.danger, theme.global.background);
@@ -172,8 +178,8 @@ test("unchecked states are opaque global colors; invalid borders and focus match
     for (const id of ["switch", "checkbox"]) {
       pair(checks.get(`${id}.unchecked.boundary`), g.border, g.background, 3);
       pair(checks.get(`${id}.unchecked.boundary.inside`), g.border, g.muted, 3);
-      pair(checks.get(`${id}.invalid.boundary`), v["--ds-danger-outline"], g.background, 3);
-      pair(checks.get(`${id}.unchecked.invalid.boundary.inside`), v["--ds-danger-outline"], g.muted, 3);
+      pair(checks.get(`${id}.invalid-checked.boundary`), v["--ds-danger-outline"], g.background, 3);
+      pair(checks.get(`${id}.invalid-unchecked.boundary.inside`), v["--ds-danger-outline"], g.muted, 3);
     }
     pair(checks.get("switch.unchecked.thumb"), g.foreground, g.muted, 3);
     assert.equal(checks.has("checkbox.unchecked.mark"), false);
@@ -184,7 +190,7 @@ test("unchecked states are opaque global colors; invalid borders and focus match
   }
 });
 
-test("button hover/active retain ink and use derived fills; link only underlines", () => {
+test("button hover/active retain ink and audit the actual fill for every variant", () => {
   for (const mode of modes) {
     const theme = fresh(mode);
     theme.components.button = { foreground: "#ffffff", background: "#808080" };
@@ -197,8 +203,11 @@ test("button hover/active retain ink and use derived fills; link only underlines
     ]) {
       for (const state of ["hover", "active"]) pair(checks.get(`button.${variant}.${state}`), ink, v[`${prefix}-${state}`]);
     }
-    for (const state of ["text", "hover", "active"]) pair(checks.get(`button.link.${state}`), v["--ds-primary-on-subtle"], theme.global.background);
-    pair(checks.get("button.outline.hover"), theme.global.foreground, theme.global.muted);
+    pair(checks.get("button.link.text"), v["--button-variant-link-foreground"], theme.global.background);
+    for (const state of ["hover", "active"]) {
+      pair(checks.get(`button.link.${state}`), v["--button-variant-link-foreground"], v[`--button-variant-link-${state}-background`]);
+    }
+    pair(checks.get("button.outline.hover"), theme.global.foreground, v["--button-variant-outline-hover-background"]);
     assert.equal(checks.has("button.link.boundary"), false);
     assert.equal(checks.has("button.ghost.boundary"), false);
   }
@@ -213,10 +222,68 @@ test("absent borders are omitted, focus and marks remain, explicit borders still
   assert.ok(checks.some((c) => c.id === "switch.unchecked.thumb"));
   assert.ok(checks.some((c) => c.id === "input.focus.background"));
   theme.components.input = { borderWidth: 1, border: theme.global.background };
-  assert.equal(byId(theme).get("input.boundary").passes, false);
+  assert.equal(byId(theme).get("input.default.boundary").passes, false);
   theme.components.input.border = "#000000";
-  assert.equal(byId(theme).get("input.boundary").passes, true);
-  assert.equal(byId(theme).has("checkbox.boundary"), false);
+  assert.equal(byId(theme).get("input.default.boundary").passes, true);
+  assert.equal(byId(theme).has("checkbox.checked.boundary"), false);
+});
+
+test("custom borders on normally unbordered variants are audited and route to their controls", () => {
+  const theme = fresh();
+  const sameAsSurface = theme.global.background;
+  theme.variantColors = {
+    button: { ghost: { border: sameAsSurface, borderWidth: 1 } },
+    badge: { "subtle.success": { border: sameAsSurface, borderWidth: 1 } },
+    card: { filled: { border: sameAsSurface, borderWidth: 1 } },
+  };
+  const checks = byId(theme);
+  for (const [id, selection, variant] of [
+    ["button.ghost.boundary", "button", "ghost"],
+    ["badge.success.subtle.boundary", "badge", "subtle.success"],
+    ["card.filled.boundary", "card", "filled"],
+  ]) {
+    const check = checks.get(id);
+    assert.equal(check.passes, false, id);
+    assert.deepEqual(colorCheckTargets(check).ink, { selection, key: "border", variant });
+  }
+});
+
+test("input and choice state overrides are the exact colors audited", () => {
+  const theme = fresh();
+  theme.variantColors = {
+    input: { invalid: { background: "#ffffff", foreground: "#000000", border: "#ff0000" } },
+    checkbox: { invalidUnchecked: { background: "#ffffff", foreground: "#000000", border: "#ffffff" } },
+  };
+  const checks = byId(theme);
+  const variables = toCSSVariables(theme);
+  pair(checks.get("input.invalid.text"), variables["--input-variant-invalid-foreground"], variables["--input-variant-invalid-background"]);
+  pair(checks.get("input.invalid.boundary"), variables["--input-variant-invalid-border"], theme.global.background, 3);
+  pair(checks.get("checkbox.invalid-unchecked.boundary"), variables["--checkbox-variant-invalid-unchecked-border"], theme.global.background, 3);
+  assert.equal(checks.get("checkbox.invalid-unchecked.boundary").passes, false);
+  assert.deepEqual(colorCheckTargets(checks.get("checkbox.invalid-unchecked.boundary")).ink,
+    { selection: "checkbox", key: "border", variant: "invalidUnchecked" });
+});
+
+test("transparent variant surfaces are audited against the global canvas surface", () => {
+  const theme = fresh();
+  theme.variantColors = {
+    button: { ghost: { background: "transparent", hoverBackground: "transparent" } },
+    input: { invalid: { background: "transparent" } },
+    switch: { invalidChecked: { background: "transparent" } },
+    checkbox: { unchecked: { background: "transparent" } },
+    badge: { "subtle.success": { background: "transparent" } },
+    card: { filled: { background: "transparent" } },
+  };
+  const checks = byId(theme);
+  for (const id of [
+    "button.ghost.text", "button.ghost.hover", "input.invalid.text",
+    "switch.invalid-checked.text", "checkbox.unchecked.text",
+    "badge.success.subtle", "card.filled.text", "card.filled.description",
+  ]) {
+    assert.equal(checks.get(id).background, theme.global.background, id);
+    assert.ok(Number.isFinite(checks.get(id).ratio), id);
+  }
+  allPass(theme, "light");
 });
 
 test("legacy v1 and v2 migration preserves invalid manual pairs in both modes", () => {
@@ -228,12 +295,12 @@ test("legacy v1 and v2 migration preserves invalid manual pairs in both modes", 
     const workspace = parseDesignSystem(JSON.stringify({ version, name: "Legacy", global: version === 1 ? global : { ...fresh().global, ...global }, components: fresh().components }));
     for (const mode of modes) {
       const checks = byId(workspace.themes[mode], mode);
-      for (const id of ["global.onPrimary.primary", "global.border.background", "button.primary.text", "input.boundary", "switch.unchecked.boundary", "checkbox.unchecked.boundary"]) assert.equal(checks.get(id).passes, false, `${version}/${mode}/${id}`);
+      for (const id of ["global.onPrimary.primary", "global.border.background", "button.primary.text", "input.default.boundary", "switch.unchecked.boundary", "checkbox.unchecked.boundary"]) assert.equal(checks.get(id).passes, false, `${version}/${mode}/${id}`);
     }
   }
 });
 
-test("generated multi-seed themes pass all six components and match derived helper contract", () => {
+test("generated multi-seed themes pass all component pairs and match derived helper contract", () => {
   for (const seed of ["#e8673c", "#000000", "#ffffff", "#808080", "#ff0000", "#00ff00", "#0000ff", "#ffff00", "#663399"]) {
     const palette = generatePalette(seed);
     for (const mode of modes) {

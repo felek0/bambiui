@@ -94,11 +94,17 @@ export type ColorScaleOverrides = Partial<Record<ColorScaleRole, Partial<Record<
 
 export const componentVariantKeys = {
   button: ["primary", "secondary", "outline", "ghost", "destructive", "link"],
+  input: ["default", "hover", "invalid", "readonly"],
+  switch: ["checked", "unchecked", "invalidChecked", "invalidUnchecked"],
+  checkbox: ["checked", "unchecked", "invalidChecked", "invalidUnchecked"],
   badge: ["solid.neutral", "solid.primary", "solid.success", "solid.warning", "solid.danger", "solid.info", "subtle.neutral", "subtle.primary", "subtle.success", "subtle.warning", "subtle.danger", "subtle.info", "outline.neutral", "outline.primary", "outline.success", "outline.warning", "outline.danger", "outline.info"],
   card: ["outlined", "elevated", "filled"],
 } as const;
 export type ComponentVariantId = keyof typeof componentVariantKeys;
-export type ComponentVariantColorTokens = Partial<Record<"background" | "foreground" | "border" | "hoverBackground" | "activeBackground", string>> & { shadow?: "none" | "sm" | "md" | "lg" };
+export type ComponentVariantColorTokens = Partial<Record<"background" | "foreground" | "border" | "hoverBackground" | "activeBackground", string>> & {
+  borderWidth?: number;
+  shadow?: "none" | "sm" | "md" | "lg";
+};
 export type ComponentVariantColors = Partial<Record<ComponentVariantId, Partial<Record<(typeof componentVariantKeys)[ComponentVariantId][number], ComponentVariantColorTokens>>>>;
 
 export const typographyVariants = ["heading", "h1", "h2", "h3", "h4", "h5", "h6", "paragraph", "label", "caption"] as const;
@@ -241,6 +247,8 @@ export function shareNonColorTokens(system: DesignSystem, from: PaletteMode = "l
       const targetTokens = { ...(next[key] ?? {}) };
       if (sourceTokens?.shadow === undefined) delete targetTokens.shadow;
       else targetTokens.shadow = sourceTokens.shadow;
+      if (sourceTokens?.borderWidth === undefined) delete targetTokens.borderWidth;
+      else targetTokens.borderWidth = sourceTokens.borderWidth;
       if (Object.keys(targetTokens).length) next[key] = targetTokens;
       else delete next[key];
     }
@@ -536,6 +544,7 @@ export function toCSSVariables(
       variables[`--ds-${role}-${kebabCase(key)}`] = colors[key];
     }
   }
+  const shadowValue = (level: string) => level === "none" ? "none" : `var(--ds-shadow-${level})`;
   const button = resolveComponent(theme, "button");
   const buttonDefaults: Record<string, { background: string; foreground: string; border: string }> = {
     primary: { background: button.background, foreground: button.foreground, border: button.border },
@@ -551,13 +560,49 @@ export function toCSSVariables(
     const colors = { ...defaults, ...overrides };
     const prefix = `--button-variant-${variant}`;
     for (const key of ["background", "foreground", "border"] as const) variables[`${prefix}-${kebabCase(key)}`] = colors[key];
+    variables[`${prefix}-border-width`] = cssValue(overrides.borderWidth ?? button.borderWidth);
+    variables[`${prefix}-shadow`] = shadowValue(overrides.shadow ?? "none");
     const derivedBackground = colors.background === "transparent" ? global.background : colors.background;
     const derived = deriveRoleColors(derivedBackground, colors.foreground, global.background, mode, global.muted);
-    variables[`${prefix}-hover-background`] = overrides.hoverBackground ?? (variant === "outline" || variant === "ghost" ? global.muted : derived.hover);
-    variables[`${prefix}-active-background`] = overrides.activeBackground ?? (variant === "outline" || variant === "ghost" ? global.muted : derived.active);
+    variables[`${prefix}-hover-background`] = overrides.hoverBackground ?? (variant === "outline" || variant === "ghost" || variant === "link" ? global.muted : derived.hover);
+    variables[`${prefix}-active-background`] = overrides.activeBackground ?? (variant === "outline" || variant === "ghost" || variant === "link" ? global.muted : derived.active);
   }
   variables["--button-hover"] = variables["--button-variant-primary-hover-background"];
   variables["--button-active"] = variables["--button-variant-primary-active-background"];
+
+  const input = resolveComponent(theme, "input");
+  const inputDefaults = {
+    default: { background: input.background, foreground: input.foreground, border: input.border },
+    hover: { background: input.background, foreground: input.foreground, border: input.border },
+    invalid: { background: input.background, foreground: input.foreground, border: global.danger },
+    readonly: { background: input.background, foreground: input.foreground, border: input.border },
+  } as const;
+  for (const state of componentVariantKeys.input) {
+    const defaults = inputDefaults[state];
+    const overrides = theme.variantColors?.input?.[state] ?? {};
+    const values = { ...defaults, ...overrides };
+    const prefix = `--input-variant-${kebabCase(state)}`;
+    for (const field of ["background", "foreground", "border"] as const) variables[`${prefix}-${field}`] = values[field];
+    variables[`${prefix}-border-width`] = cssValue(overrides.borderWidth ?? input.borderWidth);
+    variables[`${prefix}-shadow`] = shadowValue(overrides.shadow ?? "none");
+  }
+  for (const component of ["switch", "checkbox"] as const) {
+    const resolved = resolveComponent(theme, component);
+    const defaults = {
+      checked: { background: resolved.background, foreground: resolved.foreground, border: resolved.border },
+      unchecked: { background: global.muted, foreground: global.foreground, border: global.border },
+      invalidChecked: { background: resolved.background, foreground: resolved.foreground, border: variables["--ds-danger-outline"] },
+      invalidUnchecked: { background: global.muted, foreground: global.foreground, border: variables["--ds-danger-outline"] },
+    };
+    for (const state of componentVariantKeys[component]) {
+      const overrides = theme.variantColors?.[component]?.[state] ?? {};
+      const values = { ...defaults[state], ...overrides };
+      const prefix = `--${component}-variant-${kebabCase(state)}`;
+      for (const field of ["background", "foreground", "border"] as const) variables[`${prefix}-${field}`] = values[field];
+      variables[`${prefix}-border-width`] = cssValue(overrides.borderWidth ?? resolved.borderWidth);
+      variables[`${prefix}-shadow`] = shadowValue(overrides.shadow ?? "none");
+    }
+  }
 
   const badge = resolveComponent(theme, "badge");
   const tones = ["neutral", "primary", "success", "warning", "danger", "info"] as const;
@@ -573,9 +618,9 @@ export function toCSSVariables(
     const role = badgeRoles[tone];
     const derived = deriveRoleColors(role.fill, role.ink, badge.background, mode, badge.background);
     const defaults = {
-      solid: { background: role.fill, foreground: role.ink, border: role.fill },
-      subtle: { background: derived.subtle, foreground: derived.onSubtle, border: "transparent" },
-      outline: { background: badge.background, foreground: derived.onSubtle, border: tone === "neutral" ? theme.components.badge.border ?? derived.outline : derived.outline },
+      solid: { background: role.fill, foreground: role.ink, border: role.fill, borderWidth: badge.borderWidth, shadow: "none" },
+      subtle: { background: derived.subtle, foreground: derived.onSubtle, border: "transparent", borderWidth: badge.borderWidth, shadow: "none" },
+      outline: { background: badge.background, foreground: derived.onSubtle, border: tone === "neutral" ? theme.components.badge.border ?? derived.outline : derived.outline, borderWidth: badge.borderWidth, shadow: "none" },
     };
     variables[`--badge-${tone}-subtle`] = derived.subtle;
     variables[`--badge-${tone}-on-subtle`] = derived.onSubtle;
@@ -585,6 +630,8 @@ export function toCSSVariables(
       const values = { ...defaults[variant], ...theme.variantColors?.badge?.[key as (typeof componentVariantKeys.badge)[number]] };
       const prefix = `--badge-variant-${variant}-${tone}`;
       for (const field of ["background", "foreground", "border"] as const) variables[`${prefix}-${field}`] = values[field];
+      variables[`${prefix}-border-width`] = cssValue(values.borderWidth);
+      variables[`${prefix}-shadow`] = shadowValue(values.shadow);
       variables[`${prefix}-subtle`] = derived.subtle;
       variables[`${prefix}-on-subtle`] = derived.onSubtle;
       variables[`${prefix}-outline`] = values.border;
@@ -592,19 +639,20 @@ export function toCSSVariables(
   }
   const card = resolveComponent(theme, "card");
   const cardDefaults = {
-    outlined: { background: card.background, foreground: card.foreground, border: card.border, shadow: "none" },
-    elevated: { background: card.background, foreground: card.foreground, border: "transparent", shadow: "lg" },
-    filled: { background: global.muted, foreground: global.foreground, border: "transparent", shadow: "none" },
+    outlined: { background: card.background, foreground: card.foreground, border: card.border, borderWidth: card.borderWidth, shadow: "none" },
+    elevated: { background: card.background, foreground: card.foreground, border: "transparent", borderWidth: card.borderWidth, shadow: "lg" },
+    filled: { background: global.muted, foreground: global.foreground, border: "transparent", borderWidth: card.borderWidth, shadow: "none" },
   } as const;
-  const shadowValue = (level: string) => level === "none" ? "none" : `var(--ds-shadow-${level})`;
   for (const variant of componentVariantKeys.card) {
     const values = { ...cardDefaults[variant], ...theme.variantColors?.card?.[variant] };
     const prefix = `--card-variant-${variant}`;
     variables[`${prefix}-background`] = values.background;
     variables[`${prefix}-foreground`] = values.foreground;
     variables[`${prefix}-border`] = values.border;
+    variables[`${prefix}-border-width`] = cssValue(values.borderWidth);
     variables[`${prefix}-shadow`] = shadowValue(values.shadow);
-    variables[`${prefix}-description`] = descriptionColor(values.foreground, values.background);
+    const descriptionBackground = values.background === "transparent" ? global.background : values.background;
+    variables[`${prefix}-description`] = descriptionColor(values.foreground, descriptionBackground);
   }
   variables["--card-description"] = descriptionColor(card.foreground, card.background);
   variables["--card-filled-description"] = variables["--card-variant-filled-description"];
@@ -789,7 +837,6 @@ function validateTypography(value: unknown, path: string): void {
 function validateVariantColors(value: unknown, path: string): void {
   requireObject(value, path);
   requireKnownKeys(value, Object.keys(componentVariantKeys), path);
-  const allowedFields = ["background", "foreground", "border", "hoverBackground", "activeBackground", "shadow"] as const;
   for (const id of Object.keys(value) as ComponentVariantId[]) {
     const variants = value[id];
     const variantsPath = `${path}.${id}`;
@@ -798,12 +845,21 @@ function validateVariantColors(value: unknown, path: string): void {
     for (const [variant, rawTokens] of Object.entries(variants)) {
       const tokenPath = `${variantsPath}.${variant}`;
       requireObject(rawTokens, tokenPath);
-      requireKnownKeys(rawTokens, allowedFields, tokenPath);
+      const colorFields = id === "button"
+        ? ["background", "foreground", "border", "hoverBackground", "activeBackground"]
+        : ["background", "foreground", "border"];
+      requireKnownKeys(rawTokens, [...colorFields, "borderWidth", "shadow"], tokenPath);
       for (const [field, token] of Object.entries(rawTokens)) {
         if (field === "shadow") {
-          if (id !== "card" || !["none", "sm", "md", "lg"].includes(token as string)) throw new Error(`${tokenPath}.${field} must be a supported card shadow preset`);
-        } else if (typeof token !== "string" || !/^#[0-9a-fA-F]{6}$/.test(token)) {
-          throw new Error(`${tokenPath}.${field} must be a #rrggbb color`);
+          if (!["none", "sm", "md", "lg"].includes(token as string)) throw new Error(`${tokenPath}.${field} must be a supported shadow preset`);
+        } else if (field === "borderWidth") {
+          if (typeof token !== "number" || !Number.isFinite(token) || token < 0 || token > 6) throw new Error(`${tokenPath}.${field} must be a finite number from 0 to 6`);
+        } else {
+          const transparentSurface = token === "transparent"
+            && ["background", "border", "hoverBackground", "activeBackground"].includes(field);
+          if (typeof token !== "string" || (!/^#[0-9a-fA-F]{6}$/.test(token) && !transparentSurface)) {
+            throw new Error(`${tokenPath}.${field} must be a #rrggbb color${field === "foreground" ? "" : " or transparent"}`);
+          }
         }
       }
     }

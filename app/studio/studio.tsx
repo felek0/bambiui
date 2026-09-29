@@ -18,6 +18,7 @@ import {
   componentEditableTokenKeys,
   componentVariantKeys,
   type ComponentVariantId,
+  type ComponentVariantColorTokens,
   colorScaleRoles,
   colorScaleStops,
   typographyFields,
@@ -215,28 +216,49 @@ function TokenControl({
   );
 }
 
-function VariantColorControl({ id, label, value, overridden, highlighted, onChange, onReset }: {
+function VariantColorControl({ id, label, value, overridden, highlighted, allowTransparent = false, onChange, onReset }: {
   id: string;
   label: string;
   value: string;
   overridden: boolean;
   highlighted?: boolean;
+  allowTransparent?: boolean;
   onChange: (value: string) => void;
   onReset: () => void;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const displayed = draft ?? value;
-  const valid = /^#[\da-f]{6}$/i.test(displayed) || displayed === "transparent";
+  const valid = /^#[\da-f]{6}$/i.test(displayed) || (allowTransparent && displayed === "transparent");
   return <div className="variant-token-control" data-highlighted={highlighted || undefined}>
     <label htmlFor={id}>{label}</label>
     <div className="variant-token-input">
       <input type="color" aria-label={`${label} picker`} value={/^#[\da-f]{6}$/i.test(value) ? value : "#ffffff"}
         onChange={(event) => { setDraft(null); onChange(event.target.value); }} />
       <input id={id} type="text" value={displayed} spellCheck={false} aria-invalid={!valid}
-        onChange={(event) => { const next = event.target.value; setDraft(next); if (/^#[\da-f]{6}$/i.test(next) || next === "transparent") onChange(next); }}
+        onChange={(event) => { const next = event.target.value; setDraft(next); if (/^#[\da-f]{6}$/i.test(next) || (allowTransparent && next === "transparent")) onChange(next); }}
         onBlur={() => setDraft(null)} />
       {overridden && <button type="button" aria-label={`Reset ${label} override`} onClick={() => { setDraft(null); onReset(); }}>Reset</button>}
       {!overridden && <span>Inherited</span>}
+    </div>
+  </div>;
+}
+
+function VariantNumberControl({ id, value, overridden, onChange, onReset }: {
+  id: string;
+  value: number;
+  overridden: boolean;
+  onChange: (value: number) => void;
+  onReset: () => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const displayed = draft ?? String(value);
+  return <div className="variant-token-control">
+    <label htmlFor={id}>Border width</label>
+    <div className="variant-token-input">
+      <input id={id} type="number" min="0" max="6" step="0.5" value={displayed}
+        onChange={(event) => { const next = event.target.value; setDraft(next); const number = Number(next); if (next !== "" && Number.isFinite(number) && number >= 0 && number <= 6) onChange(number); }}
+        onBlur={() => setDraft(null)} />
+      {overridden ? <button type="button" aria-label="Reset border width override" onClick={() => { setDraft(null); onReset(); }}>Reset</button> : <span>Inherited</span>}
     </div>
   </div>;
 }
@@ -318,8 +340,9 @@ export default function Studio() {
   const [highlightedTarget, setHighlightedTarget] = useState<{ selection: Selection; inputId: string } | null>(null);
   function navigateToColorToken(target: ColorCheckTarget) {
     const variant = target.variant;
+    const variantSlug = variant?.replaceAll(".", "-").replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
     const inputId = variant
-      ? `variant-color-${target.selection}-${variant.replaceAll(".", "-")}-${target.key}`
+      ? `variant-color-${target.selection}-${variantSlug}-${target.key}`
       : `token-${target.key}`;
     const next = { selection: target.selection, inputId };
     if (variant) setSelectedVariantColor(variant);
@@ -559,11 +582,15 @@ export default function Studio() {
   const variantComponent = (component in componentVariantKeys ? component : null) as ComponentVariantId | null;
   const variantOptions = variantComponent ? componentVariantKeys[variantComponent] : [];
   const variantKey = variantOptions.includes(selectedVariantColor as never) ? selectedVariantColor : variantOptions[0];
-  const variantLabel = (key: string) => key.split(".").map((part) => part[0].toUpperCase() + part.slice(1)).join(" · ");
+  const variantLabel = (key: string) => key.split(".").map((part) => part.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (letter) => letter.toUpperCase())).join(" · ");
+  const variantSlug = variantKey?.replaceAll(".", "-").replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+  const variantStyle = variantComponent && variantKey
+    ? (theme.variantColors?.[variantComponent] as Record<string, ComponentVariantColorTokens> | undefined)?.[variantKey]
+    : undefined;
   function setVariantColor(field: "background" | "foreground" | "border" | "hoverBackground" | "activeBackground", value: string) {
     if (!variantComponent || !variantKey) return;
     const variantColors = structuredClone(theme.variantColors ?? {});
-    const componentColors = { ...(variantColors[variantComponent] ?? {}) } as Record<string, { background?: string; foreground?: string; border?: string; hoverBackground?: string; activeBackground?: string; shadow?: "none" | "sm" | "md" | "lg" }>;
+    const componentColors = { ...(variantColors[variantComponent] ?? {}) } as Record<string, ComponentVariantColorTokens>;
     const tokens = { ...(componentColors[variantKey] ?? {}), [field]: value };
     componentColors[variantKey as never] = tokens as never;
     variantColors[variantComponent] = componentColors as never;
@@ -572,7 +599,7 @@ export default function Studio() {
   function resetVariantColor(field: "background" | "foreground" | "border" | "hoverBackground" | "activeBackground") {
     if (!variantComponent || !variantKey) return;
     const variantColors = structuredClone(theme.variantColors ?? {});
-    const componentColors = { ...(variantColors[variantComponent] ?? {}) } as Record<string, { background?: string; foreground?: string; border?: string; hoverBackground?: string; activeBackground?: string; shadow?: "none" | "sm" | "md" | "lg" }>;
+    const componentColors = { ...(variantColors[variantComponent] ?? {}) } as Record<string, ComponentVariantColorTokens>;
     const tokens = { ...(componentColors[variantKey] ?? {}) };
     delete tokens[field];
     if (Object.keys(tokens).length) componentColors[variantKey as never] = tokens as never;
@@ -581,19 +608,23 @@ export default function Studio() {
     else delete variantColors[variantComponent];
     updateTheme({ ...theme, variantColors }, activeTheme, `variant-color-${activeTheme}-${variantComponent}-${variantKey}-${field}`);
   }
-  function updateVariantShadow(value?: "none" | "sm" | "md" | "lg") {
-    if (!variantComponent || variantComponent !== "card" || !variantKey) return;
+  function updateVariantEffect(field: "borderWidth" | "shadow", value: number | "none" | "sm" | "md" | "lg" | undefined) {
+    if (!variantComponent || !variantKey) return;
     const variantColors = structuredClone(theme.variantColors ?? {});
-    const cardColors = { ...(variantColors.card ?? {}) };
-    const key = variantKey as (typeof componentVariantKeys.card)[number];
-    const tokens = { ...(cardColors[key] ?? {}) };
-    if (value === undefined) delete tokens.shadow;
-    else tokens.shadow = value;
-    if (Object.keys(tokens).length) cardColors[key] = tokens;
-    else delete cardColors[key];
-    if (Object.keys(cardColors).length) variantColors.card = cardColors;
-    else delete variantColors.card;
-    updateTheme({ ...theme, variantColors }, activeTheme, `variant-shadow-${variantKey}`);
+    const componentColors = { ...(variantColors[variantComponent] ?? {}) } as Record<string, ComponentVariantColorTokens>;
+    const tokens = { ...(componentColors[variantKey] ?? {}) };
+    if (field === "borderWidth") {
+      if (typeof value === "number") tokens.borderWidth = value;
+      else delete tokens.borderWidth;
+    } else {
+      if (typeof value === "string") tokens.shadow = value;
+      else delete tokens.shadow;
+    }
+    if (Object.keys(tokens).length) componentColors[variantKey] = tokens;
+    else delete componentColors[variantKey];
+    if (Object.keys(componentColors).length) variantColors[variantComponent] = componentColors as never;
+    else delete variantColors[variantComponent];
+    updateTheme({ ...theme, variantColors }, activeTheme, `variant-effect-${activeTheme}-${variantComponent}-${variantKey}-${field}`);
   }
 
   async function copy() {
@@ -967,31 +998,44 @@ export default function Studio() {
             <div className="number-fields">{numberFields.filter((field) => group.keys.includes(field.key)).map(renderTokenField)}</div>
           </section>)}
           {!isGlobal && variantComponent && <section className="token-section component-variant-editor" id="variant-colors">
-            <div className="section-heading"><h3>Variant styles</h3><span>{t.themeOnly(activeTheme)}</span></div>
+            <div className="section-heading"><h3>Variant styles</h3><span>{t.themeOnly(activeTheme)} colors</span></div>
             <label htmlFor="component-variant-style">Variant / tone</label>
             <select id="component-variant-style" value={variantKey} onChange={(event) => setSelectedVariantColor(event.target.value)}>
               {variantOptions.map((key) => <option key={key} value={key}>{variantLabel(key)}</option>)}
             </select>
-            <p>Colors override this {variantComponent === "badge" ? "variant and tone" : "variant"} only. Missing values inherit global or component colors. Light and Dark colors are independent.</p>
+            <p>Colors apply to {t.themeOnly(activeTheme)}. Border width and shadow are shared by Light and Dark; focus outlines stay globally accessible.</p>
             {(variantComponent === "button" ? ["background", "foreground", "border", "hoverBackground", "activeBackground"] as const
               : ["background", "foreground", "border"] as const).map((field) => {
-                const prefix = `--${variantComponent}-variant-${variantKey.replaceAll(".", "-")}`;
+                const prefix = `--${variantComponent}-variant-${variantSlug}`;
                 const cssKey = field.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
-                const inputId = `variant-color-${variantComponent}-${variantKey.replaceAll(".", "-")}-${field}`;
-                const override = theme.variantColors?.[variantComponent]?.[variantKey as never]?.[field];
+                const inputId = `variant-color-${variantComponent}-${variantSlug}-${field}`;
+                const override = variantStyle?.[field];
                 return <VariantColorControl key={field} id={inputId} label={field.replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`).replace(/^./, (letter) => letter.toUpperCase())}
                   value={override ?? toCSSVariables(theme, activeTheme)[`${prefix}-${cssKey}`] ?? "transparent"}
-                  overridden={override !== undefined} highlighted={highlightedTarget?.selection === variantComponent && highlightedTarget.inputId === inputId}
+                  overridden={override !== undefined} allowTransparent={field !== "foreground"} highlighted={highlightedTarget?.selection === variantComponent && highlightedTarget.inputId === inputId}
                   onChange={(value) => setVariantColor(field, value)} onReset={() => resetVariantColor(field)} />;
               })}
-            {variantComponent === "card" && <div className="variant-token-control">
-              <label htmlFor="card-variant-shadow">Shadow</label>
-              <select id="card-variant-shadow" value={theme.variantColors?.card?.[variantKey as (typeof componentVariantKeys.card)[number]]?.shadow ?? ""}
-                onChange={(event) => updateVariantShadow(event.target.value ? event.target.value as "none" | "sm" | "md" | "lg" : undefined)}>
-                <option value="">Inherit default</option>
+            {(() => {
+              const prefix = `--${variantComponent}-variant-${variantSlug}`;
+              const variables = toCSSVariables(theme, activeTheme);
+              const borderWidthId = `variant-style-${variantComponent}-${variantSlug}-borderWidth`;
+              const borderWidth = Number.parseFloat(variables[`${prefix}-border-width`] ?? "0");
+              const overridden = variantStyle?.borderWidth !== undefined;
+              return <VariantNumberControl id={borderWidthId} value={borderWidth} overridden={overridden}
+                onChange={(value) => updateVariantEffect("borderWidth", value)} onReset={() => updateVariantEffect("borderWidth", undefined)} />;
+            })()}
+            <div className="variant-token-control">
+              <label htmlFor={`variant-style-${variantComponent}-${variantSlug}-shadow`}>Shadow <span>{t.sharedThemes}</span></label>
+              <select id={`variant-style-${variantComponent}-${variantSlug}-shadow`}
+                value={variantStyle?.shadow ?? ""}
+                onChange={(event) => updateVariantEffect("shadow", event.target.value ? event.target.value as "none" | "sm" | "md" | "lg" : undefined)}>
+                <option value="">Inherit default ({(() => {
+                  const inherited = toCSSVariables(theme, activeTheme)[`--${variantComponent}-variant-${variantSlug}-shadow`];
+                  return inherited === "none" ? "none" : inherited?.match(/--ds-shadow-(sm|md|lg)/)?.[1] ?? "none";
+                })()})</option>
                 {(["none", "sm", "md", "lg"] as const).map((shadow) => <option key={shadow} value={shadow}>{shadow}</option>)}
               </select>
-            </div>}
+            </div>
           </section>}
           {(
             [

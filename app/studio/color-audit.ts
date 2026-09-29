@@ -24,13 +24,15 @@ export function colorCheckTargets(check: ContrastCheck): { ink?: ColorCheckTarge
   if (parts[1] === "description" && id !== "card") return { ink: global("mutedForeground"), surface };
   if (parts[1] === "error") return { ink: global("danger"), surface };
   if (id === "checkbox" || id === "switch") {
-    if (parts.includes("invalid")) return { ink: global("danger", true), surface };
-    if (parts.includes("unchecked")) return { ink: global(parts[1] === "unchecked" && parts[2] === "thumb" ? "foreground" : "border"), surface };
-    return { ink: local(parts[1] === "boundary" ? "border" : "foreground"), surface };
+    const unchecked = parts.some((part) => part.includes("unchecked"));
+    const invalid = parts.includes("invalid") || parts.some((part) => part.startsWith("invalid-"));
+    const variant = invalid ? unchecked ? "invalidUnchecked" : "invalidChecked" : unchecked ? "unchecked" : "checked";
+    return { ink: { selection: id as ComponentId, key: parts.includes("boundary") ? "border" : "foreground", variant }, surface };
   }
   if (id === "input") {
-    if (parts[1] === "invalid") return { ink: global("danger"), surface };
-    return { ink: parts.includes("placeholder") ? global("mutedForeground") : local(parts.includes("boundary") ? "border" : "foreground"), surface };
+    if (parts.includes("placeholder")) return { ink: global("mutedForeground"), surface };
+    const variant = ["default", "hover", "invalid", "readonly"].includes(parts[1]) ? parts[1] : "default";
+    return { ink: { selection: "input", key: parts.includes("boundary") ? "border" : "foreground", variant }, surface };
   }
   if (id === "button") {
     const variant = ["primary", "secondary", "outline", "ghost", "destructive", "link"].includes(parts[1]) ? parts[1] : "primary";
@@ -83,12 +85,13 @@ export function auditSystemColors(theme: ThemeTokens, mode: PaletteMode = "light
   const checks: ContrastCheck[] = [];
   function add(id: string, label: string, foreground: string, background: string,
     minimum = 4.5, component?: ComponentId) {
-    const ratio = contrastRatio(foreground, background);
-    checks.push({ id, label, foreground, background, ratio, minimum,
+    const effectiveBackground = background === "transparent" ? g.background : background;
+    const ratio = contrastRatio(foreground, effectiveBackground);
+    checks.push({ id, label, foreground, background: effectiveBackground, ratio, minimum,
       passes: ratio >= minimum, ...(component ? { component } : {}) });
   }
-  function boundary(component: ComponentId, id: string, label: string, stroke: string, inside?: string) {
-    if (resolveComponent(theme, component).borderWidth <= 0 || stroke === "transparent") return;
+  function boundary(component: ComponentId, id: string, label: string, stroke: string, inside?: string, width?: number) {
+    if ((width ?? resolveComponent(theme, component).borderWidth) <= 0 || stroke === "transparent") return;
     add(id, `${label} on global background`, stroke, g.background, 3, component);
     if (inside !== undefined) add(`${id}.inside`, `${label} on interior surface`, stroke, inside, 3, component);
   }
@@ -126,26 +129,28 @@ export function auditSystemColors(theme: ThemeTokens, mode: PaletteMode = "light
       const stateFill = v[`${prefix}-${state}-background`] === "transparent" ? g.background : v[`${prefix}-${state}-background`];
       add(`button.${variant}.${state}`, `Button ${variant} ${state} text`, ink, stateFill, 4.5, "button");
     }
-    if (variant !== "ghost" && variant !== "link") boundary("button", `button.${variant}.boundary`, `Button ${variant} border`, v[`${prefix}-border`]);
+    boundary("button", `button.${variant}.boundary`, `Button ${variant} border`, v[`${prefix}-border`], undefined, Number.parseFloat(v[`${prefix}-border-width`]));
   }
 
-  const input = resolveComponent(theme, "input");
-  add("input.foreground", "Input text (normal/hover/active/invalid/focus)", input.foreground, input.background, 4.5, "input");
-  add("input.placeholder", "Input placeholder (including invalid/focus)", g.mutedForeground, input.background, 4.5, "input");
-  add("input.readonly.text", "Read-only input text on resolved background", input.foreground, input.background, 4.5, "input");
-  add("input.readonly.placeholder", "Read-only input placeholder on resolved background", g.mutedForeground, input.background, 4.5, "input");
-  boundary("input", "input.boundary", "Input normal/read-only border", input.border, input.background);
-  boundary("input", "input.invalid.boundary", "Input invalid border", g.danger, input.background);
+  for (const state of ["default", "hover", "invalid", "readonly"] as const) {
+    const prefix = `--input-variant-${state}`;
+    const background = v[`${prefix}-background`];
+    add(`input.${state}.text`, `Input ${state} text`, v[`${prefix}-foreground`], background, 4.5, "input");
+    add(`input.${state}.placeholder`, `Input ${state} placeholder`, g.mutedForeground, background, 4.5, "input");
+    boundary("input", `input.${state}.boundary`, `Input ${state} border`, v[`${prefix}-border`], background, Number.parseFloat(v[`${prefix}-border-width`]));
+  }
 
   for (const component of ["switch", "checkbox"] as const) {
-    const c = resolveComponent(theme, component);
-    add(`${component}.foreground`, `${component} checked ${component === "switch" ? "thumb" : "mark (also indeterminate)"} on fill`, c.foreground, c.background, 3, component);
-    boundary(component, `${component}.boundary`, `${component} checked border`, c.border);
-    boundary(component, `${component}.unchecked.boundary`, `${component} enabled unchecked boundary`, g.border, g.muted);
-    boundary(component, `${component}.invalid.boundary`, `${component} invalid checked border`, v["--ds-danger-outline"]);
-    boundary(component, `${component}.unchecked.invalid.boundary`, `${component} invalid unchecked border`, v["--ds-danger-outline"], g.muted);
-    if (component === "switch") add("switch.unchecked.thumb", "Switch enabled unchecked thumb on track", g.foreground, g.muted, 3, component);
+    for (const state of ["checked", "unchecked", "invalidChecked", "invalidUnchecked"] as const) {
+      const slug = state.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+      const prefix = `--${component}-variant-${slug}`;
+      const background = v[`${prefix}-background`];
+      const unchecked = state.endsWith("Unchecked") || state === "unchecked";
+      add(`${component}.${slug}.text`, `${component} ${slug} ${component === "switch" ? "thumb" : "mark"}`, v[`${prefix}-foreground`], background, 3, component);
+      boundary(component, `${component}.${slug}.boundary`, `${component} ${slug} border`, v[`${prefix}-border`], unchecked ? background : undefined, Number.parseFloat(v[`${prefix}-border-width`]));
+    }
   }
+  add("switch.unchecked.thumb", "Switch enabled unchecked thumb on track", v["--switch-variant-unchecked-foreground"], v["--switch-variant-unchecked-background"], 3, "switch");
 
   const text = resolveComponent(theme, "text");
   add("text.foreground", "Text neutral on global surface", text.foreground, g.background, 4.5, "text");
@@ -159,12 +164,12 @@ export function auditSystemColors(theme: ThemeTokens, mode: PaletteMode = "light
     const background = v[`${prefix}-background`];
     add(`card.${variant}.text`, `Card ${variant} text`, v[`${prefix}-foreground`], background, 4.5, "card");
     add(`card.${variant}.description`, `Card ${variant} description`, v[`${prefix}-description`], background, 4.5, "card");
-    if (variant !== "filled") boundary("card", `card.${variant}.boundary`, `Card ${variant} border`, v[`${prefix}-border`], background);
+    boundary("card", `card.${variant}.boundary`, `Card ${variant} border`, v[`${prefix}-border`], background, Number.parseFloat(v[`${prefix}-border-width`]));
   }
   add("card.foreground", "Card outlined/elevated text", card.foreground, card.background, 4.5, "card");
   add("card.description", "Card outlined/elevated description", v["--card-description"], card.background, 4.5, "card");
 
-  boundary("card", "card.boundary", "Card outlined border", v["--card-variant-outlined-border"], card.background);
+  boundary("card", "card.boundary", "Card outlined border", v["--card-variant-outlined-border"], card.background, Number.parseFloat(v["--card-variant-outlined-border-width"]));
 
   const badge = resolveComponent(theme, "badge");
   add("badge.foreground", "Badge neutral solid text", badge.background, badge.foreground, 4.5, "badge");
@@ -174,8 +179,7 @@ export function auditSystemColors(theme: ThemeTokens, mode: PaletteMode = "light
       const background = v[`${prefix}-background`] === "transparent" ? g.background : v[`${prefix}-background`];
       const foreground = v[`${prefix}-foreground`];
       add(`badge.${tone}.${variant}`, `Badge ${tone} ${variant} text`, foreground, background, 4.5, "badge");
-      if (variant === "solid") boundary("badge", `badge.${tone}.${variant}.boundary`, `Badge ${tone} ${variant} border`, v[`${prefix}-border`]);
-      else if (variant === "outline") boundary("badge", `badge.${tone}.${variant}.boundary`, `Badge ${tone} ${variant} border`, v[`${prefix}-border`], background);
+      boundary("badge", `badge.${tone}.${variant}.boundary`, `Badge ${tone} ${variant} border`, v[`${prefix}-border`], variant === "solid" ? undefined : background, Number.parseFloat(v[`${prefix}-border-width`]));
     }
   }
   return checks;

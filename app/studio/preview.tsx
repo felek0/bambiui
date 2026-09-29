@@ -1,5 +1,3 @@
-"use client";
-
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -301,6 +299,7 @@ function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; c
               <Switch label={copy.switch.compact} size="sm" labelPosition="start" />
               <Switch label="Read-only setting" readOnly defaultChecked />
               <Switch label="Needs attention" error="Turn this setting on to continue." />
+              <Switch label="Needs attention · enabled" error="This enabled setting needs review." defaultChecked />
               <Switch label={copy.input.unavailable} disabled defaultChecked />
             </>
           )}
@@ -320,6 +319,7 @@ function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; c
                 required
                 error={copy.checkbox.termsError}
               />
+              <Checkbox label="Accepted terms · needs review" error="Review this selection." defaultChecked />
               <Checkbox label={copy.checkbox.smallPrint} size="sm" />
               <div className={styles.states}>
                 <Checkbox label="Radius sm" radius="sm" />

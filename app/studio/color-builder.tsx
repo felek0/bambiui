@@ -18,6 +18,12 @@ const presets = [
   { name: "Graphite", color: "#27272a" },
 ];
 const title = (text: string) => text[0].toUpperCase() + text.slice(1);
+const targetLabel = (target: ColorCheckTarget) => {
+  const selection = target.selection === "colors" ? "global" : title(target.selection);
+  const variant = target.variant?.replace(/([a-z])([A-Z])/g, "$1 $2").replaceAll(".", " ").toLowerCase();
+  const key = target.key.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+  return `${selection}${variant ? ` ${variant}` : ""} ${key}`;
+};
 const validHex = (text: string) => /^#[\da-f]{6}$/i.test(text);
 const numberText = (value: number) => new Intl.NumberFormat("en-US").format(value);
 // Flooring avoids presenting a failing 4.499:1 pair as meeting a 4.5:1 target.
@@ -158,10 +164,10 @@ export function ColorPairDialog({ checks: allChecks, mode, component, onNavigate
             <code>{check.foreground} {copy.on} {check.background}</code>
             {targets.ink && <div className={styles.pairActions}>
               <button type="button" onClick={() => navigate(targets.ink!)}>
-                {targets.ink.derived ? "View source" : "Edit"} {targets.ink.selection === "colors" ? "global" : title(targets.ink.selection)} {targets.ink.key} {targets.ink.derived ? "(derived color)" : ""}
+                {targets.ink.derived ? "View source" : "Edit"} {targetLabel(targets.ink)} {targets.ink.derived ? "(derived color)" : ""}
               </button>
               {targets.surface && (targets.surface.selection !== targets.ink.selection || targets.surface.key !== targets.ink.key) && <button type="button" onClick={() => navigate(targets.surface!)}>
-                Edit {targets.surface.selection === "colors" ? "global" : title(targets.surface.selection)} {targets.surface.key}
+                Edit {targetLabel(targets.surface)}
               </button>}
             </div>}
           </li>;

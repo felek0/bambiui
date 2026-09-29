@@ -15,6 +15,9 @@ import {
   componentTokenKeys,
   componentEditableTokenKeys,
   componentIds,
+  componentVariantKeys,
+  type ComponentVariantId,
+  type ComponentVariantColorTokens,
   type ThemeTokens,
   type ComponentId,
   type DesignSystem,
@@ -358,10 +361,20 @@ export function DeveloperView({ selected, system, mode, cssOutput }: DeveloperVi
   const editableNames = new Set((selected === "colors" || selected === "spacing" ? [...componentTokenKeys] : componentEditableTokenKeys(selected))
     .map((key) => `${prefix}${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`));
   const tokens = Object.entries(variables).filter(([name]) => editableNames.has(name));
-  const derived = Object.entries(variables).filter(([name]) => name.startsWith(prefix) && !editableNames.has(name) && !(selected === "text" && name.startsWith("--text-")));
-  const variantVariables = component && ["button", "badge", "card"].includes(selected)
-    ? Object.entries(variables).filter(([name]) => name.startsWith(`--${selected}-variant-`))
+  const variantComponent = component && selected in componentVariantKeys ? selected as ComponentVariantId : null;
+  const variantPrefix = variantComponent ? `--${variantComponent}-variant-` : "";
+  const variantFields = ["background", "foreground", "border", "hoverBackground", "activeBackground", "borderWidth", "shadow", "description"] as const;
+  const variantVariables = variantComponent
+    ? Object.entries(variables).filter(([name]) => name.startsWith(variantPrefix)
+      && variantFields.some((field) => componentVariantKeys[variantComponent].some((variant) => {
+        const slug = variant.replaceAll(".", "-").replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+        const fieldSlug = field.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+        return name === `${variantPrefix}${slug}-${fieldSlug}`;
+      })))
     : [];
+  const derived = Object.entries(variables).filter(([name]) => name.startsWith(prefix) && !editableNames.has(name)
+    && !(selected === "text" && name.startsWith("--text-"))
+    && !(variantComponent && name.startsWith(variantPrefix)));
 
   return (
     <div className={styles.root}>
@@ -431,21 +444,26 @@ export function DeveloperView({ selected, system, mode, cssOutput }: DeveloperVi
 
       {variantVariables.length > 0 && component && (
         <details className={styles.reference}>
-          <summary>Variant and tone styles</summary>
-          <p>These resolved CSS variables are consumed by the rendered variants. Values inherit from global semantic roles or derived colors unless a component-level override is set; Card shadow presets are shared across themes.</p>
+          <summary>Variant and state styles</summary>
+          <p>These are the resolved CSS variables consumed by this component. Sparse color overrides are theme-specific; border widths and shadow presets are shared across Light and Dark. Unset colors inherit from component or global tokens, or use the documented derived color.</p>
           <ScrollRegion label={`${component.name} variant and tone CSS variables`}>
             <table className={styles.table}>
               <caption>{component.name} resolved variant styles</caption>
               <thead><tr><th scope="col">CSS variable</th><th scope="col">Source</th><th scope="col">Resolved value</th></tr></thead>
               <tbody>{variantVariables.map(([name, value]) => {
-                const tokens = theme.variantColors?.[selected as "button" | "badge" | "card"] as Record<string, Record<string, string>> | undefined;
-                const suffix = name.slice(`--${selected}-variant-`.length);
-                const parts = suffix.split("-");
-                const field = parts.pop() ?? "";
-                const variantKey = selected === "badge" ? `${parts.shift()}.${parts.join("-")}` : parts.join("-");
-                const overrideKey = field.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase());
-                const override = tokens?.[variantKey]?.[overrideKey];
-                return <tr key={name}><th scope="row"><code>{name}</code></th><td>{override !== undefined ? "Component override" : "Inherited / derived"}</td><td><code>{value}</code></td></tr>;
+                const tokens = theme.variantColors?.[variantComponent!] as Record<string, ComponentVariantColorTokens> | undefined;
+                const matchedStyle = componentVariantKeys[variantComponent!].flatMap((variant) => variantFields.map((field) => {
+                  const slug = variant.replaceAll(".", "-").replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+                  const fieldSlug = field.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+                  const override = field === "description" ? undefined : tokens?.[variant]?.[field];
+                  return [`${variantPrefix}${slug}-${fieldSlug}`, field, override] as const;
+                })).find(([variable]) => variable === name);
+                const sharedEffect = matchedStyle?.[1] === "borderWidth" || matchedStyle?.[1] === "shadow";
+                const hasOverride = matchedStyle?.[2] !== undefined;
+                const source = hasOverride
+                  ? sharedEffect ? "Shared component override" : "Theme-specific component override"
+                  : sharedEffect ? "Shared default" : "Inherited / derived";
+                return <tr key={name}><th scope="row"><code>{name}</code></th><td>{source}</td><td><code>{value}</code></td></tr>;
               })}</tbody>
             </table>
           </ScrollRegion>

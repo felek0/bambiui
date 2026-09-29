@@ -664,18 +664,50 @@ try {
     assert.equal(await evaluate(`${slider}.getAttribute('aria-expanded')`),'false');
     await click(slider);
     assert.ok(await evaluate(`!!${q('#token-radius')}.closest('.token-control').querySelector('input[type="range"]')`),'numeric slider remains available');
-    await fill('#token-border',globalBackground);
+    await fill('#variant-color-checkbox-checked-border',globalBackground);
     await navigate('design','colors');
     await click(q('.editor-title-actions button[aria-label*="System color pairs"]'));
-    await wait(`!!${q('[data-contrast-check="checkbox.boundary"]')}`);
-    assert.ok(await evaluate(`!!${q('[data-contrast-check="checkbox.boundary"][data-failing]')}`));
-    await click(q('[data-contrast-check="checkbox.boundary"] button'));
-    await wait(`location.pathname==='/checkbox' && document.activeElement?.id==='token-border' && !!${q('#token-border')}.closest('[data-highlighted]')`);
+    await wait(`!!${q('[data-contrast-check="checkbox.checked.boundary"]')}`);
+    assert.ok(await evaluate(`!!${q('[data-contrast-check="checkbox.checked.boundary"][data-failing]')}`));
+    await click(q('[data-contrast-check="checkbox.checked.boundary"] button'));
+    await wait(`location.pathname==='/checkbox' && document.activeElement?.id==='variant-color-checkbox-checked-border' && !!${q('#variant-color-checkbox-checked-border')}.closest('[data-highlighted]')`);
     assert.ok(await evaluate(`!!${q('[data-specimen="checkbox"][data-selected]')}`));
     await click(q('.editor-title-actions button[aria-label*="Checkbox color pairs"]'));
-    await click(named('[data-contrast-check="checkbox.boundary"] button','Edit global background'));
+    await click(named('[data-contrast-check="checkbox.checked.boundary"] button','Edit global background'));
     await wait(`location.pathname==='/colors' && document.activeElement?.id==='token-background' && !!${q('#token-background')}.closest('[data-highlighted]')`);
     await reload();
+  });
+  await check('component state colors, border widths and shadows stay aligned with CSS, export and history',async()=>{
+    await navigate('design','input');
+    const mode=await evaluate(`document.documentElement.dataset.studioTheme`);
+    const other=mode==='light'?'dark':'light';
+    const before=await stored();
+    await evaluate(`(()=>{const select=${q('#component-variant-style')};select.value='invalid';select.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+    await fill('#variant-color-input-invalid-border','#010101');
+    await fill('#variant-style-input-invalid-borderWidth','2.5');
+    await evaluate(`(()=>{const select=${q('#variant-style-input-invalid-shadow')};select.value='lg';select.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+    await wait(`${q('[data-ds-theme="light"]')}.style.getPropertyValue('--input-variant-invalid-border-width').trim()==='2.5px'`);
+    const customized=await stored();
+    assert.equal(customized.themes[mode].variantColors.input.invalid.border,'#010101');
+    assert.equal(customized.themes[other].variantColors.input.invalid.border,undefined,'variant colors remain theme-specific');
+    for(const theme of ['light','dark']) {
+      assert.equal(customized.themes[theme].variantColors.input.invalid.borderWidth,2.5);
+      assert.equal(customized.themes[theme].variantColors.input.invalid.shadow,'lg');
+    }
+    assert.equal(await evaluate(`getComputedStyle(document.querySelector('[data-specimen="input"] input[aria-invalid="true"]')).getPropertyValue('--input-state-border-width').trim()`),'2.5px','invalid Input CSS consumes the fractional state border width');
+    await click(q('[aria-label="Export tokens"]'));
+    await click(named('[aria-label="Export format"] button','JSON'));
+    const exported=JSON.parse(await evaluate(`${q('[aria-label="Exported tokens"]')}.textContent`));
+    assert.deepEqual(exported,customized);
+    await click(q('[aria-label="Close export dialog"]'));
+    await click(q('[aria-label="Undo change"]'));
+    await click(q('[aria-label="Undo change"]'));
+    await click(q('[aria-label="Undo change"]'));
+    assert.deepEqual(await stored(),before);
+    await click(q('[aria-label="Redo change"]'));
+    await click(q('[aria-label="Redo change"]'));
+    await click(q('[aria-label="Redo change"]'));
+    assert.deepEqual(await stored(),customized);
   });
   await check('same expanded demo tree survives theme, routes and history in the persistent layout',async()=>{
     await navigate('design','button');
@@ -946,6 +978,19 @@ try {
       await click(q('.workspace-panel--develop button[aria-label^="Copy --ds-"]'));
       await wait(`navigator.clipboard.readText().then(text=>text===${JSON.stringify(firstCopy)})`);
       await capture(`studio-develop-${id}`);
+    }
+    for(const [id,variable] of [
+      ['button','--button-variant-secondary-hover-background'],
+      ['input','--input-variant-invalid-border'],
+      ['switch','--switch-variant-invalid-checked-border'],
+      ['checkbox','--checkbox-variant-invalid-unchecked-border-width'],
+      ['badge','--badge-variant-solid-success-background'],
+      ['card','--card-variant-elevated-shadow'],
+    ]) {
+      await navigate('develop',id);
+      const content=await evaluate(`${q('.workspace-panel--develop')}.textContent`);
+      assert.ok(content.includes(variable),`${id} Develop reference includes CSS-consumed variant style`);
+      assert.ok(content.includes('Shared default') || content.includes('Shared component override'),`${id} Develop reference labels shared effects`);
     }
     await navigate('design','button');
   });

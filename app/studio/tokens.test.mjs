@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
 import {
-  componentIds, componentTokenKeys, componentEditableTokenKeys, defaultSystem, exportCSS, isComponentKey,
+  componentIds, componentTokenKeys, componentEditableTokenKeys, componentVariantKeys, defaultSystem, exportCSS, isComponentKey,
   parseDesignSystem, resolveColorScale, resolveComponent, resolveTypography, shareNonColorTokens, STORAGE_KEY, systemConstants,
   toCSSVariables, tokenFields, colorScaleRoles, colorScaleStops, typographyVariants, typographyFields, defaultTypography,
   fontFamilyPresets, fontFamilyStacks, fontFamilyLabels, googleFontFamilies, googleFontUrl,
@@ -92,29 +92,99 @@ test("radius aliases and opt-in component radius selectors consume the shared sc
   for (const component of ["button", "inputControl", "checkbox", "badge", "card"]) assert.ok(css.includes(`.${component}[data-radius=`) || css.includes(`.field[data-radius=`), component);
 });
 
-test("variant colors resolve independently by theme; Card shadow preset is shared", () => {
+test("component variant colors stay theme-specific while border widths and shadows are shared", () => {
   const system = fresh();
   system.themes.light.variantColors = {
-    button: { secondary: { background: "#123456", foreground: "#ffffff", hoverBackground: "#234567" } },
-    badge: { "solid.success": { background: "#225522", foreground: "#ffffff" } },
-    card: { elevated: { background: "#eeeeee", shadow: "sm" } },
+    button: { secondary: { background: "#123456", foreground: "#ffffff", hoverBackground: "#234567", borderWidth: 2, shadow: "sm" } },
+    input: { invalid: { background: "#eeeeee", border: "#aa0000", borderWidth: 2.5, shadow: "md" } },
+    switch: { invalidUnchecked: { background: "#f0f0f0", borderWidth: 3, shadow: "sm" } },
+    checkbox: { checked: { foreground: "#ffffff", borderWidth: 1.5, shadow: "lg" } },
+    badge: { "solid.success": { background: "#225522", foreground: "#ffffff", borderWidth: 2, shadow: "md" } },
+    card: { elevated: { background: "#eeeeee", shadow: "sm", borderWidth: 2 } },
   };
   system.themes.dark.variantColors = {
-    button: { secondary: { background: "#abcdef" } },
-    badge: { "solid.success": { background: "#123456" } },
-    card: { elevated: { background: "#222222", shadow: "lg" } },
+    button: { secondary: { background: "#abcdef", borderWidth: 4, shadow: "lg" } },
+    input: { invalid: { background: "#222222", border: "#ff0000", borderWidth: 4, shadow: "lg" } },
+    switch: { invalidUnchecked: { background: "#222222", borderWidth: 4, shadow: "lg" } },
+    checkbox: { checked: { foreground: "#000000", borderWidth: 4, shadow: "sm" } },
+    badge: { "solid.success": { background: "#123456", borderWidth: 4, shadow: "lg" } },
+    card: { elevated: { background: "#222222", shadow: "lg", borderWidth: 4 } },
   };
   for (const mode of modes) {
     const variables = toCSSVariables(system.themes[mode], mode);
     assert.equal(variables["--button-variant-secondary-background"], mode === "light" ? "#123456" : "#abcdef");
     assert.equal(variables["--badge-variant-solid-success-background"], mode === "light" ? "#225522" : "#123456");
     assert.equal(variables["--card-variant-elevated-background"], mode === "light" ? "#eeeeee" : "#222222");
+    assert.equal(variables["--input-variant-invalid-background"], mode === "light" ? "#eeeeee" : "#222222");
   }
   const shared = shareNonColorTokens(system, "light");
-  assert.equal(shared.themes.dark.variantColors.card.elevated.shadow, "sm");
+  for (const id of Object.keys(componentVariantKeys)) {
+    for (const variant of Object.keys(shared.themes.light.variantColors[id] ?? {})) {
+      const light = shared.themes.light.variantColors[id][variant];
+      const dark = shared.themes.dark.variantColors[id][variant];
+      assert.equal(dark.borderWidth, light.borderWidth, `${id}.${variant} border width`);
+      assert.equal(dark.shadow, light.shadow, `${id}.${variant} shadow`);
+    }
+  }
   assert.equal(shared.themes.dark.variantColors.card.elevated.background, "#222222");
+  assert.equal(shared.themes.dark.variantColors.button.secondary.background, "#abcdef");
+
   const css = readFileSync(new URL("./components/components.module.css", import.meta.url), "utf8");
-  for (const variable of ["--button-variant-secondary-background", "--badge-variant-solid-success-background", "--card-variant-elevated-background", "--card-variant-elevated-shadow"]) assert.ok(css.includes(variable), variable);
+  for (const [id, variants] of Object.entries(componentVariantKeys)) for (const variant of variants) {
+    const slug = variant.replaceAll(".", "-").replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+    const prefix = `--${id}-variant-${slug}`;
+    const fields = ["background", "foreground", "border", "border-width", "shadow",
+      ...(id === "button" ? ["hover-background", "active-background"] : [])];
+    for (const field of fields) {
+      const variable = `${prefix}-${field}`;
+      assert.ok(Object.hasOwn(toCSSVariables(defaultSystem.themes.light), variable), variable);
+      assert.ok(css.includes(`var(${variable})`), `${variable} is consumed by component CSS`);
+    }
+  }
+  assert.match(css, /width: calc\([^;]*var\(--switch-state-border-width\)/);
+  assert.match(css, /height: calc\([^;]*var\(--switch-state-border-width\)/);
+});
+
+test("transparent surfaces and borders round-trip while text foreground stays opaque", () => {
+  const system = fresh();
+  for (const mode of modes) system.themes[mode].variantColors = {
+    button: { ghost: { background: "transparent", border: "transparent", hoverBackground: "transparent", activeBackground: "transparent" } },
+    input: { invalid: { background: "transparent", border: "transparent" } },
+    switch: { invalidChecked: { background: "transparent", border: "transparent" } },
+    checkbox: { unchecked: { background: "transparent", border: "transparent" } },
+    badge: { "subtle.success": { background: "transparent", border: "transparent" } },
+    card: { filled: { background: "transparent", border: "transparent" } },
+  };
+  const parsed = parse(system);
+  assert.deepEqual(parsed, system);
+  for (const mode of modes) {
+    const variables = toCSSVariables(parsed.themes[mode], mode);
+    assert.equal(variables["--button-variant-ghost-background"], "transparent");
+    assert.equal(variables["--input-variant-invalid-background"], "transparent");
+    assert.equal(variables["--switch-variant-invalid-checked-background"], "transparent");
+    assert.equal(variables["--checkbox-variant-unchecked-background"], "transparent");
+    assert.equal(variables["--badge-variant-subtle-success-background"], "transparent");
+    assert.equal(variables["--card-variant-filled-background"], "transparent");
+  }
+  const invalid = fresh();
+  invalid.themes.light.variantColors = { input: { default: { foreground: "transparent" } } };
+  assert.throws(() => parse(invalid), /themes.light.variantColors.input.default.foreground must be a #rrggbb color/);
+});
+
+test("resetting a variant override restores the resolved inherited CSS values", () => {
+  const theme = fresh().themes.light;
+  const baseline = toCSSVariables(theme);
+  theme.variantColors = {
+    input: { hover: { background: "#111111", borderWidth: 3, shadow: "lg" } },
+    checkbox: { invalidChecked: { border: "#222222", borderWidth: 4, shadow: "md" } },
+  };
+  const customized = toCSSVariables(theme);
+  assert.notDeepEqual(customized, baseline);
+  delete theme.variantColors.input.hover;
+  delete theme.variantColors.checkbox.invalidChecked;
+  delete theme.variantColors.input;
+  delete theme.variantColors.checkbox;
+  assert.deepEqual(toCSSVariables(theme), baseline);
 });
 
 test("metadata includes three shared spacing presets without changing component aliases", () => {
@@ -161,7 +231,7 @@ for (const mode of modes) {
   test(`${mode}: CSS maps contain all stored, derived, and constant values`, () => {
     const theme = fresh().themes[mode];
     const variables = toCSSVariables(theme, mode);
-    assert.equal(Object.keys(variables).length, 156 + Object.keys(systemConstants).length + colorScaleRoles.length * colorScaleStops.length + typographyVariants.length * typographyFields.length + Object.keys(spacingPresets).length + 2 + 1 + 153);
+    assert.equal(Object.keys(variables).length, 156 + Object.keys(systemConstants).length + colorScaleRoles.length * colorScaleStops.length + typographyVariants.length * typographyFields.length + Object.keys(spacingPresets).length + 2 + 1 + 264);
     for (const [key, value] of Object.entries(theme.global)) {
       assert.equal(variables[`--ds-${kebab(key)}`], typeof value === "number" ? `${value}px` : value);
     }
@@ -424,6 +494,35 @@ test("shared font family presets and spacing survive v3 round-trip and dark edit
     assert.equal(restored.themes[mode].components.button.gap, 11);
   }
   assert.equal(system.themes.light.global.spacingSm, 4);
+});
+
+test("variant imports preserve theme colors while normalizing border width and shadow effects from Light", () => {
+  const system = fresh();
+  system.themes.light.variantColors = {
+    input: { invalid: { background: "#112233", borderWidth: 2.5, shadow: "sm" } },
+    switch: { invalidUnchecked: { border: "#334455", borderWidth: 1.5, shadow: "md" } },
+    checkbox: { checked: { foreground: "#ffffff", borderWidth: 3, shadow: "lg" } },
+  };
+  system.themes.dark.variantColors = {
+    input: { invalid: { background: "#aabbcc", borderWidth: 5, shadow: "lg" } },
+    switch: { invalidUnchecked: { border: "#ddeeff", borderWidth: 4, shadow: "sm" } },
+    checkbox: { checked: { foreground: "#000000", borderWidth: 5, shadow: "sm" } },
+  };
+  const parsed = parse(system);
+  for (const mode of modes) {
+    assert.equal(parsed.themes[mode].variantColors.input.invalid.borderWidth, 2.5);
+    assert.equal(parsed.themes[mode].variantColors.input.invalid.shadow, "sm");
+    assert.equal(parsed.themes[mode].variantColors.switch.invalidUnchecked.borderWidth, 1.5);
+    assert.equal(parsed.themes[mode].variantColors.switch.invalidUnchecked.shadow, "md");
+    assert.equal(parsed.themes[mode].variantColors.checkbox.checked.borderWidth, 3);
+    assert.equal(parsed.themes[mode].variantColors.checkbox.checked.shadow, "lg");
+  }
+  assert.equal(parsed.themes.light.variantColors.input.invalid.background, "#112233");
+  assert.equal(parsed.themes.dark.variantColors.input.invalid.background, "#aabbcc");
+  assert.equal(parsed.themes.light.variantColors.switch.invalidUnchecked.border, "#334455");
+  assert.equal(parsed.themes.dark.variantColors.switch.invalidUnchecked.border, "#ddeeff");
+  assert.equal(parsed.themes.light.variantColors.checkbox.checked.foreground, "#ffffff");
+  assert.equal(parsed.themes.dark.variantColors.checkbox.checked.foreground, "#000000");
 });
 
 test("old v3 records default missing presets without changing legacy aliases or colors", () => {
@@ -735,6 +834,10 @@ test("optional extensions reject unknown keys and invalid values with specific p
       [["variantColors", "badge", "solid.success", "unknown"], "#ffffff"],
       [["variantColors", "button", "secondary", "background"], "red"],
       [["variantColors", "card", "elevated", "shadow"], "xl"],
+      [["variantColors", "input", "invalid", "borderWidth"], 6.1],
+      [["variantColors", "switch", "invalidUnchecked", "borderWidth"], "2"],
+      [["variantColors", "checkbox", "checked", "shadow"], "xl"],
+      [["variantColors", "input", "hover", "hoverBackground"], "#123456"],
     ]) {
       const system = fresh();
       let target = system.themes[mode];
