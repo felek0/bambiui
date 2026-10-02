@@ -1,5 +1,13 @@
 # bambiui Studio UI/UX incelemesi ve iyileştirme planı
 
+Bu belge mevcut Studio'nun **tarihsel** UX denetimi ve doğrulama kayıtlarıdır. Güncel öncelikler [roadmap.md](roadmap.md), sayfa oluşturucunun teknik kapsamı [interface composer planında](interface-composer-plan.md) izlenir. Buradaki Faz 1–4 eski UX çalışmasının fazlarıdır; composer fazlarıyla aynı değildir. Eski bulgular açık görev veya teslim edilmiş yeni ürün özelliği olarak okunmamalıdır. Backend'in paralel uygulanması onaylanmış karar değildir.
+
+## Güncel düzeltme notu · 2026-10-02
+
+Aşağıdaki tarihsel kayıtların üzerine gelen değişiklikler: sistem adı artık sidebar'da değil **header sistem seçicisinde** düzenlenir; çoklu yerel sistem vardır. Global alan sayısı radiusSm/radiusLg eklemeleriyle 32'dir; ortak sm/md/lg radius, komponent variant/state renkleri ve uygun border/shadow kontrolleri uygulanmıştır. Spacing presetlerini Card.Content yanında yeni layout prototipi de tüketir. Overview kaldırılmıştır. Kontrast raporu inspector başlığındaki düğmeyle modal olarak açılır; eski akordiyon önerileri geçerli değildir. Güncel kapsam `docs/component-api.md` ve README ile izlenir.
+
+2026-10-02 uygulama turunda 129 test, build/TypeScript ve hedefli ESLint geçti; yeni sayfa prototipine browser smoke veya görsel/manuel erişilebilirlik kabulü uygulanmadı. Aşağıdaki 106/114 test ve smoke sonuçları kendi tarihlerine aittir, bugünün test sonucu değildir.
+
 Tarih: 2026-09-26
 
 ## Uygulama durumu · 2026-09-27
@@ -11,7 +19,7 @@ Bu belge özgün incelemenin bulgularını ve o tarihteki doğrulama sonucunu ko
 - **Faz 3 — otomatik kapsam kısmen uygulandı:** Readonly, required, error, loading ve controlled form/FormData fixture'ları Chromium smoke ile doğrulandı. Gerçek VoiceOver, browser-native %200 zoom, forced-colors ve dar/geniş tüketici container'larında manuel kabul hâlâ açık.
 - **Faz 4 — kısmi genişleme:** Sabit komponent tipografisi `systemConstants` altında merkezileştirildi; ortak `fontFamily` (`system`/`sans`/`humanist`/`serif`/`editorial`/`mono`/`typewriter`) ve `spacingSm`/`spacingMd`/`spacingLg` (4/8/16px) presetleri eklendi; mevcut yedi yerel font seçeneğinin yanına küratörlü Google Fonts presetleri de tanımlandı. Google seçimi isteğe bağlıdır: tarayıcı `fonts.googleapis.com` adresinden stil dosyası, `fonts.gstatic.com` adresinden font dosyası ister ve IP adresi gibi istek verileri Google ile paylaşılır. Yerel seçenekler bu istekleri yapmaz; erişim yoksa yerel fallback kullanılır. Card.Content içindeki öğeler sm/md/lg boyutuna karşılık gelen preset aralığını kullanıyor; eski `paddingX`, `paddingY`, `gap` alias'ları bağımsız kaldı. Elevation/motion ve skala bağımlılık modelinin değişmesi ayrı ürün kararlarıdır.
 
-Güncel doğrulama: 114 unit/snippet testi, lint, TypeScript, production build ve Chromium smoke başarılı. İzole Checkbox Server Component build'i önceki fazda geçti; bu değişiklikte yeniden çalıştırılmadı. Bu sonuçlar manuel erişilebilirlik kabulü veya hydration tarayıcı testi yerine geçmez.
+2026-09-27 doğrulama kaydı: 114 unit/snippet testi, lint, TypeScript, production build ve Chromium smoke başarılı. İzole Checkbox Server Component build'i önceki fazda geçti; bu değişiklikte yeniden çalıştırılmadı. Bu sonuçlar manuel erişilebilirlik kabulü veya hydration tarayıcı testi yerine geçmez.
 
 ## Güncel görünüm kararı · kullanıcı geri bildirimi sonrası
 
@@ -19,7 +27,7 @@ Son onaylanan karar: Studio sabit nötr yüzeyler kullanır. Header, sidebar, in
 
 Header/sidebar/inspector, dark export portalı ve tema geçişi Chromium smoke ile doğrulandı; son lint ve production build/TypeScript başarılı. Desktop Light/Dark ve mobil Dark görüntüleri incelendi. Önceki bölümlerdeki tek açık editör önerileri tarihsel değerlendirmedir; bu karar onların yerini alır. Manuel erişilebilirlik kabulü hâlâ açıktır.
 
-## Kapsam ve yöntem
+## Özgün denetim · 2026-09-26 — kapsam ve yöntem
 
 Hedef: local-first tasarım sistemi playground'unda foundation düzenleme → komponent üzerinde doğrulama → geliştirici referansı → CSS/JSON aktarımı akışının güvenilirliği.
 
@@ -84,7 +92,7 @@ Bir specimen ile ilk etkileşim aynı anda route seçimi ve kamera merkezlemesin
 
 Canvas zoom, responsive viewport veya gerçek browser zoom testi değildir. Mevcut kapsamda yeni responsive toolbar zorunlu değil; fakat tüketici komponentlerinin dar/geniş container testi gereklidir.
 
-## Token kararı
+## Tarihsel token değerlendirmesi (güncel kapsam için üstteki düzeltme notu)
 
 - Özgün incelemede 27 global alan vardı; üç ortak spacing presetiyle 30 oldu. Eski alanları kaldırmak için kanıt yok.
 - Asıl gereksiz/yanıltıcı yüzey Text'in tüketmediği ortak komponent tokenları.
@@ -137,7 +145,7 @@ Tipografi sabitlerinin merkezileştirilmesi ve font family/spacing presetleri uy
 
 Kabul: Eklenen her tokenın tanımlı tüketicisi, birimi, varsayılanı, tema kapsamı, reset/import/export ve test karşılığı var. Mevcut JSON uyumluluğu korunur veya açıkça migrate edilir.
 
-## Doğrulama sonucu
+## Özgün doğrulama sonucu · 2026-09-26
 
 - Unit testleri: 106 geçti.
 - ESLint: geçti.
@@ -150,7 +158,9 @@ Kabul: Eklenen her tokenın tanımlı tüketicisi, birimi, varsayılanı, tema k
 
 Smoke başarısızlığı için ilk adım: Kamera hareketi sonrası hedefin viewport içinde ve doğru hit target olduğunu doğrulamak, sonra aynı etkileşimi görünür hedef üzerinden tekrar üretmek. Kanıt olmadan yalnız timeout artırmak veya uygulama navigasyonunu değiştirmek çözüm sayılmaz.
 
-## Görsel yön denemesi: Studio ile Design önizlemesinin sınırı
+## Tarihsel görsel yön denemesi: Studio ile Design önizlemesinin sınırı
+
+Bu bölümdeki açık görünüm/karar bekleme ifadeleri o denemenin tarihsel durumudur. Üstteki “Güncel görünüm kararı” bunların yerini alır; yeniden uygulama talimatı değildir.
 
 Durum (2026-09-27): **Orta-koyu matte prototipi kullanıcı geri bildirimiyle geri alındı.** Uygulanacak görsel yön henüz kararlaştırılmadı; önceki açık Studio görünümü ve marka renkli logo korundu. İnceleme görsellerinde açık önizleme beyaz sidebar/inspector ile birleşiyor; koyu önizleme ise açık editörün yanında geniş, siyah bir blok gibi duruyor. Bu, öncelikle **örneğin sınırı ve çalışma alanının kime ait olduğunun anlaşılması** sorunu. Ekran görüntüleri kullanıcı tercihini veya erişilebilirlik kabulünü tek başına kanıtlamaz.
 

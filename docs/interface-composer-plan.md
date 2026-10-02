@@ -1,0 +1,81 @@
+# bambiui · arayüz oluşturucu ve backend planı
+
+Tarih: 2026-10-02 · Durum: ürün yönü ve uygulama planı; ilk layout ve belge prototipi uygulanmıştır, composer henüz yoktur.
+
+Önceliklerin ve onay bekleyen K1–K5 kararlarının tek özeti [roadmap.md](roadmap.md) içindedir. Bu belge teknik kapsamı açar; prototip davranışlarını otomatik olarak kalıcı ürün kararı yapmaz.
+
+## Ürün hedefi ve sınır
+
+bambiui, kullanıcıların kendi design system'ini ve yeniden kullanılabilir komponentlerini tanımlayıp bunlarla serbestçe gezilebilen bir canvas üzerinde responsive web/app sayfaları oluşturduğu, tasarımın gerçek render'ını gördüğü ve aynı yapıyı kod olarak dışa aktardığı **design-system-first arayüz tasarım aracı** olacak. Hedef, bu kullanımda Figma'ya ihtiyaç bırakmamaktır; genel amaçlı vektör çizim, illüstrasyon veya tüm Figma ekosistemini kopyalamak değildir.
+
+Bugün teslim edilmiş olan Studio; schema-v3 design system düzenleme, yedi özelleştirilebilir yerleşik komponent, specimen canvas'ı, Develop referansı, CSS/JSON export ve tarayıcı içi çoklu sistem kaydı sağlar. **Proje modeli, kullanıcı tarafından oluşturulup kaydedilen sayfalar, görsel sayfa editörü, kullanıcı tanımlı yeni komponentler ve sunucu kaydı henüz yoktur.** Kod seviyesinde ayrı bir v1 sayfa belgesi ve render/TSX prototipi vardır; aşağıdaki sınırlar geçerlidir. Mevcut specimen canvas'ını sayfa editörüymüş gibi sunmayacağız; oluşturucu ayrı bir akış ve belge modeli gerektirir. `docs/studio-ux-audit-plan.md` mevcut Studio'nun kalite/tarihsel incelemesidir, bu yeni ürün planının yerine geçmez.
+
+## Ürün ilkeleri
+
+1. **Design system kaynak olsun.** Sayfadaki komponent instance'ları sistemin renk, tipografi, ölçü, variant ve state değerlerini canlı tüketir. Bir sayfaya özel stil istisnası sistemi sessizce değiştirmez; lokal instance override ile sistem token değişikliği UI'da ayırt edilir.
+2. **Görsel özgürlük, yapısal çıktı.** Canvas'ta pan/zoom, frame yerleştirme, seçme ve sürükle-bırak serbesttir; sayfa içindeki varsayılan layout Stack/Flex/Grid/constraint tabanlıdır. Mutlak konum yalnız gerçekten gerekli overlay/dekorasyon içindir. Aksi halde responsive tasarım ve temiz kod çıktısı aynı anda güvenilir olamaz.
+3. **Tek belge, iki görünüm.** Canvas ve kod export'u aynı sürümlü komponent ağacından üretilir. React prop'ları, slot/içerik, layout ve Light/Dark kapsamı export'ta kaybolmaz; uygulama ile görselin eşleşmesi ölçülür.
+4. **Local-first korunur.** Sayfa düzenleme offline, hesap açmadan ve sunucu beklemeden çalışır. Sync/publish sonradan eklenen açıkça seçilen özelliklerdir; yerel JSON yedeği ve import her zaman mümkün kalır.
+5. **Erişilebilir editör ve çıktı.** Drag/drop'un klavye ile ekleme/taşıma alternatifi, görünür seçim/odak, Undo/Redo ve dar ekran akışı vardır. Render edilen sayfanın semantiği yalnız canvas görüntüsüne göre değil, gerçek DOM ve üretilecek kod üzerinden doğrulanır.
+
+## Karar verilecek belge sözleşmesi · Faz 0
+
+Yeni sayfa formatı, design system'in `DesignSystem.version: 3` JSON'unu değiştirmeden ayrı ve sürümlü tutulur. İlk taslak (K2–K4 onayı ve fixture doğrulaması öncesi dondurulmaz):
+
+- `Project`: kararlı ID, ad, tek bir design system ID'sine referans, sıralı sayfa listesi; ayrı `version` ve migration/validation. Sistem silme veya değiştirme, bağlı sayfaları sessizce sahipsiz bırakmaz. Export, gereken sistem snapshot'ını ve referanslarını birlikte taşır.
+- `Page`: ID, ad, kök node ve önizleme frame'leri. Aynı içerik ağacı desktop/mobil breakpoint'lerde yapısal olarak ortaktır; breakpoint farkları yalnız tanımlı layout/görünürlük özellikleridir. Theme renkleri design system'in Light/Dark kayıtlarında kalır.
+- `Node`: kararlı ID ve tür (`layout`, yerleşik komponent, metin/görsel, sonradan kullanıcı komponent instance'ı), slot, sıralama, allowlist'li JSON props, içerik ve layout. Mevcut prototipte parent ilişkisi ve sıra `children` ağacından türetilir; ikinci bir parent ID kopyası saklanmaz. Normalleştirilmiş node tablosuna geçmek ayrıca gerekçelendirilmelidir. `ReactNode`, callback, çalıştırılabilir JS veya keyfi CSS/HTML kayda alınmaz. Card gibi compound slot'lar ile icon/content temsilinin export karşılığı önceden tanımlanır.
+- **Komponent kayıt sistemi:** Mevcut prototip beş yerleşik komponenti ve layout bloklarını sınırlı prop'larla destekler. İlk gerçek görev için gereken kapsam yedi mevcut komponent üzerinden genişletilir; her komponentin tam React API'si otomatik olarak JSON'a açılmaz, medya desteği henüz yoktur. Ayrı bir adımda kullanıcı, seçili alt ağacı yeniden kullanılabilir komponent tanımına çevirebilir; instance'lar tanım güncellemelerini izler, açıkça izin verilen prop/slot/variant override'ları uygular. Bugünkü token override'ı, kullanıcı tanımlı yeni komponent oluşturma ile eşdeğer sayılmaz.
+- Düzenleme işlemleri `insert/move/reparent/update/delete` gibi test edilebilir komutlar ve ters işlemler üzerinden çalışır. Geçersiz döngü/slot/prop ve kayıp referanslar reddedilir; eski belge sürümleri deterministik migrate edilir. Sistem düzenleme geçmişi ile sayfa düzenleme geçmişi birbirine karışmaz.
+
+Faz 0 çıktısı: örnek proje JSON'u ve sistem snapshot'ı, renderer/export eşlemesi, layout/slot/prop sözleşmesi, import ve sürüm reddetme/migration politikası, ilk taşınabilir kod çıktısı (K2 onayıyla kaynak + stil + tema + bağımlılık/kurulum bilgisi öneriliyor; bugün yayınlanmış bir paket yok). Page v1 için eski sürüm yoktur; DesignSystem v1/v2 migration'ı sayfa migration'ı olarak sayılmaz. Bu sözleşme kabul edilmeden veritabanı şeması veya sayfa CRUD API'si dondurulmaz.
+
+## İlk uygulama dilimi — kodda layout (2026-10-02)
+
+`app/studio/layout/` içinde Container, Stack ve Grid/Grid.Item, mevcut `--ds-spacing-sm/md/lg` değişkenleriyle çalışır. `Container` (`maxWidth="narrow" | "wide"`) merkezler ve yatay padding verir; `Stack` direction/gap/align/justify/wrap, `Grid` columns/gap ve `Grid.Item` span alır. Grid 1–3 kolon ve 1–3 span destekler; 32rem ve altındaki **kendi container genişliğinde** tek kolona iner. `span`, kolon sayısını aşarsa tüm satırı kaplar; bu ilk sürümde breakpoint editörü yoktur. Eşik ve içerik genişlikleri şimdilik editlenebilir token değil; gerçek kullanım ve responsive belge sözleşmesiyle tekrar değerlendirilecek. `app/examples/account-settings/` sayfası mevcut Button/Input/Switch/Card/Text ile render edilen statik bir örnektir; varsayılan Light sistemini gösterir ve form veri kaydetmez. Studio'da düzenlenen sistemi henüz kullanmaz.
+
+### Belge prototipi
+
+`app/studio/page-document/account-settings.json`, DesignSystem v3'ten **ayrı** `PageDocument.version: 1` örneğidir. `model.ts` yalnız tanımlı node/prop/slot türlerini, tekil ID'leri ve boyut/sürüm sınırlarını kabul eder; callback, çalıştırılabilir HTML/CSS prop'ları, keyfi ReactNode ve harici form action'ı reddeder; metindeki HTML karakterleri TSX ifadesi olarak kaçışlanır. `render.tsx` örneği doğrulanmış belgeyle gerçek komponentler üzerinden çizer; `export.ts` aynı belgeyi, hedef projede mevcut komponent ve layout kaynaklarına verilen **göreli import yollarıyla** sınırlı TSX'e dönüştürür. Örnek fixture'ın üretilen TSX'i yalnız mevcut repo API'lerine karşı TypeScript kontrolünden geçer; bağımsız uygulama build'i/hydration veya renderer ile DOM eşdeğerliği kanıtlanmamıştır. TSX henüz UI'dan indirilemez; stil dosyaları, tema CSS değişkenleri ve bağımlılıklar ayrıca sağlanmalıdır. Bu yüzden henüz bağımsız React proje export'u değildir.
+
+Prototip sınırları ve kapanacak açıklar:
+
+- Desteklenen görsel komponentler Button/Input/Switch/Card/Text; Checkbox/Badge henüz registry'de yok. Card'da görsel prop, Button'da variant/size/radius, Text'te tüm tipografi seçenekleri henüz sayfa belgesine açılamıyor. Bunlar mevcut komponent API'sinden kaldırılmış değildir.
+- `PageDocument` yalnız version/id/name/root taşır; proje/sistem referansı, frame, varlık, responsive override ve instance tanımları gelecekteki sözleşmedir.
+- JSON'daki `buttonType` ile gerçek React `type` adı farklıdır. Şema dondurulmadan bu gereksiz alias ortak API adıyla hizalanmalı; renderer ve exporter aynı registry bilgisini tüketmelidir.
+- Validator 100 node, kökten 12 derinlik ve alan uzunluklarını sınırlar; ham dosya byte kotası yoktur. Doğrudan parent/slot kontrolü tam HTML semantiği kontrolü değildir: `form → stack → form` bugün reddedilmez. Semantik ancestor kuralları ve limit sınır testleri import UI'sından önce tamamlanmalıdır. `RenderPage` doğrulamayı çağırana bırakır; örnek route ve exporter parse eder.
+- Form prototipi yalnız yerel path'e native GET gösterimidir; veri kaydı, API binding veya uygulama iş mantığı değildir. Metin kaçışlama testi tek başına tam güvenlik denetimi sayılmaz.
+- Grid'in sabit container eşiği ve Container'ın sabit genişlikleri ilk prototip davranışıdır. Stack otomatik breakpoint yön değişimi yapmaz. Mevcut Studio smoke testleri bu yeni örneğin responsive/görsel kabulü değildir.
+
+Sıradaki adım: K2/K4 doğrulandıktan sonra tema snapshot'ını örneğe bağlamak, gerçek render ile üretilen TSX'in DOM eşdeğerliğini test etmek ve proje/sayfa import-export sözleşmesini tamamlamak. Sonra edit komutları ve local-first Pages akışı. Mevcut specimen canvas'ına drag/drop ekleyerek belge sözleşmesini atlamayacağız.
+
+## Dikey dilimler ve kabul kriterleri
+
+| Faz | Ürün işi | Kabul kapısı |
+| --- | --- | --- |
+| 0 — Sözleşme ve kullanılabilir çıktı (kısmi) | K1–K4'ü doğrula; belge/proje/snapshot modeli, semantik validator, ortak registry ve kaynak teslimatını tamamla. | Aynı fixture JSON round-trip ve renderer/export eşdeğerliğini korur; temiz tüketici projede kaynak/stil/tema birlikte çalışır; eski schema-v3 sistemler değişmeden açılır. Mevcut dört prototip testi bu fazı tamamlamaz. |
+| 1 — Local-first page composer | Ayrı Pages akışı; sayfa/frame oluşturma, layout container'ı, yerleşik komponentleri sürükle-bırak **ve klavye ile** ekleme, katman ağacı, seçim, props/içerik düzenleme, pan/zoom, atomik Undo/Redo ve yerel kayıt. En az iki viewport ve iki tema önizlemesi. | Bir form ve içerik sayfası offline kurulup yenilemeden sonra aynen açılır; aynı ağacın React çıktısı hedef projede stilleriyle kullanılabilir; theme/token değişikliği her iki görünümde tutarlıdır. Bu faz tam Figma alternatifi diye pazarlanmaz. |
+| 2 — Yeniden kullanım ve gerçek sayfalar | Çoklu sayfa, responsive layout/breakpoint override'ları, görsel varlık akışı, kullanıcı tanımlı kompozisyon komponentleri ve instance/slot/variant düzenleme; kod export kapsamını bunlarla genişlet. | Bir kullanıcı komponenti birden fazla sayfada güncellenir; desktop/mobil ve Light/Dark örneklerinin DOM'u ile üretilen TSX/CSS görünümü ve props'ları testte örtüşür. Klavye, odak, %200 zoom ve dar container kontrolleri yapılır. |
+| 3 — İsteğe bağlı bulut ve paylaşım | Yerel düzenlemeye bağımlı olmayan opt-in hesap/snapshot sync, sonra ihtiyaç doğrulanırsa yayınlama/paylaşma. | Offline değişiklik kaybolmaz; aynı projedeki eşzamanlı cihaz düzenlemeleri sessizce üstüne yazılmaz; yerel export/import bulut olmadan çalışır. Güvenlik, silme/geri yükleme ve gizlilik kabulü tamamlanır. |
+| 4 — Kanıta bağlı genişleme | MCP/AI, yayınlama, prototip etkileşimleri, yorumlar ve gerçek zamanlı eşzamanlı düzenleme yalnız ayrıca onaylanır ve kullanıcı ihtiyacı ölçülürse. | Her yeni özellik için kullanım senaryosu, veri modeli, maliyet ve erişilebilirlik testi belirlenir; sırf Figma özellik listesi diye eklenmez. |
+
+Faz 2 sonunda hedeflenen görev testi: Kullanıcı dış tasarım aracı açmadan kendi sistemini düzenler, yeni bir reusable komponent kurar, onunla iki sayfayı farklı genişliklerde tamamlar, Light/Dark'ı kontrol eder ve projede derlenen kodu alır. Bu test geçmeden “Figma'ya gerek yok” iddiası ürün vaadi olarak kullanılmaz.
+
+## Backend zamanlaması — K5 onayı bekleniyor
+
+Önceki “paralel başlat” önerisi kesin kullanıcı kararı değildi. **Öneri: yerel composer + taşınabilir çıktı kanıtlanana kadar backend uygulamasını bekletmek; yalnız gereksinim/güvenlik araştırmasını paralel yürütmek.** Supabase adaydır; sağlayıcı, hesap zorunluluğu, MCP veya ücretlendirme entegrasyonu kabul edilmiş kapsam değildir. Aşağıdaki tablo teknik bağımlılıkları gösterir, şimdi uygulama talimatı değildir:
+
+| Zaman / hat | Composer ve ortak model | Backend |
+| --- | --- | --- |
+| Faz 0 | Belge/komponent/layout sözleşmesi ve örnek export fixture'ları. | Hosting kararı, auth/asset/sync gereksinimleri ve veri güvenliği incelemesi; sürümlü snapshot API taslağı ve yerel/cloud adapter sınırı. Henüz değişken belge şemasına göre üretim CRUD'u yok. |
+| Faz 1–2 | Yerel belge deposu, migration, renderer, edit komutları, export ve e2e testleri. | Uygulama ertelenir (K5 önerisi). Sonraki servis sözleşmesi: kullanıcı/proje sahipliği, proje listesi, sürümlü snapshot kaydet/oku, boyut sınırı, optimistic revision/ETag ve testler. Composer'ın depolama adapter'ına bağımlı; render algoritması sunucuda kopyalanmaz. |
+| Faz 3, ayrıca onayla | Offline queue/sync UI, çakışma ve geri yükleme akışı, varlıkların yükleme politikası. | Kimlik doğrulama, yetki, gizlilik/silme, oran/kota, yedekleme ve izleme; çatışmada açık fork/çözüm, **last-write-wins ile veri kaybı yok**. Ardından opt-in cloud release. |
+
+Bugün `next.config.ts` içinde `output: "export"` var; uygulama tarayıcı `localStorage`'ında çalışıyor. Statik çıktı kendi sunucu API'sini barındırmaz. İlk tercih, statik/offline editörü koruyup cloud sync için ayrı bir opsiyonel servis/adapter değerlendirmektir; Next deployment'ını server moduna taşımak ise publish veya server rendering ihtiyacı doğrulanırsa bilinçli karardır. Sağlayıcı, veritabanı ve auth paketi; belge boyutu, varlık politikası, hosting maliyeti ve gizlilik gereksinimleri ölçülmeden seçilmez. Realtime multiplayer/CRDT, yorumlar, karmaşık izin rolleri ve server-side canvas rendering ilk backend işine dahil değildir.
+
+## Karar kayıtları ve riskler
+
+- **En yüksek teknik risk:** kullanıcı tanımlı komponent + responsive layout + TSX export'un aynı belgeyi farklı yorumlaması. Drag/drop kütüphanesi veya backend seçmeden önce küçük uçtan uca dilimde kanıtlanmalı.
+- **En yüksek UX riski:** canvas'ta “serbest” yerleştirmenin neden layout kurallarına dönüştüğünün anlaşılmaması. Taşıma/yerleştirme sırasında hedef slot, hizalama ve oluşacak responsive davranış açıkça gösterilmeli; gerçek kullanıcı görev testi gerekir.
+- **İlk açık kararlar:** kodun hedef projeye entegrasyonu (mevcut lokal komponent import'u vs gelecekte paket), görsel dosyalarının offline/export temsili, sayfa yayınlama gerekliliği, custom komponentin kompozisyon ile mi başlayacağı ve servis için veri saklama/gizlilik politikası.
+- **Kabul dışı iddialar:** smoke ve screenshot testleri tek başına görsel kabul veya WCAG uygunluğu kanıtlamaz; VoiceOver, native %200 zoom ve forced-colors testleri `docs/accessibility-checklist.md` ile izlenir.

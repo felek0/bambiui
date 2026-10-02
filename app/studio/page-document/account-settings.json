@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "id": "account-settings",
+  "name": "Hesap ayarları",
+  "root": {
+    "id": "page", "kind": "container", "props": { "maxWidth": "narrow" }, "children": [
+      { "id": "outer", "kind": "stack", "props": { "gap": "lg" }, "children": [
+        { "id": "intro", "kind": "stack", "props": { "gap": "sm" }, "children": [
+          { "id": "heading", "kind": "text", "props": { "variant": "h1" }, "text": "Hesap ayarları" },
+          { "id": "intro-text", "kind": "text", "text": "Gerçek komponentlerle oluşturulmuş responsive layout örneği. Bu form verileri kaydetmez." }
+        ] },
+        { "id": "settings-form", "kind": "form", "props": { "action": "/examples/account-settings" }, "children": [
+          { "id": "form-stack", "kind": "stack", "props": { "gap": "lg" }, "children": [
+            { "id": "profile-card", "kind": "card", "children": [
+              { "id": "profile-header", "kind": "cardHeader", "children": [
+                { "id": "profile-title", "kind": "cardTitle", "text": "Profil" },
+                { "id": "profile-description", "kind": "cardDescription", "text": "Grid, dar container içinde tek kolona geçer." }
+              ] },
+              { "id": "profile-content", "kind": "cardContent", "children": [
+                { "id": "profile-grid", "kind": "grid", "props": { "gap": "lg" }, "children": [
+                  { "id": "first-cell", "kind": "gridItem", "children": [
+                    { "id": "first-name", "kind": "input", "props": { "label": "Ad", "name": "firstName", "required": true } }
+                  ] },
+                  { "id": "last-cell", "kind": "gridItem", "children": [
+                    { "id": "last-name", "kind": "input", "props": { "label": "Soyad", "name": "lastName", "required": true } }
+                  ] },
+                  { "id": "email-cell", "kind": "gridItem", "props": { "span": 2 }, "children": [
+                    { "id": "email", "kind": "input", "props": { "label": "E-posta", "name": "email", "type": "email", "required": true } }
+                  ] }
+                ] }
+              ] }
+            ] },
+            { "id": "preferences-card", "kind": "card", "children": [
+              { "id": "preferences-header", "kind": "cardHeader", "children": [
+                { "id": "preferences-title", "kind": "cardTitle", "text": "Tercihler" }
+              ] },
+              { "id": "preferences-content", "kind": "cardContent", "children": [
+                { "id": "notifications", "kind": "switch", "props": { "label": "E-posta bildirimleri", "name": "notifications" } }
+              ] }
+            ] },
+            { "id": "actions", "kind": "stack", "props": { "direction": "row", "justify": "end" }, "children": [
+              { "id": "try-form", "kind": "button", "props": { "buttonType": "submit" }, "text": "Formu dene" }
+            ] }
+          ] }
+        ] }
+      ] }
+    ]
+  }
+}
