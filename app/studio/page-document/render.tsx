@@ -21,7 +21,7 @@ function RenderNode({ node }: { node: PageNode }): ReactNode {
     case "text": return <Text {...marker} variant={p.variant as "h1" | "h2" | "h3" | "paragraph" | "caption" | undefined}>{node.text}</Text>;
     case "input": return <Input {...marker} label={p.label as string} name={p.name as string} type={p.type as "text" | "email" | undefined} required={p.required as boolean | undefined} />;
     case "switch": return <Switch {...marker} label={p.label as string} name={p.name as string} />;
-    case "button": return <Button {...marker} type={p.buttonType as "submit" | "button" | undefined}>{node.text}</Button>;
+    case "button": return <Button {...marker} type={p.type as "submit" | "button" | undefined}>{node.text}</Button>;
   }
 }
 

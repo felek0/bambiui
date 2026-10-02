@@ -33,6 +33,90 @@ test("rejects unknown fields, props, missing labels, invalid slots and duplicate
   }
 });
 
+function findNode(node, id) {
+  if (node.id === id) return node;
+  for (const child of node.children ?? []) {
+    const found = findNode(child, id);
+    if (found) return found;
+  }
+}
+
+const minimal = (children) => ({
+  version: 1, id: "limits", name: "Limits",
+  root: { id: "root", kind: "container", children },
+});
+const textNode = (id) => ({ id, kind: "text", text: "Text" });
+const formNode = (id) => ({ id, kind: "form", props: { action: "/example" }, children: [textNode(`${id}-text`)] });
+
+test("rejects nested forms through layout ancestors, but permits sibling forms", () => {
+  const nested = minimal([{ ...formNode("outer-form"), children: [
+    { id: "wrapper", kind: "stack", children: [formNode("inner-form")] },
+  ] }]);
+  assert.throws(() => parsePageDocument(nested), /nested form/);
+  assert.throws(() => exportPageTSX(nested), /nested form/);
+  assert.doesNotThrow(() => parsePageDocument(minimal([formNode("first-form"), formNode("second-form")])));
+});
+
+test("validates the shared type name against each component's values", () => {
+  const value = clone();
+  assert.equal(findNode(parsePageDocument(value).root, "try-form").props.type, "submit");
+  findNode(value.root, "try-form").props.type = "email";
+  assert.throws(() => parsePageDocument(value), /invalid type/);
+  findNode(value.root, "try-form").props.type = "button";
+  findNode(value.root, "email").props.type = "submit";
+  assert.throws(() => parsePageDocument(value), /invalid type/);
+});
+
+test("normalizes legacy v1 buttonType without mutating input or exporting the alias", () => {
+  const value = clone();
+  const button = findNode(value.root, "try-form");
+  button.props = { buttonType: "submit" };
+  const page = parsePageDocument(value);
+  assert.deepEqual(findNode(page.root, "try-form").props, { type: "submit" });
+  assert.deepEqual(button.props, { buttonType: "submit" });
+  assert.deepEqual(parsePageDocument(page), page);
+  assert.doesNotMatch(exportPageTSX(value), /buttonType/);
+  button.props.type = "submit";
+  assert.throws(() => parsePageDocument(value), /conflicting button type/);
+  delete button.props.type;
+  button.props.buttonType = "email";
+  assert.throws(() => parsePageDocument(value), /invalid buttonType/);
+});
+
+test("accepts exactly 100 nodes and rejects the next node", () => {
+  const value = minimal(Array.from({ length: 99 }, (_, index) => textNode(`text-${index}`)));
+  assert.doesNotThrow(() => parsePageDocument(value));
+  value.root.children.push(textNode("overflow"));
+  assert.throws(() => parsePageDocument(value), /page limit exceeded/);
+});
+
+test("accepts root-relative depth 12 and rejects depth 13", () => {
+  function nested(depth) {
+    let child = textNode("deep-text");
+    for (let level = 1; level < depth; level++) child = { id: `stack-${level}`, kind: "stack", children: [child] };
+    return minimal([child]);
+  }
+  assert.doesNotThrow(() => parsePageDocument(nested(12)));
+  assert.throws(() => parsePageDocument(nested(13)), /page limit exceeded/);
+});
+
+test("enforces name, text and prop length boundaries", () => {
+  const value = minimal([textNode("long-text")]);
+  value.name = "n".repeat(120);
+  value.root.children[0].text = "t".repeat(2000);
+  assert.doesNotThrow(() => parsePageDocument(value));
+  value.name += "n";
+  assert.throws(() => parsePageDocument(value), /invalid name/);
+  value.name = "Limits";
+  value.root.children[0].text += "t";
+  assert.throws(() => parsePageDocument(value), /invalid text/);
+  const input = clone();
+  findNode(input.root, "email").props.label = "l".repeat(200);
+  assert.doesNotThrow(() => parsePageDocument(input));
+  findNode(input.root, "email").props.label += "l";
+  assert.throws(() => parsePageDocument(input), /invalid label/);
+});
+
 test("only serializes text and props as escaped TSX expressions", () => {
   const value = clone();
   value.root.children[0].children[0].children[0].text = '</Text>" & <script>alert(1)</script>';

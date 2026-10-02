@@ -16,7 +16,7 @@ export function exportPageTSX(input: unknown, componentImport = "./components", 
     used.add(node.kind);
     const tag = names[node.kind];
     const attributes: Record<string, string | boolean | number> = { "data-page-node": node.id };
-    for (const [key, value] of Object.entries(node.props ?? {})) attributes[key === "buttonType" ? "type" : key] = value;
+    for (const [key, value] of Object.entries(node.props ?? {})) attributes[key] = value;
     if (node.kind === "form") attributes.method = "get";
     const attrs = Object.entries(attributes).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, value]) => ` ${key}={${JSON.stringify(value)}}`).join("");
     const pad = "  ".repeat(depth);

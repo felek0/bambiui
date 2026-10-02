@@ -39,7 +39,7 @@
               ] }
             ] },
             { "id": "actions", "kind": "stack", "props": { "direction": "row", "justify": "end" }, "children": [
-              { "id": "try-form", "kind": "button", "props": { "buttonType": "submit" }, "text": "Formu dene" }
+              { "id": "try-form", "kind": "button", "props": { "type": "submit" }, "text": "Formu dene" }
             ] }
           ] }
         ] }
