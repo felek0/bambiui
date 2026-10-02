@@ -34,7 +34,9 @@ The prototype validates a restricted tree/prop allowlist and generates TSX with 
 node --experimental-strip-types scripts/check-page-source.mjs
 ```
 
-This generates a temporary source deliverable, type-checks it as React without Studio/Next imports, and builds an isolated Next consumer with Light/Dark routes and real exported CSS. It reuses installed `node_modules`; it does not test a fresh dependency install, browser hydration or visual behavior. Temporary files are removed by default. Add `--keep` to inspect the generated `ui/` source directory in the reported `.next/page-source-*` fixture; do not run a main build while inspecting it, since `.next` is disposable.
+This generates a temporary source deliverable, type-checks it as React without Studio/Next imports, and builds an isolated Next consumer with Light/Dark routes and real exported CSS. It reuses installed `node_modules`; it does not test a fresh dependency install. Without `--browser`, it only checks build/prerender. Temporary files are removed by default. Add `--keep` to inspect the generated `ui/` source directory in the reported `.next/page-source-*` fixture; do not run a main build while inspecting it, since `.next` is disposable.
+
+Add `--browser` to run a disposable headless Chrome profile against the copied consumer: hydration marker and runtime errors, painted theme colors, 1440/375px Grid columns/gaps/reflow, Switch pointer/Space behavior, native input/required/email validation, FormData and preserved GET action. `CHROME_PATH` overrides the default macOS Chrome executable. The browser phase is bounded to 120 seconds and cleans up its server/profile. These are fixed fixture checks, not screenshot review, native mobile/zoom, screen-reader or full accessibility acceptance.
 
 Source collection is implemented in `scripts/page-source-files.mjs`. Component code is copied unchanged; unused component sources are omitted, while the shared component CSS remains complete. No Tailwind runtime is required; the source prototype includes its own minimal page baseline and scoped `sr-only` utility. This is not a registry, npm release or finalized licensing/distribution policy.
 

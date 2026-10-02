@@ -11,7 +11,8 @@ import { defaultSystem } from "../app/studio/tokens.ts";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const keep = process.argv.slice(2).includes("--keep");
-assert.ok(process.argv.slice(2).every((arg) => arg === "--keep"), "Only --keep is supported");
+const browser = process.argv.slice(2).includes("--browser");
+assert.ok(process.argv.slice(2).every((arg) => ["--keep", "--browser"].includes(arg)), "Only --keep and --browser are supported");
 let fixture;
 try {
   const page = JSON.parse(await readFile(join(root, "app/studio/page-document/account-settings.json"), "utf8"));
@@ -40,7 +41,12 @@ try {
   await writeFile(join(fixture, "app/page.tsx"), 'import Page from "../ui/Page";\nexport default function Example() { return <Page />; }\n');
   await mkdir(join(fixture, "app/dark"));
   await writeFile(join(fixture, "app/dark/page.tsx"), 'import Page from "../../ui/Page";\nexport default function Example() { return <Page mode="dark" />; }\n');
-  await writeFile(join(fixture, "app/layout.tsx"), 'export default function RootLayout({ children }: { children: React.ReactNode }) { return <html lang="tr"><body style={{ margin: 0 }}><div style={{ isolation: "isolate" }}>{children}</div></body></html>; }\n');
+  if (browser) {
+    await mkdir(join(fixture, "app/examples/account-settings"), { recursive: true });
+    await writeFile(join(fixture, "app/examples/account-settings/page.tsx"), 'import Page from "../../../ui/Page";\nexport default function Example() { return <Page />; }\n');
+  }
+  if (browser) await writeFile(join(fixture, "app/hydration-probe.tsx"), '"use client";\nimport { useEffect, useRef } from "react";\nexport default function HydrationProbe() { const ref = useRef<HTMLSpanElement>(null); useEffect(() => { ref.current?.setAttribute("data-hydrated", "true"); }, []); return <span ref={ref} hidden className="consumer-hydration-marker" data-hydrated="false" />; }\n');
+  await writeFile(join(fixture, "app/layout.tsx"), `${browser ? 'import HydrationProbe from "./hydration-probe";\n' : ''}export default function RootLayout({ children }: { children: React.ReactNode }) { return <html lang="tr"><body style={{ margin: 0 }}><div style={{ isolation: "isolate" }}>{children}${browser ? '<HydrationProbe />' : ''}</div></body></html>; }\n`);
   await writeFile(join(fixture, "next.config.mjs"), 'export default { output: "export" };\n');
   console.log(`Building copied-source Next consumer: ${relative(root, fixture)}`);
   const child = spawn(process.execPath, [join(root, "node_modules/next/dist/bin/next"), "build"], {
@@ -67,7 +73,14 @@ try {
   assert.match(css, /grid-template-columns/);
   assert.match(css, /@container/);
   console.log("PASS: copied page, component/layout CSS and theme variables build and prerender outside Studio.");
-  console.log("Scope: dependencies reuse the installed node_modules; this is not a fresh npm install, browser hydration or visual acceptance.");
+  if (browser) {
+    const { checkPageSourceBrowser } = await import("./page-source-browser.mjs");
+    await checkPageSourceBrowser({ outDir: join(fixture, "out"), expectedThemes: {
+      light: defaultSystem.themes.light.global,
+      dark: defaultSystem.themes.dark.global,
+    } });
+  }
+  console.log(`Scope: dependencies reuse the installed node_modules; this is not a fresh npm install or visual/accessibility acceptance.${browser ? ' Browser checks cover only the listed fixture behaviors.' : ' Use --browser for hydration and browser behavior checks.'}`);
   if (keep) console.log(`Kept source and consumer fixture: ${relative(root, fixture)} (ui/ contains the source deliverable).`);
 } catch (error) {
   console.error("FAIL: page source consumer check:", error);
