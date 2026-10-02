@@ -24,9 +24,19 @@ In Design, select a component in the sidebar to edit its tokens, or choose **Col
 
 ## Page/layout prototype (not a composer)
 
-Open `/examples/account-settings` to view the v1 JSON fixture in `app/studio/page-document/account-settings.json`. It renders Container/Stack/Grid and five existing components with the **default Light theme**, not the active saved Studio system. Layout gaps use the existing spacing presets; Grid collapses at a container width of 32rem or less. There is no breakpoint editor or page persistence. The example form uses native GET navigation and does not save data.
+Open `/examples/account-settings` to view the v1 JSON fixture in `app/studio/page-document/account-settings.json`. It renders Container/Stack/Grid and five existing components using a **detached bundle snapshot of the default system in Light mode**, not the active saved Studio system. `bundle.ts` pairs page JSON and both design themes in a separately versioned backup format, validates imports up to 1 MiB UTF-8, and preserves the existing design-system migration/shared-geometry rules. The bundle renderer supports both modes; this route shows Light. It is not a live project/system reference or an import/download UI, and remote font loading remains the consumer's responsibility. Layout gaps use the existing spacing presets; Grid collapses at a container width of 32rem or less. There is no breakpoint editor or page persistence. The example form uses native GET navigation and does not save data.
 
-The prototype validates a restricted tree/prop allowlist and generates TSX with relative source imports. Tests type-check that fixture against this repository; they do not prove a standalone installation or renderer/export DOM equivalence. The exporter does not yet package component sources, styles, theme variables or dependencies, and it has no download UI. See the plan for validator limits and remaining semantic checks.
+The prototype validates a restricted tree/prop allowlist and generates TSX with relative source imports. Tests type-check the fixture and compare server-rendered HTML from the renderer and generated TSX using real components. Attribute order and React-generated IDs are normalized while preserving ID references; CSS module names are stubbed. This proves the tested SSR structure, not independent installation, hydration, browser DOM or visual/CSS equivalence. A separate build-time source-delivery prototype now collects used component sources and their local dependencies, layout sources, CSS, theme variables, the JSON backup and dependency/install guidance. It is not connected to a download UI. See the plan for validator limits and remaining semantic checks.
+
+### Copied-source consumer check
+
+```bash
+node --experimental-strip-types scripts/check-page-source.mjs
+```
+
+This generates a temporary source deliverable, type-checks it as React without Studio/Next imports, and builds an isolated Next consumer with Light/Dark routes and real exported CSS. It reuses installed `node_modules`; it does not test a fresh dependency install, browser hydration or visual behavior. Temporary files are removed by default. Add `--keep` to inspect the generated `ui/` source directory in the reported `.next/page-source-*` fixture; do not run a main build while inspecting it, since `.next` is disposable.
+
+Source collection is implemented in `scripts/page-source-files.mjs`. Component code is copied unchanged; unused component sources are omitted, while the shared component CSS remains complete. No Tailwind runtime is required; the source prototype includes its own minimal page baseline and scoped `sr-only` utility. This is not a registry, npm release or finalized licensing/distribution policy.
 
 ## Themes and accessibility
 
@@ -61,13 +71,13 @@ Social images need an absolute URL. Set `NEXT_PUBLIC_SITE_URL` to the production
 
 ## Token and color tests
 
-Run with Node.js 22.6+ (Node.js 22.13+ recommended):
+Run the complete suite with Node.js 22.15+ (the SSR parity loader uses `registerHooks`; validated here on Node.js 24.14):
 
 ```bash
 node --experimental-strip-types --test app/studio/*.test.mjs app/studio/page-document/*.test.mjs
 ```
 
-The page-document tests cover fixture JSON round-trip, selected invalid trees/props, escaping and generated TSX type-checking. The Studio tests cover shared font/spacing presets, legacy alias independence, inheritance, component isolation, CSS/JSON compatibility, invalid imports, deterministic palette generation, gamut and semantic hue preservation, contrast thresholds, modeled component mixes, CLI output, and type-checking every copyable React snippet against the real component APIs.
+The page-document tests cover fixture JSON round-trip, selected invalid trees/props, boundary limits, escaping, generated TSX type-checking and renderer/export SSR HTML parity, including omitted props and legacy normalization. The Studio tests cover shared font/spacing presets, legacy alias independence, inheritance, component isolation, CSS/JSON compatibility, invalid imports, deterministic palette generation, gamut and semantic hue preservation, contrast thresholds, modeled component mixes, CLI output, and type-checking every copyable React snippet against the real component APIs.
 
 To verify a direct Server Component consumer of Checkbox, run `node scripts/check-checkbox-server.mjs`. It builds a disposable Next.js fixture under `.next`, checks the static markup and client-reference manifest, then removes the fixture. This does not execute browser hydration.
 

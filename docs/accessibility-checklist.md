@@ -2,7 +2,7 @@
 
 ## Scope
 
-This checklist primarily covers the existing **Studio specimen workflow**. Its 20-route smoke coverage excludes the new `/examples/account-settings` prototype. The page-document tests verify selected validation/serialization cases and fixture TSX types, not browser reflow, renderer/export DOM equivalence, assistive technology or complete HTML semantics. Separate narrow/wide, Light/Dark and consumer-project checks must be added before composer acceptance. See [the roadmap](roadmap.md) for the phase gates.
+This checklist primarily covers the existing **Studio specimen workflow**. Its 20-route smoke coverage excludes the new `/examples/account-settings` prototype. The page-document tests verify selected validation/serialization cases, fixture TSX types and renderer/export SSR HTML parity with real components. Attribute order and React IDs/references are normalized; CSS modules are stubbed. These are not browser reflow, browser DOM/hydration/CSS equivalence, assistive technology or complete HTML-semantic acceptance. A separate copied-source consumer now type-checks React and prerenders Light/Dark in Next with real CSS, but reuses installed dependencies and does not run a browser. Narrow/wide, hydration, visual and assistive-technology checks remain required before composer acceptance. See [the roadmap](roadmap.md) for the phase gates.
 
 ## Automated evidence
 

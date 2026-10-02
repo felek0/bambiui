@@ -1,5 +1,6 @@
-export type PageKind = "container" | "stack" | "grid" | "gridItem" | "form" | "card" | "cardHeader" | "cardTitle" | "cardDescription" | "cardContent" | "text" | "input" | "switch" | "button";
-export type PageProp = string | boolean | number;
+import { nodeRegistry, type PageKind, type PageProp } from "./registry.ts";
+export type { PageKind, PageProp } from "./registry.ts";
+
 export type PageNode = {
   id: string;
   kind: PageKind;
@@ -9,36 +10,6 @@ export type PageNode = {
 };
 export type PageDocument = { version: 1; id: string; name: string; root: PageNode };
 
-type Rule = readonly string[];
-const children: Record<PageKind, Rule> = {
-  container: ["stack", "grid", "form", "card", "text"],
-  stack: ["stack", "grid", "form", "card", "text", "input", "switch", "button"],
-  grid: ["gridItem"],
-  gridItem: ["stack", "card", "text", "input", "switch", "button"],
-  form: ["stack", "grid", "card", "text", "input", "switch", "button"],
-  card: ["cardHeader", "cardContent"],
-  cardHeader: ["cardTitle", "cardDescription"],
-  cardTitle: [], cardDescription: [],
-  cardContent: ["stack", "grid", "text", "input", "switch", "button"],
-  text: [], input: [], switch: [], button: [],
-};
-const choices: Record<string, readonly PageProp[]> = {
-  maxWidth: ["narrow", "wide"], direction: ["row", "column"],
-  gap: ["sm", "md", "lg"], align: ["start", "center", "end", "stretch"],
-  justify: ["start", "center", "end", "between"], wrap: [true, false],
-  columns: [1, 2, 3], span: [1, 2, 3],
-  variant: ["h1", "h2", "h3", "paragraph", "caption"],
-  required: [true, false],
-};
-const props: Record<PageKind, Rule> = {
-  container: ["maxWidth"], stack: ["direction", "gap", "align", "justify", "wrap"],
-  grid: ["columns", "gap"], gridItem: ["span"], form: ["action"],
-  card: [], cardHeader: [], cardTitle: [], cardDescription: [], cardContent: [],
-  text: ["variant"], input: ["label", "name", "type", "required"],
-  switch: ["label", "name"], button: ["type", "buttonType"],
-};
-const textKinds: readonly PageKind[] = ["cardTitle", "cardDescription", "text", "button"];
-const requiredProps: Partial<Record<PageKind, Rule>> = { input: ["label", "name"], switch: ["label", "name"], form: ["action"] };
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 const exact = (value: Record<string, unknown>, allowed: readonly string[], path: string) => {
@@ -62,45 +33,41 @@ export function parsePageDocument(value: unknown): PageDocument {
     identifier(raw.id, `${path}.id`);
     if (ids.has(raw.id as string)) throw new Error(`${path}: duplicate id`);
     ids.add(raw.id as string);
-    if (typeof raw.kind !== "string" || !Object.hasOwn(children, raw.kind)) throw new Error(`${path}: unknown kind`);
+    if (typeof raw.kind !== "string" || !Object.hasOwn(nodeRegistry, raw.kind)) throw new Error(`${path}: unknown kind`);
     const kind = raw.kind as PageKind;
-    if (parent ? !children[parent].includes(kind) : kind !== "container") throw new Error(`${path}: invalid parent/slot for ${kind}`);
+    const definition = nodeRegistry[kind];
+    if (parent ? !nodeRegistry[parent].children.includes(kind) : kind !== "container") throw new Error(`${path}: invalid parent/slot for ${kind}`);
     if (kind === "form" && insideForm) throw new Error(`${path}: nested form`);
-    if (raw.props !== undefined) {
-      if (!record(raw.props)) throw new Error(`${path}: invalid props`);
-      exact(raw.props, props[kind], `${path}.props`);
-      if (kind === "button" && Object.hasOwn(raw.props, "buttonType") && Object.hasOwn(raw.props, "type")) throw new Error(`${path}: conflicting button type`);
-      for (const [key, prop] of Object.entries(raw.props)) {
-        if (key === "type") {
-          if (!(kind === "button" ? ["submit", "button"] : ["text", "email"]).includes(prop as string)) throw new Error(`${path}: invalid type`);
-        } else if (key === "buttonType") {
-          if (!["submit", "button"].includes(prop as string)) throw new Error(`${path}: invalid buttonType`);
-        } else if (key in choices) {
-          if (!choices[key].includes(prop as PageProp)) throw new Error(`${path}: invalid ${key}`);
-        } else if (typeof prop !== "string" || !prop.trim() || prop.length > 200) throw new Error(`${path}: invalid ${key}`);
-        if (key === "name" && !/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(prop as string)) throw new Error(`${path}: invalid name`);
-        if (key === "action" && !/^\/(?!\/)[a-zA-Z0-9/_-]*$/.test(prop as string)) throw new Error(`${path}: invalid action`);
-      }
-    }
-    for (const key of requiredProps[kind] ?? []) if (!record(raw.props) || !Object.hasOwn(raw.props, key)) throw new Error(`${path}: missing ${key}`);
-    if (textKinds.includes(kind)) {
-      if (typeof raw.text !== "string" || !raw.text.trim() || raw.text.length > 2000) throw new Error(`${path}: invalid text`);
-    } else if (raw.text !== undefined) throw new Error(`${path}: unexpected text`);
-    if (children[kind].length) {
-      if (!Array.isArray(raw.children) || !raw.children.length) throw new Error(`${path}: missing children`);
-      if (kind === "card" && (raw.children.length > 2 || new Set(raw.children.map((child: unknown) => record(child) ? child.kind : null)).size !== raw.children.length)) throw new Error(`${path}: duplicate card slot`);
-      if (kind === "cardHeader" && (raw.children.length > 2 || new Set(raw.children.map((child: unknown) => record(child) ? child.kind : null)).size !== raw.children.length)) throw new Error(`${path}: duplicate header slot`);
-    } else if (raw.children !== undefined) throw new Error(`${path}: unexpected children`);
     const node: PageNode = { id: raw.id as string, kind };
     if (raw.props !== undefined) {
-      node.props = { ...raw.props } as Record<string, PageProp>;
-      if (kind === "button" && Object.hasOwn(raw.props, "buttonType")) {
-        node.props.type = raw.props.buttonType as string;
-        delete node.props.buttonType;
+      if (!record(raw.props)) throw new Error(`${path}: invalid props`);
+      const aliases = definition.legacyAliases ?? {};
+      exact(raw.props, [...Object.keys(definition.props), ...Object.keys(aliases)], `${path}.props`);
+      node.props = {};
+      for (const [key, prop] of Object.entries(raw.props)) {
+        const canonical = Object.hasOwn(aliases, key) ? aliases[key] : key;
+        if (canonical !== key && Object.hasOwn(raw.props, canonical)) throw new Error(`${path}: conflicting button type`);
+        const rule = definition.props[canonical];
+        if (typeof rule !== "string") {
+          if (!rule.includes(prop as PageProp)) throw new Error(`${path}: invalid ${key}`);
+        } else {
+          if (typeof prop !== "string" || !prop.trim() || prop.length > 200) throw new Error(`${path}: invalid ${key}`);
+          if (rule === "name" && !/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(prop)) throw new Error(`${path}: invalid ${key}`);
+          if (rule === "action" && !/^\/(?!\/)[a-zA-Z0-9/_-]*$/.test(prop)) throw new Error(`${path}: invalid ${key}`);
+        }
+        node.props[canonical] = prop as PageProp;
       }
     }
-    if (raw.text !== undefined) node.text = raw.text as string;
-    if (Array.isArray(raw.children)) node.children = raw.children.map((child, index) => visit(child, `${path}.children[${index}]`, depth + 1, kind, insideForm || kind === "form"));
+    for (const key of definition.requiredProps ?? []) if (!node.props || !Object.hasOwn(node.props, key)) throw new Error(`${path}: missing ${key}`);
+    if (definition.text) {
+      if (typeof raw.text !== "string" || !raw.text.trim() || raw.text.length > 2000) throw new Error(`${path}: invalid text`);
+      node.text = raw.text;
+    } else if (raw.text !== undefined) throw new Error(`${path}: unexpected text`);
+    if (definition.children.length) {
+      if (!Array.isArray(raw.children) || !raw.children.length) throw new Error(`${path}: missing children`);
+      if (definition.uniqueSlots && new Set(raw.children.map((child: unknown) => record(child) ? child.kind : null)).size !== raw.children.length) throw new Error(`${path}: duplicate slot`);
+      node.children = raw.children.map((child, index) => visit(child, `${path}.children[${index}]`, depth + 1, kind, insideForm || kind === "form"));
+    } else if (raw.children !== undefined) throw new Error(`${path}: unexpected children`);
     return node;
   }
   return { version: 1, id: value.id as string, name: value.name as string, root: visit(value.root, "page.root", 0) };
