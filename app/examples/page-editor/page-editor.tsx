@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ChangeEvent } from "react";
 import { serializePageBundle, type PageBundle } from "../../studio/page-document/bundle";
 import { ioMessage, readBundleFile, readLocalBundle, resetLocalBundle, saveLocalBundle } from "./storage";
 import type { PageCommand } from "../../studio/page-document/commands";
@@ -8,17 +8,54 @@ import { createPageHistory, executePageCommands, undoPage, redoPage } from "../.
 import type { PageKind, PageNode, PageProp } from "../../studio/page-document/model";
 import { nodeRegistry } from "../../studio/page-document/registry";
 import { RenderPageBundle } from "../../studio/page-document/render";
-import { allowedChildKinds, createEditorNode, locateNode } from "./editing";
+import { allowedChildKinds, createEditorNode, eligibleMoveDestinations, locateNode, type MoveDestination } from "./editing";
 import styles from "./page.module.css";
 
-function Layers({ node, selectedId, select }: { node: PageNode; selectedId: string; select: (id: string) => void }) {
+type LayerDrag = {
+  source: string;
+  targets: Map<string, MoveDestination>;
+  hovered: string | null;
+};
+type DragControls = {
+  active: LayerDrag | null;
+  rootId: string;
+  start: (event: DragEvent<HTMLButtonElement>, id: string) => void;
+  over: (event: DragEvent<HTMLDivElement>, id: string) => void;
+  leave: (id: string) => void;
+  drop: (event: DragEvent<HTMLDivElement>, id: string) => void;
+  clear: () => void;
+};
+
+function Layers({ node, selectedId, select, drag }: { node: PageNode; selectedId: string; select: (id: string) => void; drag: DragControls }) {
+  const target = drag.active ? drag.active.targets.has(node.id) ? "valid" : "invalid" : undefined;
   return <li>
+    <div className={styles.layerRow} data-drop-layer={node.id} data-drop-target={target} data-drop-hover={drag.active?.hovered === node.id || undefined}
+      onDragOver={(event) => drag.over(event, node.id)} onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) drag.leave(node.id);
+      }} onDrop={(event) => drag.drop(event, node.id)}>
+    {node.id !== drag.rootId && <button type="button" className={styles.dragHandle} draggable aria-label={`Drag ${node.id}`} aria-describedby="drag-help"
+      data-drag-handle={node.id} onDragStart={(event) => drag.start(event, node.id)} onDragEnd={drag.clear}>⠿</button>}
     <button type="button" className={styles.layer} data-editor-layer={node.id} aria-pressed={selectedId === node.id} onClick={() => select(node.id)}>
       <span>{nodeRegistry[node.kind].element}</span>
       <small>{node.text?.slice(0, 40) || node.id}</small>
     </button>
-    {!!node.children?.length && <ul>{node.children.map((child) => <Layers key={child.id} node={child} selectedId={selectedId} select={select} />)}</ul>}
+    <span className={styles.dropHint}>{target === "valid" ? "Append here" : target === "invalid" ? "Not allowed" : ""}</span>
+    </div>
+    {!!node.children?.length && <ul>{node.children.map((child) => <Layers key={child.id} node={child} selectedId={selectedId} select={select} drag={drag} />)}</ul>}
   </li>;
+}
+
+function MoveControl({ destinations, commit }: { destinations: MoveDestination[]; commit: (command: PageCommand, selection: string) => void }) {
+  const [destination, setDestination] = useState("");
+  const target = destinations.find((item) => item.parentId === destination);
+  return <div className={styles.fields}>
+    <label>Move destination<select value={destination} disabled={!destinations.length} onChange={(event) => setDestination(event.target.value)} aria-describedby="move-help">
+      <option value="">{destinations.length ? "Choose a destination" : "No eligible destinations"}</option>
+      {destinations.map((item) => <option key={item.parentId} value={item.parentId}>{item.label}</option>)}
+    </select></label>
+    <button type="button" disabled={!target} onClick={() => target && commit(target.command, target.command.nodeId)}>Move</button>
+    <p id="move-help" className={styles.muted}>{destinations.length ? "Append to a different parent or slot. Moving preserves unapplied property drafts; undo/redo discards them. Use Move up/down for sibling order." : "No other parent or slot can accept this node without violating page rules."}</p>
+  </div>;
 }
 
 function Properties({ node, commit }: { node: PageNode; commit: (command: PageCommand) => void }) {
@@ -74,6 +111,54 @@ export default function PageEditor({ initialBundle }: { initialBundle: PageBundl
   const [previewWidth, setPreviewWidth] = useState<"narrow" | "wide">("wide");
   const [selectionMode, setSelectionMode] = useState(false);
   const page = history.present;
+  const dragSession = useRef<{ view: LayerDrag; token: string; page: typeof page } | null>(null);
+  const [dragView, setDragView] = useState<LayerDrag | null>(null);
+  const moveDestinations = useMemo(() => eligibleMoveDestinations(page, selectedId), [page, selectedId]);
+
+  const clearDrag = useCallback(() => {
+    dragSession.current = null;
+    setDragView(null);
+  }, []);
+
+  const drag: DragControls = {
+    active: dragView, rootId: page.root.id, clear: clearDrag,
+    start(event, id) {
+      clearDrag();
+      if (!ready || busy || id === page.root.id) { event.preventDefault(); return; }
+      const view = { source: id, targets: new Map(eligibleMoveDestinations(page, id).map((target) => [target.parentId, target])), hovered: null };
+      const token = crypto.randomUUID();
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("application/x-bambiui-layer-session", token);
+      dragSession.current = { view, token, page };
+      setDragView(view);
+    },
+    over(event, id) {
+      event.preventDefault();
+      const session = dragSession.current;
+      const valid = ready && !busy && session?.page === page && session.view.targets.has(id) && event.dataTransfer.types.includes("application/x-bambiui-layer-session");
+      event.dataTransfer.dropEffect = valid ? "move" : "none";
+      if (session && session.view.hovered !== id) {
+        session.view = { ...session.view, hovered: id };
+        setDragView(session.view);
+      }
+    },
+    leave(id) {
+      const session = dragSession.current;
+      if (session?.view.hovered === id) {
+        session.view = { ...session.view, hovered: null };
+        setDragView(session.view);
+      }
+    },
+    drop(event, id) {
+      event.preventDefault();
+      event.stopPropagation();
+      const session = dragSession.current;
+      const target = session?.view.targets.get(id);
+      const valid = ready && !busy && session?.page === page && event.dataTransfer.getData("application/x-bambiui-layer-session") === session.token;
+      clearDrag();
+      if (valid && target) commit(target.command, target.command.nodeId);
+    },
+  };
   const found = locateNode(page.root, selectedId) ?? locateNode(page.root, page.root.id)!;
   const selected = found.node;
   const parent = found.ancestors.at(-1);
@@ -96,14 +181,15 @@ export default function PageEditor({ initialBundle }: { initialBundle: PageBundl
     setError("");
   }
 
-  function replaceBundle(bundle: PageBundle) {
+  const replaceBundle = useCallback((bundle: PageBundle) => {
+    clearDrag();
     setSnapshot(bundle);
     setHistory(createPageHistory(bundle.page));
     setSelectedId(bundle.page.root.id);
     setRevision((value) => value + 1);
     setDrafts(false);
     setError("");
-  }
+  }, [clearDrag]);
 
   useEffect(() => {
     // Delay initialization until hydration; never write on mount (including Strict Mode replay).
@@ -125,7 +211,7 @@ export default function PageEditor({ initialBundle }: { initialBundle: PageBundl
       setReady(true);
     }, 0);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [replaceBundle]);
 
   useEffect(() => {
     if (!ready || (saved && !drafts)) return;
@@ -190,6 +276,7 @@ export default function PageEditor({ initialBundle }: { initialBundle: PageBundl
   }
 
   function commit(command: PageCommand, nextSelection?: string) {
+    clearDrag();
     try {
       const next = executePageCommands(history, [command]);
       setHistory(next);
@@ -209,6 +296,7 @@ export default function PageEditor({ initialBundle }: { initialBundle: PageBundl
   }
 
   function restore(direction: "undo" | "redo") {
+    clearDrag();
     const next = direction === "undo" ? undoPage(history) : redoPage(history);
     setHistory(next);
     if (!locateNode(next.present.root, selected.id)) setSelectedId(next.present.root.id);
@@ -265,7 +353,8 @@ export default function PageEditor({ initialBundle }: { initialBundle: PageBundl
           <button type="submit">Rename page</button>
         </form>
         <p className={styles.muted}>Select a layer to edit. The root cannot be deleted or reordered.</p>
-        <ul ref={treeRef} className={styles.tree}><Layers node={page.root} selectedId={selected.id} select={selectLayer} /></ul>
+        <p id="drag-help" className={styles.muted}>Desktop: drag a ⠿ handle to “Append here” to move to the end of a different parent or slot. No touch drag support. Keyboard: use Move destination or Move up/down. Moving preserves unapplied drafts.</p>
+                <ul ref={treeRef} className={styles.tree} onKeyDown={(event) => { if (event.key === "Escape") clearDrag(); }}><Layers node={page.root} selectedId={selected.id} select={selectLayer} drag={drag} /></ul>
       </section>
       <section aria-labelledby="properties-heading" className={styles.panel}>
         <h2 id="properties-heading">Properties</h2>
@@ -275,6 +364,7 @@ export default function PageEditor({ initialBundle }: { initialBundle: PageBundl
           <button type="button" disabled={!parent || found.index === (parent.children?.length ?? 0) - 1} onClick={() => parent && commit({ type: "move", nodeId: selected.id, parentId: parent.id, index: found.index + 1 })}>Move down</button>
           <button type="button" disabled={!parent} onClick={() => parent && commit({ type: "delete", nodeId: selected.id }, parent.id)}>Delete</button>
         </div>
+        <MoveControl key={`${selected.id}-${JSON.stringify(page)}`} destinations={moveDestinations} commit={commit} />
         <Properties key={`${selected.id}-${revision}`} node={selected} commit={commit} />
         <h3>Add child</h3>
         {allowed.length ? <form key={`${selected.id}-${allowed.join()}`} onSubmit={add} className={styles.fields}>

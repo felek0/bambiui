@@ -298,6 +298,69 @@ async function smoke() {
     await wait(`${layers}.indexOf(${JSON.stringify(addedId)}) < ${beforeMove.indexOf(addedId)}`);
     await click(named('Move down'));
     await wait(`JSON.stringify(${layers}) === ${JSON.stringify(JSON.stringify(beforeMove))}`);
+    const destinationId = await evaluate(`${q('select[aria-describedby="move-help"]')}.options[1]?.value`);
+    assert.ok(destinationId, 'Inserted container needs a cross-parent destination');
+    await evaluate(`(() => { const select = ${q('select[aria-describedby="move-help"]')}; select.value = ${JSON.stringify(destinationId)}; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    await wait(enabled('Move'));
+    await click(named('Move'));
+    const relocated = `${node(addedId)}?.parentElement.closest('[data-page-node]')?.dataset.pageNode === ${JSON.stringify(destinationId)}`;
+    await wait(relocated);
+    await wait(`${layer(addedId)} === document.activeElement`);
+    assert.equal(await evaluate(`${q('select[aria-describedby="move-help"]')}.value`), '');
+    await click(named('Undo'));
+    await wait(`${node(addedId)}?.parentElement.closest('[data-page-node]')?.dataset.pageNode === ${JSON.stringify(rootId)}`);
+    await click(named('Redo'));
+    await wait(relocated);
+    assert.deepEqual(JSON.parse(await evaluate(stored)), baseline, 'Cross-parent moves must not autosave');
+    report('cross-parent append, rendered relocation, focus, destination reset and single-step undo/redo');
+    // Native dragstart comes from CDP mouse input; intercepted Chromium DragData
+    // is delivered with CDP drag events, not a fabricated DOM DataTransfer.
+    await click(named('Undo'));
+    await wait(`${node(addedId)}?.parentElement.closest('[data-page-node]')?.dataset.pageNode === ${JSON.stringify(rootId)}`);
+    assert.equal(await evaluate(q(`[data-drag-handle="${rootId}"]`)), null);
+    const dragPoint = async selector => evaluate(`(()=>{const e=${selector};e.scrollIntoView({block:'center'});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+    await send('Input.setInterceptDrags', {enabled:true});
+    const intercepted = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { socket.removeEventListener('message', listener); reject(new Error('Native drag was not intercepted')); }, 4500);
+      function listener(event) { const message = JSON.parse(event.data); if (message.method === 'Input.dragIntercepted') { clearTimeout(timer); socket.removeEventListener('message', listener); resolve(message.params.data); } }
+      socket.addEventListener('message', listener);
+    });
+    const start = await dragPoint(q(`[data-drag-handle="${addedId}"]`));
+    await send('Input.dispatchMouseEvent', {type:'mouseMoved', ...start});
+    await send('Input.dispatchMouseEvent', {type:'mousePressed', ...start, button:'left', buttons:1, clickCount:1});
+    await send('Input.dispatchMouseEvent', {type:'mouseMoved', x:start.x+15, y:start.y+10, button:'left', buttons:1});
+    const dragData = await intercepted;
+    assert.ok(dragData.items.some(item => item.mimeType === 'application/x-bambiui-layer-session'));
+    const dropPoint = await dragPoint(q(`[data-drop-layer="${destinationId}"]`));
+    for (const type of ['dragEnter', 'dragOver']) await send('Input.dispatchDragEvent', {type, ...dropPoint, data:dragData});
+    await wait(`${q(`[data-drop-layer="${destinationId}"]`)}.dataset.dropTarget === 'valid'`);
+    await send('Input.dispatchDragEvent', {type:'drop', ...dropPoint, data:dragData});
+    await send('Input.dispatchMouseEvent', {type:'mouseReleased', ...dropPoint, button:'left', buttons:0, clickCount:1});
+    await send('Input.setInterceptDrags', {enabled:false});
+    await wait(relocated);
+    await wait(`${layer(addedId)} === document.activeElement`);
+    assert.equal(await evaluate(`${layer(addedId)}.getAttribute('aria-pressed')`), 'true');
+    assert.equal(await evaluate(`document.querySelectorAll('[data-drop-target]').length`), 0);
+    await click(named('Undo'));
+    await wait(`${node(addedId)}?.parentElement.closest('[data-page-node]')?.dataset.pageNode === ${JSON.stringify(rootId)}`);
+    await click(named('Redo'));
+    await wait(relocated);
+    assert.deepEqual(JSON.parse(await evaluate(stored)), baseline);
+    report('native CDP mouse dragstart + intercepted DragData/CDP drop: append, focus, selection, cleanup, single-step undo/redo, no autosave');
+
+    const unchangedLayers = await evaluate(layers);
+    // Synthetic DOM events specifically probe hostile payloads and cancellation.
+    await evaluate(`(()=>{const handle=${q(`[data-drag-handle="${addedId}"]`)};const invalid=${q(`[data-drop-layer="${addedId}"]`)};const valid=${q(`[data-drop-layer="${rootId}"]`)};const data=new DataTransfer();handle.dispatchEvent(new DragEvent('dragstart',{bubbles:true,cancelable:true,dataTransfer:data}));invalid.dispatchEvent(new DragEvent('dragover',{bubbles:true,cancelable:true,dataTransfer:data}));invalid.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:data}));const foreign=new DataTransfer();foreign.setData('application/x-bambiui-layer-session','forged');foreign.setData('application/json',JSON.stringify({nodeId:${JSON.stringify(addedId)},parentId:${JSON.stringify(rootId)}}));valid.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:foreign}));handle.dispatchEvent(new DragEvent('dragstart',{bubbles:true,cancelable:true,dataTransfer:data}));valid.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:foreign}));handle.dispatchEvent(new DragEvent('dragstart',{bubbles:true,cancelable:true,dataTransfer:data}));handle.dispatchEvent(new DragEvent('dragend',{bubbles:true,dataTransfer:data}));})()`);
+    await wait(`document.querySelectorAll('[data-drop-target]').length === 0`);
+    assert.deepEqual(await evaluate(layers), unchangedLayers);
+    assert.equal(await evaluate(relocated), true);
+    assert.equal(await evaluate(enabled('Redo')), false);
+    assert.deepEqual(JSON.parse(await evaluate(stored)), baseline);
+    await click(named('Undo'));
+    await wait(`${node(addedId)}?.parentElement.closest('[data-page-node]')?.dataset.pageNode === ${JSON.stringify(rootId)}`);
+    await click(named('Redo'));
+    await wait(relocated);
+    report('synthetic DOM DataTransfer: self/foreign/forged-session rejection, dragend cleanup, unchanged history/document/storage');
     await click(named('Delete'));
     await wait(`JSON.stringify(${layers}) === ${JSON.stringify(JSON.stringify(initialLayers))}`);
     report('add, selection of inserted node, move up/down, delete');

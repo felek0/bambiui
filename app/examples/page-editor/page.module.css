@@ -52,6 +52,14 @@
 .tree, .tree ul { list-style: none; padding: 0; margin: 0; }
 .tree ul { margin-left: 12px; padding-left: 8px; border-left: 1px solid #dededb; }
 .tree li { min-width: 0; }
+.layerRow { display: flex; align-items: center; position: relative; border-radius: 6px; padding-bottom: 16px; }
+.panel .layerRow .layer { min-width: 0; flex: 1; }
+.panel .dragHandle { padding: 7px 4px; cursor: grab; background: transparent; border-color: transparent; }
+.dropHint { position: absolute; bottom: 0; right: 4px; font-size: 10px; }
+.layerRow[data-drop-target="valid"] { outline: 1px dashed #666; }
+.layerRow[data-drop-target="invalid"] .dropHint { color: #9c2525; }
+.layerRow[data-drop-hover="true"][data-drop-target="valid"] { background: #e7e7e5; outline: 2px solid #555; }
+.layerRow[data-drop-hover="true"][data-drop-target="invalid"] { outline: 2px dashed #9c2525; }
 .panel .layer { display: grid; gap: 2px; width: 100%; text-align: left; margin-block: 4px; border-color: transparent; overflow-wrap: anywhere; }
 .panel .layer small { font-size: 11px; color: #626262; }
 .panel .layer[aria-pressed="true"] { background: #ededeb; border-color: #969692; }
