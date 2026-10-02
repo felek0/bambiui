@@ -1,0 +1,84 @@
+.editor {
+  min-height: 100vh;
+  padding: 24px;
+  background: #f5f5f4;
+  color: #202020;
+  font: 14px/1.5 system-ui, sans-serif;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.header h1 { font-size: 26px; font-weight: 650; margin: 4px 0 8px; }
+.panel h2, .previewHeading h2 { font-size: 16px; font-weight: 650; margin: 0 0 16px; }
+.panel h3 { font-size: 14px; font-weight: 650; margin: 24px 0 12px; }
+.header p, .panel p, .feedback p, .previewHeading p { margin: 8px 0; }
+.eyebrow { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.muted { color: #626262; font-size: 12px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 12px; }
+
+.panel button, .header button {
+  border: 1px solid #c9c9c7;
+  border-radius: 6px;
+  padding: 7px 10px;
+  background: #fff;
+  color: #202020;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.panel button:hover:not(:disabled), .header button:hover:not(:disabled) { background: #efefed; }
+.panel button:disabled, .header button:disabled { color: #777; background: #f2f2f0; cursor: not-allowed; }
+.panel :is(button, input, select, textarea):focus-visible, .header button:focus-visible, .skip:focus-visible { outline: 2px solid #2459bd; outline-offset: 3px; }
+.feedback { max-width: 1600px; margin: 12px auto; min-height: 32px; font-size: 12px; }
+.error { color: #9c2525; background: #fff0ee; border: 1px solid #d9a39e; padding: 12px; border-radius: 6px; overflow-wrap: anywhere; }
+.persistence { max-width: 1600px; margin: 16px auto; }
+.persistence legend { font-weight: 650; }
+.workspace { border: 0; padding: 0; display: grid; grid-template-columns: minmax(220px, 280px) minmax(240px, 300px) minmax(0, 1fr); gap: 16px; max-width: 1600px; margin: auto; align-items: start; }
+.panel, .previewPanel { background: #fff; border: 1px solid #dededb; border-radius: 10px; min-width: 0; }
+.panel { padding: 16px; }
+.panel small { overflow-wrap: anywhere; }
+.fields { display: grid; gap: 12px; margin-block: 16px; }
+.fields label { display: grid; gap: 6px; font-size: 12px; }
+.fields :is(input, select, textarea) { width: 100%; min-width: 0; padding: 8px; border: 1px solid #bdbdbb; border-radius: 5px; background: #fff; color: #202020; font: inherit; }
+.fields textarea { resize: vertical; }
+.fields button { justify-self: start; }
+.tree, .tree ul { list-style: none; padding: 0; margin: 0; }
+.tree ul { margin-left: 12px; padding-left: 8px; border-left: 1px solid #dededb; }
+.tree li { min-width: 0; }
+.panel .layer { display: grid; gap: 2px; width: 100%; text-align: left; margin-block: 4px; border-color: transparent; overflow-wrap: anywhere; }
+.panel .layer small { font-size: 11px; color: #626262; }
+.panel .layer[aria-pressed="true"] { background: #ededeb; border-color: #969692; }
+.previewHeading { padding: 16px; border-bottom: 1px solid #dededb; }
+.previewHeading h2 { margin-bottom: 4px; }
+.previewControls { display: flex; flex-wrap: wrap; gap: 12px; }
+.previewControls > div { display: flex; flex-wrap: wrap; gap: 4px; }
+.previewControls button { border: 1px solid #c9c9c7; border-radius: 6px; padding: 7px 10px; background: #fff; color: #202020; font: inherit; cursor: pointer; }
+.previewControls button[aria-pressed="true"] { background: #ededeb; border-color: #969692; }
+.previewControls button:focus-visible { outline: 2px solid #2459bd; outline-offset: 3px; }
+.previewStage { padding: 12px; min-width: 0; }
+.previewFrame { width: 960px; max-width: 100%; margin-inline: auto; min-width: 0; }
+.previewFrame[data-preview-width="narrow"] { width: 360px; }
+.preview { padding: 24px 16px; min-height: 540px; min-width: 0; overflow-wrap: anywhere; overflow-x: clip; }
+.preview [data-editor-selected="true"] { box-shadow: inset 0 0 0 2px #8b8b8b; }
+.previewFrame[data-selection-mode="select"] .preview { cursor: crosshair; }
+.skip { position: absolute; left: 24px; top: -100px; background: #fff; color: #202020; padding: 10px; z-index: 10; }
+.skip:focus { top: 8px; }
+
+@media (max-width: 1100px) {
+  .workspace { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .previewPanel { grid-column: 1 / -1; }
+}
+
+@media (max-width: 600px) {
+  .editor { padding: 16px; }
+  .header { align-items: start; flex-direction: column; gap: 4px; }
+  .workspace { grid-template-columns: minmax(0, 1fr); }
+  .preview { padding: 16px 12px; }
+}
