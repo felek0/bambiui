@@ -64,7 +64,7 @@ export function parsePageDocument(value: unknown): PageDocument {
       node.text = raw.text;
     } else if (raw.text !== undefined) throw new Error(`${path}: unexpected text`);
     if (definition.children.length) {
-      if (!Array.isArray(raw.children) || !raw.children.length) throw new Error(`${path}: missing children`);
+      if (!Array.isArray(raw.children) || (!raw.children.length && !definition.allowEmpty)) throw new Error(`${path}: missing children`);
       if (definition.uniqueSlots && new Set(raw.children.map((child: unknown) => record(child) ? child.kind : null)).size !== raw.children.length) throw new Error(`${path}: duplicate slot`);
       node.children = raw.children.map((child, index) => visit(child, `${path}.children[${index}]`, depth + 1, kind, insideForm || kind === "form"));
     } else if (raw.children !== undefined) throw new Error(`${path}: unexpected children`);

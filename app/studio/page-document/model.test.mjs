@@ -10,6 +10,26 @@ const root = resolve(import.meta.dirname, "../../..");
 const fixture = JSON.parse(readFileSync(resolve(import.meta.dirname, "account-settings.json"), "utf8"));
 const clone = () => structuredClone(fixture);
 
+test("empty layouts are explicit, exportable and retain content requirements", () => {
+  const page = minimal([]);
+  assert.deepEqual(parsePageDocument(page), page);
+  assert.doesNotThrow(() => exportPageTSX(page));
+  for (const node of [
+    { id: "empty", kind: "stack", children: [] },
+    { id: "empty", kind: "grid", children: [] },
+    { id: "empty", kind: "grid", children: [{ id: "item", kind: "gridItem", children: [] }] },
+    { id: "empty", kind: "form", props: { action: "/example" }, children: [] },
+    { id: "empty", kind: "card", children: [{ id: "content", kind: "cardContent", children: [] }] },
+  ]) assert.doesNotThrow(() => exportPageTSX(minimal([node])));
+  for (const node of [
+    { id: "empty", kind: "stack" },
+    { id: "empty", kind: "card", children: [] },
+    { id: "empty", kind: "card", children: [{ id: "header", kind: "cardHeader", children: [] }] },
+    { id: "empty", kind: "text", text: "" },
+    { id: "empty", kind: "form", children: [] },
+  ]) assert.throws(() => parsePageDocument(minimal([node])));
+});
+
 test("versioned JSON fixture round trips without changing nodes", () => {
   const page = parsePageDocument(fixture);
   assert.deepEqual(parsePageDocument(JSON.parse(JSON.stringify(page))), page);

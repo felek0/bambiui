@@ -28,6 +28,12 @@ Open `/examples/account-settings` to view the v1 JSON fixture in `app/studio/pag
 
 The prototype validates a restricted tree/prop allowlist and generates TSX with relative source imports. Tests type-check the fixture and compare server-rendered HTML from the renderer and generated TSX using real components. Attribute order and React-generated IDs are normalized while preserving ID references; CSS module names are stubbed. This proves the tested SSR structure, not independent installation, hydration, browser DOM or visual/CSS equivalence. A separate build-time source-delivery prototype now collects used component sources and their local dependencies, layout sources, CSS, theme variables, the JSON backup and dependency/install guidance. It is not connected to a download UI. See the plan for validator limits and remaining semantic checks.
 
+### Page editing engine (not wired to UI)
+
+`app/studio/page-document/commands.ts` supports atomic insert/delete/move/update/rename batches. Moves address the target index after removal; prop patches merge existing values and use `null` to remove optional props. Final validation rejects invalid slots/props, duplicate IDs, root deletion/movement and moves into descendants without changing the source document.
+
+`history.ts` adds separate session-only Undo/Redo (50 steps by default). A batch is one step; no-ops/errors preserve redo and a real edit clears it. This is not the Studio token history, persisted page state, keyboard shortcuts or a drag/drop editor. Empty layout containers remain invalid; removing the last child requires a valid atomic restructuring rather than leaving an empty parent.
+
 ### Copied-source consumer check
 
 ```bash
