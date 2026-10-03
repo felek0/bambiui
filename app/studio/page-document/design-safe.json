@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "id": "design-safe",
+  "name": "Design-safe components",
+  "root": {
+    "id": "full-root", "kind": "container", "props": { "maxWidth": "full" }, "children": [
+      { "id": "design-stack", "kind": "stack", "children": [
+        { "id": "design-button", "kind": "button", "text": "Continue", "props": { "variant": "secondary", "size": "lg", "radius": "sm", "fullWidth": true, "loading": false, "disabled": false, "type": "button" } },
+        { "id": "design-input", "kind": "input", "props": { "label": "Search", "name": "search", "type": "search", "size": "sm", "radius": "lg", "description": "Search help", "error": "Search error", "hideLabel": false, "readOnly": true, "disabled": false, "required": true, "placeholder": "Search here", "defaultValue": "Sample" } },
+        { "id": "design-switch", "kind": "switch", "props": { "label": "Updates", "name": "updates", "size": "lg", "labelPosition": "start", "hideLabel": true, "description": "Updates help", "error": "Updates error", "disabled": false, "readOnly": false, "required": true, "value": "updates", "defaultChecked": true } },
+        { "id": "design-checkbox", "kind": "checkbox", "props": { "label": "Accept", "name": "accept", "size": "sm", "radius": "lg", "labelPosition": "start", "hideLabel": false, "description": "Accept help", "error": "Accept error", "disabled": false, "readOnly": true, "required": true, "value": "accept", "checked": true, "indeterminate": true } },
+        { "id": "design-badge", "kind": "badge", "text": "Ready", "props": { "variant": "subtle", "tone": "success", "size": "lg", "radius": "sm", "dot": true } },
+        { "id": "design-card", "kind": "card", "props": { "variant": "filled", "size": "lg", "radius": "sm" }, "children": [
+          { "id": "design-header", "kind": "cardHeader", "children": [
+            { "id": "design-title", "kind": "cardTitle", "text": "Card title" },
+            { "id": "design-description", "kind": "cardDescription", "text": "Card description" }
+          ] },
+          { "id": "design-content", "kind": "cardContent", "children": [] },
+          { "id": "design-footer", "kind": "cardFooter", "children": [ { "id": "footer-text", "kind": "text", "text": "Metadata", "props": { "variant": "caption" } } ] }
+        ] },
+        { "id": "design-text", "kind": "text", "text": "Design-safe text", "props": { "variant": "h4", "size": "sm", "tone": "info", "as": "h2" } }
+      ] }
+    ]
+  }
+}

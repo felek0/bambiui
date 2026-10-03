@@ -19,7 +19,7 @@ test("every registry kind gets a valid default subtree in an allowed slot", () =
     visit(node);
     const parentKind = Object.keys(nodeRegistry).find((parent) => nodeRegistry[parent].children.includes(kind));
     const parent = parentKind ? { id: "parent", kind: parentKind, children: [node] } : node;
-    const tree = parent.kind === "container" ? parent : parent.kind === "cardHeader" || parent.kind === "cardContent" ? root([{ id: "card", kind: "card", children: [parent] }]) : parent.kind === "gridItem" ? root([{ id: "grid", kind: "grid", children: [parent] }]) : root([parent]);
+    const tree = parent.kind === "container" ? parent : parent.kind === "cardHeader" || parent.kind === "cardContent" || parent.kind === "cardFooter" ? root([{ id: "card", kind: "card", children: [parent] }]) : parent.kind === "gridItem" ? root([{ id: "grid", kind: "grid", children: [parent] }]) : root([parent]);
     assert.doesNotThrow(() => parsePageDocument(page(tree)), kind);
   }
 });
@@ -34,7 +34,7 @@ test("empty layout slots stay explicit; card and header get required children", 
 test("allowed children exclude occupied unique slots and nested forms through ancestors", () => {
   const tree = root([{ id: "form", kind: "form", props: { action: "/" }, children: [{ id: "stack", kind: "stack", children: [] }] }, { id: "card", kind: "card", children: [{ id: "header", kind: "cardHeader", children: [{ id: "title", kind: "cardTitle", text: "Title" }] }] }]);
   assert.ok(!allowedChildKinds(tree, "stack").includes("form"));
-  assert.deepEqual(allowedChildKinds(tree, "card"), ["cardContent"]);
+  assert.deepEqual(allowedChildKinds(tree, "card"), ["cardContent", "cardFooter"]);
   assert.deepEqual(allowedChildKinds(tree, "header"), ["cardDescription"]);
   assert.deepEqual(allowedChildKinds(tree, "title"), []);
   assert.deepEqual(allowedChildKinds(tree, "missing"), []);

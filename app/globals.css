@@ -634,7 +634,8 @@ button:disabled {
   align-self: stretch;
   gap: 20px;
 }
-.view-switch a {
+.view-switch a,
+.view-switch > span[aria-disabled] {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -644,6 +645,7 @@ button:disabled {
   padding: 0 4px;
   font-size: 12px;
 }
+.view-switch > span[aria-disabled] { opacity: 0.5; cursor: not-allowed; }
 .view-switch [data-active] {
   color: var(--studio-color-text-secondary);
   border-bottom-color: var(--studio-color-accent);
@@ -659,6 +661,7 @@ button:disabled {
   align-items: center;
   gap: 12px;
 }
+.header-actions[hidden],
 .viewport-controls[hidden],
 .workspace-panel[hidden],
 .token-editor[hidden] {

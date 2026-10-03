@@ -51,6 +51,10 @@ import {
   type TokenValues,
 } from "./tokens";
 import { loadSystems, saveSystems, SYSTEMS_KEY, type SystemCollection } from "./systems";
+import { useComposer } from "./composer/use-composer";
+import { InsertPanel } from "./composer/insert-panel";
+import { isComposerRoute } from "./composer/workspace-route";
+import { ProjectManager, PagesPanel, PageCanvas, ProjectInspector } from "./composer/project-ui";
 
 type Selection = "colors" | "spacing" | ComponentId;
 type View = "design" | "develop";
@@ -319,6 +323,7 @@ export default function Studio() {
   const [ready, setReady] = useState(false);
   const [workspaceRevision, setWorkspaceRevision] = useState(0);
   const pathname = usePathname();
+  const pagesActive = isComposerRoute(pathname);
   const router = useRouter();
   const segments = pathname.split("/").filter(Boolean);
   const view: View = segments[0] === "develop" ? "develop" : "design";
@@ -375,6 +380,11 @@ export default function Studio() {
   const [renameDraft, setRenameDraft] = useState("");
   const [collection, setCollection] = useState<SystemCollection>({ version: 1, activeId: "original", systems: [{ id: "original", system: defaultSystem }] });
   const collectionRef = useRef(collection);
+  const systemsValidated = useRef(false);
+  const [systemCatalogReady, setSystemCatalogReady] = useState(false);
+  const composer = useComposer(() => systemsValidated.current ? collectionRef.current.systems : []);
+  const composerSystems = systemCatalogReady ? collection.systems : [];
+  const systemDeletionBlock = composer.controller.systemDeletionBlock(collection.activeId);
   const history = useRef<{ undo: DesignSystem[]; redo: DesignSystem[]; group: string | null }>({ undo: [], redo: [], group: null });
   const currentSystem = useRef(system);
   const [historyCounts, setHistoryCounts] = useState({ undo: 0, redo: 0 });
@@ -402,6 +412,8 @@ export default function Studio() {
       try {
         const saved = localStorage.getItem(SYSTEMS_KEY) || localStorage.getItem(STORAGE_KEY);
         const loaded = loadSystems(localStorage);
+        systemsValidated.current = true;
+        setSystemCatalogReady(true);
         collectionRef.current = loaded;
         setCollection(loaded);
         const active = loaded.systems.find((entry) => entry.id === loaded.activeId)!.system;
@@ -498,9 +510,10 @@ export default function Studio() {
   const failingChecks = auditChecks.filter((check) => !check.passes);
   const globalIssueCount = failingChecks.filter((check) => !check.component).length;
   const componentIssueCount = (id: ComponentId) => failingChecks.filter((check) => check.component === id).length;
+  const visibleFont = pagesActive ? composerSystems.find(entry => entry.id === composer.document?.systemId)?.system.themes[activeTheme].fontFamily : theme.fontFamily;
   useEffect(() => {
-    if (!ready) return;
-    const url = googleFontUrl(theme.fontFamily);
+    if (!ready || !visibleFont) return;
+    const url = googleFontUrl(visibleFont);
     if (!url) return;
     const stylesheet = document.createElement("link");
     stylesheet.rel = "stylesheet";
@@ -508,7 +521,7 @@ export default function Studio() {
     stylesheet.referrerPolicy = "no-referrer";
     document.head.append(stylesheet);
     return () => stylesheet.remove();
-  }, [ready, theme.fontFamily]);
+  }, [ready, visibleFont]);
   const previewColors = {
     "--preview-grid-dot": mixColors(theme.global.foreground, theme.global.background, 0.18),
   } as CSSProperties;
@@ -680,18 +693,19 @@ export default function Studio() {
           <span className="beta-tag">{t.beta}</span>
         </Link>
         <nav className="view-switch" aria-label={t.workspaceView}>
-          <Link href={workspaceHref("design", selection)} aria-current={view === "design" ? "page" : undefined} data-active={view === "design" || undefined}>
+          <Link href={pagesActive ? "/pages" : workspaceHref("design", selection)} aria-current={view === "design" ? "page" : undefined} data-active={view === "design" || undefined}>
             <Icon name="grid" size={14} />{t.design}
           </Link>
-          <Link href={workspaceHref("develop", selection)} aria-current={view === "develop" ? "page" : undefined} data-active={view === "develop" || undefined}>
+          {pagesActive ? <span aria-disabled="true" title="Page Develop is not available yet"><Icon name="code" size={15} />{t.develop}</span> : <Link href={workspaceHref("develop", selection)} aria-current={view === "develop" ? "page" : undefined} data-active={view === "develop" || undefined}>
             <Icon name="code" size={15} />{t.develop}
-          </Link>
+          </Link>}
         </nav>
+        <ProjectManager composer={composer} systems={composerSystems} onPages={() => router.push("/pages")} />
         <details className="system-switcher" ref={switcherRef} onToggle={(event) => {
           if (event.currentTarget.open) setRenameDraft(system.name);
         }}>
           <summary aria-label={`${t.selectSystem}: ${system.name || t.untitled}`}>
-            <span className="system-switcher-name">{system.name || t.untitled}</span>
+            <span className="system-switcher-name">Design systems · {system.name || t.untitled}</span>
             <Icon name="chevron" size={14} />
           </summary>
           <div className="system-switcher-panel">
@@ -706,11 +720,14 @@ export default function Studio() {
               <button type="button" onClick={() => addSystem(false)}>{t.newSystem}</button>
               <button type="button" onClick={() => addSystem(true)}>{t.duplicateSystem}</button>
               <button type="button" onClick={() => { importAsNew.current = true; switcherRef.current?.removeAttribute("open"); importRef.current?.click(); }}>{t.importAsNew}</button>
-              {collection.systems.length > 1 && <button type="button" onClick={() => {
+              {collection.systems.length > 1 && <button type="button" disabled={!!systemDeletionBlock} title={systemDeletionBlock || undefined} onClick={() => {
+                if (composer.controller.systemDeletionBlock(collectionRef.current.activeId)) return;
                 if (!window.confirm(t.deleteSystemConfirm(system.name || t.untitled))) return;
+                if (composer.controller.systemDeletionBlock(collectionRef.current.activeId)) return;
                 const systems = collectionRef.current.systems.filter((entry) => entry.id !== collectionRef.current.activeId);
                 activate({ ...collectionRef.current, activeId: systems[0].id, systems });
               }}>{t.deleteSystem}</button>}
+              {collection.systems.length > 1 && systemDeletionBlock && <p className="p-2 text-xs studio-text-muted">{systemDeletionBlock}</p>}
             </div>
             <form className="system-rename" onSubmit={(event) => {
               event.preventDefault();
@@ -729,9 +746,9 @@ export default function Studio() {
             <SegmentedControl.Item value="light" aria-label={t.light} title={t.light}><Icon name="sun" size={16} /></SegmentedControl.Item>
             <SegmentedControl.Item value="dark" aria-label={t.dark} title={t.dark}><Icon name="moon" size={16} /></SegmentedControl.Item>
           </SegmentedControl>}
-          {view === "design" && <a className="mobile-editor-link" href="#token-editor">{t.jumpToTokens} <Icon name="arrow" size={12} /></a>}
+          {view === "design" && <a className="mobile-editor-link" href={pagesActive ? "#project-inspector" : "#token-editor"}>{pagesActive ? "Project settings" : t.jumpToTokens} <Icon name="arrow" size={12} /></a>}
         </div>
-        <div className="header-actions">
+        <div className="header-actions" hidden={pagesActive}>
 
           <span className="save-status">
             <span
@@ -858,11 +875,11 @@ export default function Studio() {
           <div className="sidebar-section-label">{t.workspace.toUpperCase()}</div>
 
           <div className="sidebar-section-label sidebar-foundations-label">{t.sidebarFoundations.toUpperCase()}</div>
-          <NavItem icon={<Icon name="colors" />} href={workspaceHref(view, "colors")} current={selection === "colors"}
+          <NavItem icon={<Icon name="colors" />} href={workspaceHref(view, "colors")} current={!pagesActive && selection === "colors"}
             ariaLabel={ready && globalIssueCount ? `Colors, ${t.sidebarContrastWarning(globalIssueCount, activeTheme)}` : undefined}
             end={ready && globalIssueCount > 0 && <span className="nav-indicators"><span className="nav-contrast-warning" title={t.sidebarContrastWarning(globalIssueCount, activeTheme)}><Icon name="warning" size={14} /></span></span>}
           >Colors</NavItem>
-          <NavItem icon={<Icon name="sliders" />} href={workspaceHref(view, "spacing")} current={selection === "spacing"}>Shape &amp; spacing</NavItem>
+          <NavItem icon={<Icon name="sliders" />} href={workspaceHref(view, "spacing")} current={!pagesActive && selection === "spacing"}>Shape &amp; spacing</NavItem>
           <div className="sidebar-divider" />
           <div className="sidebar-section-label">
             {t.components.toUpperCase()}
@@ -888,7 +905,7 @@ export default function Studio() {
                   return <NavItem
                     key={id}
                     icon={<Icon name={id} />}
-                    current={selection === id}
+                    current={!pagesActive && selection === id}
                     ariaLabel={issues ? `${t.componentNames[id]}, ${t.sidebarContrastWarning(issues, activeTheme)}${overridden ? t.custom : ""}` : undefined}
                     end={(overridden || issues > 0) && <span className="nav-indicators">
                       {overridden && <><span className="override-dot" aria-hidden="true" title={t.customTitle} /><span className="sr-only">{t.custom}</span></>}
@@ -905,6 +922,8 @@ export default function Studio() {
               <p className="p-3 text-xs studio-text-muted">{t.noComponents}</p>
             )}
           </nav>
+          {pagesActive && <InsertPanel composer={composer} />}
+          <PagesPanel composer={composer} active={pagesActive} onPages={() => router.push("/pages")} />
         </div>
         <div className="sidebar-bottom">
           <a
@@ -921,7 +940,7 @@ export default function Studio() {
       </aside>
 
       <main className={`studio-main studio-main--${view}`} id="workspace" tabIndex={-1}>
-        {view === "design" ? (
+        {pagesActive ? null : view === "design" ? (
           <h1 className="sr-only">{selection === "colors" ? "Colors" : selection === "spacing" ? "Shape & spacing" : t.componentTitle(t.componentNames[selection])}</h1>
         ) : (
           <div className="workspace-heading">
@@ -950,7 +969,8 @@ export default function Studio() {
                 </Button>
               </div>
             )}
-            <section hidden={view !== "design"} aria-label={t.design} className="workspace-panel workspace-panel--design preview-canvas">
+            {pagesActive && <PageCanvas composer={composer} systems={composerSystems} theme={activeTheme} onTheme={setActiveTheme} />}
+            <section hidden={pagesActive || view !== "design"} aria-label={t.design} className="workspace-panel workspace-panel--design preview-canvas">
               <div className="preview-frame">
                 <div className="canvas-history" role="group" aria-label="Edit history">
                   <Button iconOnly aria-label={t.undo} title={t.undo} disabled={!ready || historyCounts.undo === 0} onClick={() => travel("undo")}><Icon name="undo" size={16} /></Button>
@@ -962,7 +982,7 @@ export default function Studio() {
                     <SegmentedControl.Item value="dark" aria-label={t.dark} title={t.dark}><Icon name="moon" size={16} /></SegmentedControl.Item>
                   </SegmentedControl>
                 </div>
-                <Preview key={collection.activeId} selected={selection} system={system} mode={activeTheme} active={view === "design"} onSelectColorRole={setScaleRole} onEditToken={(nextSelection, inputId) => setEditTarget({ selection: nextSelection, inputId })} />
+                <Preview key={collection.activeId} selected={selection} system={system} mode={activeTheme} active={!pagesActive && view === "design"} onSelectColorRole={setScaleRole} onEditToken={(nextSelection, inputId) => setEditTarget({ selection: nextSelection, inputId })} />
               </div>
             </section>
             <section hidden={view !== "develop"} aria-label={t.develop} className="workspace-panel workspace-panel--develop">
@@ -973,9 +993,13 @@ export default function Studio() {
 
       </main>
 
+      {pagesActive && <ProjectInspector key={composer.document?.id ?? "empty"} composer={composer} systems={composerSystems} onEditSystem={(id, kind) => {
+        const component = ["button", "input", "switch", "checkbox", "badge", "card", "text"].includes(kind ?? "") ? kind : "colors";
+        if (collectionRef.current.activeId === id || activate({ ...collectionRef.current, activeId: id })) router.push(`/${component}`);
+      }} />}
       <aside
         className="token-editor"
-        hidden={view !== "design"}
+        hidden={pagesActive || view !== "design"}
         id="token-editor"
         tabIndex={-1}
         aria-label={t.editor}

@@ -1,6 +1,7 @@
 import { applyPageCommand, type PageCommand } from "../../studio/page-document/commands.ts";
 import type { PageDocument, PageNode, PageKind } from "../../studio/page-document/model.ts";
 import { nodeRegistry } from "../../studio/page-document/registry.ts";
+import { createPageNode } from "../../studio/page-document/defaults.ts";
 
 export function locateNode(root: PageNode, id: string, ancestors: PageNode[] = []): { node: PageNode; ancestors: PageNode[]; index: number } | undefined {
   if (root.id === id) return { node: root, ancestors, index: ancestors.at(-1)?.children?.findIndex((node) => node.id === id) ?? 0 };
@@ -47,18 +48,7 @@ export function eligibleMoveDestinations(page: PageDocument, nodeId: string): Mo
   return destinations;
 }
 
-/** Optional props stay omitted to preserve the real components' defaults. */
+/** Keep the technical fixture's demo action and header-first Card defaults. */
 export function createEditorNode(kind: PageKind, nextId: () => string): PageNode {
-  const definition = nodeRegistry[kind];
-  const node: PageNode = { id: nextId(), kind };
-  if (definition.text) node.text = kind === "button" ? "Button" : kind === "cardTitle" ? "Card title" : kind === "cardDescription" ? "Card description" : "New text";
-  for (const key of definition.requiredProps ?? []) {
-    const rule = definition.props[key];
-    const value = rule === "action" ? "/examples/page-editor" : rule === "name" ? node.id : rule === "text" ? "New field" : typeof rule === "string" ? "Value" : rule[0];
-    node.props = { ...node.props, [key]: value };
-  }
-  if (definition.children.length) {
-    node.children = definition.allowEmpty ? [] : [createEditorNode(definition.children[0] as PageKind, nextId)];
-  }
-  return node;
+  return createPageNode(kind, nextId, "/examples/page-editor");
 }

@@ -73,6 +73,10 @@ Current components:
 
 The shared `fontFamily` preset (`system` by default; six other local presets plus curated Google Fonts presets) exports a resolved font stack as `--ds-font-family` for Text and other typography consumers. Typography values come from `--ds-typography-{variant}-{font-size,line-height,font-weight,letter-spacing}` for each of `heading`, `h1`–`h6`, `paragraph`, `label`, and `caption`. All ten styles are independently editable and shared between Light and Dark; older v3 records without H1–H6 receive defaults on import. H1–H6 default font sizes descend from 48px to 20px (editor range 8–96px). Font size scales with `--ds-size-scale-sm` and `--ds-size-scale-lg` (`md` is unscaled); line height stays unitless, weight numeric, and letter spacing in px. Neutral text uses `--text-foreground` (inherited from `--ds-foreground` until overridden); other tones use the corresponding `--ds-{tone}-on-subtle` text color for readability on the theme background.
 
+### Layout Container
+
+`Container` accepts `maxWidth="narrow" | "wide" | "full"`. The omitted default remains `wide` (72rem); `narrow` remains 42rem. Both retain centered margins and inline `--ds-spacing-lg` padding. `full` is 100% border-box width with no max-width cap or inline padding; new composer frame roots opt into it explicitly. Existing/imported roots are not rewritten. Frame width, height and clipping are editor geometry, not Container props or responsive viewport breakpoints. Renderer and TSX export consume the same root prop.
+
 ## 3. Modeling rules
 
 1. **Keep axes separate.** Hierarchy (`variant`), semantics (`tone`), dimensions (`size`) and state (`disabled`, `loading`, …) are independent props. Never combine them into one value such as `smallPrimary`, `dangerOutline` or `variant="disabled"`.

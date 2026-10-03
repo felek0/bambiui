@@ -1,5 +1,5 @@
 import { createElement, type CSSProperties, type ElementType, type ReactNode } from "react";
-import { Button, Card, Input, Switch, Text } from "../components";
+import { Badge, Button, Card, Checkbox, Input, Switch, Text } from "../components";
 import { Container, Grid, Stack } from "../layout";
 import type { PageDocument, PageNode } from "./model";
 import { nodeAttributes, nodeRegistry, type PageElement } from "./registry";
@@ -9,8 +9,8 @@ import { toCSSVariables } from "../tokens";
 const elements: Record<PageElement, ElementType> = {
   Container, Stack, Grid, "Grid.Item": Grid.Item, form: "form",
   Card, "Card.Header": Card.Header, "Card.Title": Card.Title,
-  "Card.Description": Card.Description, "Card.Content": Card.Content,
-  Text, Input, Switch, Button,
+  "Card.Description": Card.Description, "Card.Content": Card.Content, "Card.Footer": Card.Footer,
+  Text, Input, Switch, Checkbox, Badge, Button,
 };
 
 function RenderNode({ node }: { node: PageNode }): ReactNode {

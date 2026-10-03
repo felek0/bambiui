@@ -32,4 +32,4 @@ export function brandSvg({
 }
 
 export const brandSvgDataUri = (options?: Parameters<typeof brandSvg>[0]) =>
-  `data:image/svg+xml;base64,${Buffer.from(brandSvg(options)).toString("base64")}`;
+  `data:image/svg+xml;base64,${btoa(Array.from(new TextEncoder().encode(brandSvg(options)), byte => String.fromCharCode(byte)).join(""))}`;

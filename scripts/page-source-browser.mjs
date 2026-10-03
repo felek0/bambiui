@@ -258,7 +258,24 @@ export async function checkPageSourceBrowser({ outDir, expectedThemes }) {
       healthy();
       console.log(`PASS: page source browser ${mode}: CSS, responsive geometry, switch, native inputs/validation and GET FormData`);
     }
+    await send('Page.navigate', { url: origin + '/design-safe' });
+    await wait(`${q('.consumer-hydration-marker[data-hydrated="true"]')} && ${node('design-checkbox')}`);
+    for (const width of [1440, 768, 390]) {
+      await send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+      await evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+      const geometry = await evaluate(`(()=>{const e=${node('full-root')},r=e.getBoundingClientRect(),s=getComputedStyle(e);return {x:r.x,width:r.width,max:s.maxWidth,padding:s.paddingInlineStart,paddingEnd:s.paddingInlineEnd,box:s.boxSizing}})()`);
+      assert.ok(Math.abs(geometry.width - width) < 1, `Full root ${width}: ${geometry.width}`);
+      assert.equal(geometry.x, 0); assert.equal(geometry.max, 'none');
+      assert.equal(geometry.padding, '0px'); assert.equal(geometry.paddingEnd, '0px'); assert.equal(geometry.box, 'border-box');
+    }
+    assert.equal(await evaluate(`${node('design-checkbox')}.getAttribute('aria-checked')`), 'mixed');
+    assert.equal(await evaluate(`${node('design-input')}.value`), 'Sample');
+    assert.equal(await evaluate(`${node('design-badge')}.dataset.tone`), 'success');
+    const sampleSwitch = node('design-switch');
+    assert.equal(await evaluate(`${sampleSwitch}.getAttribute('aria-checked')`), 'true');
+    await click(sampleSwitch); await wait(`${sampleSwitch}.getAttribute('aria-checked') === 'false'`);
     healthy();
+    console.log('PASS: seven-component copied source hydrates; full root has no cap/padding at 1440/768/390; Checkbox mixed state and uncontrolled Switch initial state/toggle');
   }
   let failure;
   let abortListener;

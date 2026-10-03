@@ -5,9 +5,11 @@ import { resolve } from "node:path";
 import ts from "typescript";
 import { parsePageDocument } from "./model.ts";
 import { exportPageTSX } from "./export.ts";
+import { nodeRegistry } from "./registry.ts";
 
 const root = resolve(import.meta.dirname, "../../..");
 const fixture = JSON.parse(readFileSync(resolve(import.meta.dirname, "account-settings.json"), "utf8"));
+const designSafe = JSON.parse(readFileSync(resolve(import.meta.dirname, "design-safe.json"), "utf8"));
 const clone = () => structuredClone(fixture);
 
 test("empty layouts are explicit, exportable and retain content requirements", () => {
@@ -146,6 +148,44 @@ test("only serializes text and props as escaped TSX expressions", () => {
   assert.throws(() => exportPageTSX(value, "unsafe-package;exit"));
 });
 
+test("design-safe props roundtrip while unsupported APIs, conflicts and malformed states reject", () => {
+  assert.deepEqual(parsePageDocument(designSafe), designSafe);
+  const samples = designSafe.root.children[0].children;
+  for (const sample of samples) {
+    for (const key of ["onClick", "onCheckedChange", "onValueChange", "style", "className", "render", "startIcon", "endIcon", "iconOnly", "dangerouslySetInnerHTML"]) {
+      const value = structuredClone(designSafe);
+      findNode(value.root, sample.id).props = { ...sample.props, [key]: "unsafe" };
+      assert.throws(() => parsePageDocument(value), /unknown key/);
+    }
+  }
+  for (const [id, props] of [
+    ["design-switch", { radius: "sm" }], ["design-button", { tone: "danger" }],
+    ["design-checkbox", { checked: "true" }], ["design-badge", { tone: "destructive" }],
+    ["design-card", { variant: "outline" }], ["design-text", { as: "script" }],
+    ["design-input", { value: 123 }], ["design-input", { label: { children: "JSX" } }],
+    ["design-switch", { checked: false, defaultChecked: true }],
+    ["design-input", { value: "", defaultValue: "" }],
+  ]) {
+    const value = structuredClone(designSafe);
+    findNode(value.root, id).props = { ...findNode(value.root, id).props, ...props };
+    assert.throws(() => parsePageDocument(value));
+  }
+  for (const kind of ["input", "switch", "checkbox"]) {
+    for (const missing of ["label", "name"]) {
+      const value = structuredClone(designSafe);
+      delete findNode(value.root, `design-${kind}`).props[missing];
+      assert.throws(() => parsePageDocument(value), new RegExp(`missing ${missing}`));
+    }
+  }
+  const blank = structuredClone(designSafe);
+  findNode(blank.root, "design-input").props.defaultValue = "";
+  findNode(blank.root, "design-input").props.placeholder = "";
+  assert.doesNotThrow(() => parsePageDocument(blank));
+  const duplicate = structuredClone(designSafe);
+  findNode(duplicate.root, "design-card").children.push({ id: "duplicate-footer", kind: "cardFooter", children: [] });
+  assert.throws(() => parsePageDocument(duplicate), /duplicate slot/);
+});
+
 test("generated TSX compiles with the actual component and layout APIs", () => {
   const configPath = ts.findConfigFile(root, ts.sys.fileExists, "tsconfig.json");
   assert.ok(configPath);
@@ -153,17 +193,32 @@ test("generated TSX compiles with the actual component and layout APIs", () => {
   const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, root);
   assert.deepEqual(parsed.errors, []);
   const file = resolve(root, "app/studio/page-document/__generated.tsx");
-  const source = exportPageTSX(fixture, "../components", "../layout");
+  const second = resolve(root, "app/studio/page-document/__design_safe.tsx");
+  const sources = new Map([[file, exportPageTSX(fixture, "../components", "../layout")], [second, exportPageTSX(designSafe, "../components", "../layout")]]);
+  for (const sample of designSafe.root.children[0].children) {
+    for (const [key, rule] of Object.entries(nodeRegistry[sample.kind].props)) {
+      for (const value of Array.isArray(rule) ? rule : [rule === "string" ? "" : "Sample"]) {
+        const node = structuredClone(sample);
+        node.props = { ...node.props, [key]: value };
+        if (key === "checked") delete node.props.defaultChecked;
+        if (key === "defaultChecked") delete node.props.checked;
+        if (key === "value") delete node.props.defaultValue;
+        if (key === "defaultValue") delete node.props.value;
+        const input = minimal([{ id: "slot", kind: "stack", children: [node] }]);
+        sources.set(resolve(root, `app/studio/page-document/__axis_${sources.size}.tsx`), exportPageTSX(input, "../components", "../layout"));
+      }
+    }
+  }
   const host = ts.createCompilerHost({ ...parsed.options, incremental: false });
   const read = host.readFile.bind(host);
   const exists = host.fileExists.bind(host);
   const get = host.getSourceFile.bind(host);
-  host.readFile = (path) => path === file ? source : read(path);
-  host.fileExists = (path) => path === file || exists(path);
-  host.getSourceFile = (path, version, onError, shouldCreateNewSourceFile) => path === file
-    ? ts.createSourceFile(path, source, version, true, ts.ScriptKind.TSX)
+  host.readFile = (path) => sources.get(path) ?? read(path);
+  host.fileExists = (path) => sources.has(path) || exists(path);
+  host.getSourceFile = (path, version, onError, shouldCreateNewSourceFile) => sources.has(path)
+    ? ts.createSourceFile(path, sources.get(path), version, true, ts.ScriptKind.TSX)
     : get(path, version, onError, shouldCreateNewSourceFile);
-  const program = ts.createProgram([file, resolve(root, "next-env.d.ts")], { ...parsed.options, incremental: false }, host);
+  const program = ts.createProgram([...sources.keys(), resolve(root, "next-env.d.ts")], { ...parsed.options, incremental: false }, host);
   const errors = ts.getPreEmitDiagnostics(program).map((error) => ts.flattenDiagnosticMessageText(error.messageText, "\n"));
   assert.deepEqual(errors, []);
 });

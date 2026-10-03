@@ -17,6 +17,9 @@ let fixture;
 try {
   const page = JSON.parse(await readFile(join(root, "app/studio/page-document/account-settings.json"), "utf8"));
   const files = await createPageSourceFiles(createPageBundle(page, defaultSystem));
+  const sample = JSON.parse(await readFile(join(root, "app/studio/page-document/design-safe.json"), "utf8"));
+  const sampleFiles = await createPageSourceFiles(createPageBundle(sample, defaultSystem));
+  for (const [name, text] of sampleFiles) files.set(`design-safe/${name}`, text);
   await mkdir(join(root, ".next"), { recursive: true });
   fixture = await mkdtemp(join(root, ".next/page-source-"));
   const ui = join(fixture, "ui");
@@ -41,6 +44,8 @@ try {
   await writeFile(join(fixture, "app/page.tsx"), 'import Page from "../ui/Page";\nexport default function Example() { return <Page />; }\n');
   await mkdir(join(fixture, "app/dark"));
   await writeFile(join(fixture, "app/dark/page.tsx"), 'import Page from "../../ui/Page";\nexport default function Example() { return <Page mode="dark" />; }\n');
+  await mkdir(join(fixture, "app/design-safe"));
+  await writeFile(join(fixture, "app/design-safe/page.tsx"), 'import Page from "../../ui/design-safe/Page";\nexport default function Example() { return <Page />; }\n');
   if (browser) {
     await mkdir(join(fixture, "app/examples/account-settings"), { recursive: true });
     await writeFile(join(fixture, "app/examples/account-settings/page.tsx"), 'import Page from "../../../ui/Page";\nexport default function Example() { return <Page />; }\n');
@@ -62,6 +67,11 @@ try {
   assert.match(html, /type="email"/);
   assert.match(html, /role="switch"/);
   assert.match(html, /data-ds-theme="light"/);
+  const sampleHTML = await readFile(join(fixture, "out/design-safe.html"), "utf8");
+  assert.match(sampleHTML, /data-max-width="full"/);
+  assert.match(sampleHTML, /data-page-node="design-checkbox"/);
+  assert.match(sampleHTML, /data-indeterminate/);
+  assert.match(sampleHTML, /data-page-node="design-badge"/);
   const dark = await readFile(join(fixture, "out/dark.html"), "utf8");
   assert.match(dark, /data-ds-theme="dark"/);
   assert.match(dark, /Hesap ayarları/);

@@ -12,6 +12,10 @@ const { RenderPage, RenderPageBundle } = await import("./render.tsx");
 const { createPageBundle, parsePageBundle, serializePageBundle } = await import("./bundle.ts");
 const { defaultSystem, toCSSVariables } = await import("../tokens.ts");
 const { exportPageTSX } = await import("./export.ts");
+const { nodeRegistry } = await import("./registry.ts");
+const { createInsertionNode } = await import("../composer/insertion.ts");
+const { Badge, Button, Card, Checkbox, Input, Switch, Text } = await import("../components/index.ts");
+const { Container, Stack } = await import("../layout/index.tsx");
 const fixture = JSON.parse(readFileSync(new URL("./account-settings.json", import.meta.url), "utf8"));
 const document = (children) => ({ version: 1, id: "parity", name: "Parity", root: { id: "root", kind: "container", children } });
 const text = (id, value = "Text") => ({ id, kind: "text", text: value });
@@ -106,7 +110,7 @@ test("minimal document and omitted component/layout props preserve defaults", as
 });
 
 test("explicit layout settings and text variants stay in parity", async () => {
-  for (const [index, maxWidth] of ["narrow", "wide"].entries()) {
+  for (const [index, maxWidth] of ["narrow", "wide", "full"].entries()) {
     const input = document([{ id: "stack", kind: "stack", props: {
       direction: index ? "column" : "row", gap: index ? "sm" : "lg", align: index ? "end" : "center", justify: index ? "center" : "between", wrap: !index,
     }, children: [1, 2, 3].map((columns) => ({ id: `grid-${columns}`, kind: "grid", props: { columns, gap: "md" }, children: [1, 2, 3].map((span) => ({ id: `cell-${columns}-${span}`, kind: "gridItem", props: { span }, children: [text(`text-${columns}-${span}`)] })) })) }]);
@@ -114,6 +118,45 @@ test("explicit layout settings and text variants stay in parity", async () => {
     await parity(input);
   }
   await parity(document(["h1", "h2", "h3", "paragraph", "caption"].map((variant) => ({ ...text(`text-${variant}`), props: { variant } }))));
+});
+
+test("seven-component sample stays in SSR/export parity with booleans and full root", async () => {
+  const sample = JSON.parse(readFileSync(new URL("./design-safe.json", import.meta.url), "utf8"));
+  const { preview, source } = await parity(sample);
+  assert.match(source, /Badge, Button, Card, Checkbox, Input, Switch, Text/);
+  assert.match(source, /checked=\{true\}/); assert.match(source, /loading=\{false\}/);
+  assert.match(preview, /data-max-width="full"/);
+  assert.match(preview, /data-indeterminate/);
+});
+
+test("every allowlisted enum/state matches direct real component SSR, including omitted defaults", async () => {
+  const components = { badge: Badge, button: Button, card: Card, checkbox: Checkbox, input: Input, switch: Switch, text: Text };
+  for (const [kind, Component] of Object.entries(components)) {
+    let sequence = 0;
+    const base = createInsertionNode(kind, () => `component-${++sequence}`);
+    const samples = [base];
+    for (const [key, rule] of Object.entries(nodeRegistry[kind].props)) {
+      for (const value of Array.isArray(rule) ? rule : rule === "string" ? ["", "Sample"] : rule === "text" && !["label"].includes(key) ? ["Supporting text"] : []) {
+        samples.push({ ...base, props: { ...base.props, [key]: value } });
+      }
+    }
+    if (kind === "badge") {
+      for (const variant of nodeRegistry.badge.props.variant) for (const tone of nodeRegistry.badge.props.tone) samples.push({ ...base, props: { variant, tone } });
+    }
+    if (["switch", "checkbox"].includes(kind)) {
+      for (const checked of [true, false]) samples.push({ ...base, props: { ...base.props, checked, error: "Invalid choice" } });
+    }
+    for (const node of samples) {
+      const input = document([{ id: "stack", kind: "stack", children: [node] }]);
+      const { preview } = await parity(input);
+      const children = kind === "card" ? createElement(Card.Content, { "data-page-node": node.children[0].id }) : node.text;
+      const direct = renderToStaticMarkup(createElement(Container, { "data-page-node": "root" },
+        createElement(Stack, { "data-page-node": "stack" }, createElement(Component, { ...node.props, "data-page-node": node.id }, children))));
+      assert.equal(canonicalMarkup(preview), canonicalMarkup(direct), `${kind}: ${JSON.stringify(node.props)}`);
+      if (kind === "button" && !node.props?.type) assert.match(preview, /type="button"/);
+      if (["switch", "checkbox"].includes(kind) && !node.props?.checked && !node.props?.defaultChecked && !node.props?.indeterminate) assert.match(preview, /aria-checked="false"/);
+    }
+  }
 });
 
 test("hostile text and labels remain escaped literal content, not executable TSX/HTML", async () => {

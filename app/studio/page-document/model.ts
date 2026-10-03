@@ -51,12 +51,15 @@ export function parsePageDocument(value: unknown): PageDocument {
         if (typeof rule !== "string") {
           if (!rule.includes(prop as PageProp)) throw new Error(`${path}: invalid ${key}`);
         } else {
-          if (typeof prop !== "string" || !prop.trim() || prop.length > 200) throw new Error(`${path}: invalid ${key}`);
+          if (typeof prop !== "string" || (rule !== "string" && !prop.trim()) || prop.length > 200) throw new Error(`${path}: invalid ${key}`);
           if (rule === "name" && !/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(prop)) throw new Error(`${path}: invalid ${key}`);
           if (rule === "action" && !/^\/(?!\/)[a-zA-Z0-9/_-]*$/.test(prop)) throw new Error(`${path}: invalid ${key}`);
         }
         node.props[canonical] = prop as PageProp;
       }
+    }
+    for (const [controlled, initial] of [["checked", "defaultChecked"], ["value", "defaultValue"]]) {
+      if (node.props && Object.hasOwn(node.props, controlled) && Object.hasOwn(node.props, initial)) throw new Error(`${path}: conflicting ${controlled}/${initial}`);
     }
     for (const key of definition.requiredProps ?? []) if (!node.props || !Object.hasOwn(node.props, key)) throw new Error(`${path}: missing ${key}`);
     if (definition.text) {

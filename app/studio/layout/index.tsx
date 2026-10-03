@@ -7,7 +7,7 @@ export type SpacingStep = "sm" | "md" | "lg";
 type LayoutProps = ComponentProps<"div">;
 
 export type ContainerProps = LayoutProps & {
-  maxWidth?: "narrow" | "wide";
+  maxWidth?: "narrow" | "wide" | "full";
 };
 
 export function Container({ maxWidth = "wide", className, ...props }: ContainerProps) {

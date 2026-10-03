@@ -34,6 +34,24 @@ test("minimal text delivery does not include unused interactive component source
   assert.deepEqual(JSON.parse(files.get("package.json")).dependencies, {});
 });
 
+test("seven-component source collects Checkbox client boundary, icons and Base UI dependencies", async () => {
+  const sample = JSON.parse(await readFile(new URL("./design-safe.json", import.meta.url), "utf8"));
+  const files = await createPageSourceFiles(createPageBundle(sample, defaultSystem));
+  for (const name of ["badge", "button", "card", "checkbox", "input", "switch", "text"]) {
+    assert.ok(files.has(`components/${name}.tsx`));
+    assert.match(files.get("components/index.ts"), new RegExp(`from "./${name}"`));
+  }
+  assert.ok(files.has("icons.tsx"));
+  assert.match(files.get("components/checkbox.tsx"), /^"use client";/);
+  assert.match(files.get("components/checkbox.tsx"), /@base-ui\/react\/checkbox/);
+  assert.match(files.get("PageContent.tsx"), /Checkbox/);
+  assert.match(files.get("PageContent.tsx"), /maxWidth=\{"full"\}/);
+  assert.ok(JSON.parse(files.get("package.json")).dependencies["@base-ui/react"]);
+  for (const [name, source] of files) {
+    if (/\.tsx?$/.test(name)) assert.doesNotMatch(source, /from ["'](?:next|.*examples\/)/);
+  }
+});
+
 test("source delivery revalidates its bundle rather than trusting the caller", async () => {
   const bundle = createPageBundle(page, defaultSystem);
   bundle.page.root.props.onClick = "alert(1)";
