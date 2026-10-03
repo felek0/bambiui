@@ -1,16 +1,17 @@
 import { parsePageDocument, type PageDocument, type PageNode, type PageProp } from "./model.ts";
 import { nodeRegistry } from "./registry.ts";
+import { patchAppearance, patchParts, type AppearancePatch, type PartsPatch } from "./appearance.ts";
 
 export type PageCommand =
   | { type: "insert"; parentId: string; index: number; node: PageNode }
   | { type: "delete"; nodeId: string }
   | { type: "move"; nodeId: string; parentId: string; index: number }
-  | { type: "update"; nodeId: string; props?: Record<string, PageProp | null>; text?: string }
+  | { type: "update"; nodeId: string; props?: Record<string, PageProp | null>; text?: string; appearance?: AppearancePatch | null; parts?: PartsPatch | null }
   | { type: "rename"; name: string };
 
 const commandKeys: Record<PageCommand["type"], readonly string[]> = {
   insert: ["type", "parentId", "index", "node"], delete: ["type", "nodeId"],
-  move: ["type", "nodeId", "parentId", "index"], update: ["type", "nodeId", "props", "text"],
+  move: ["type", "nodeId", "parentId", "index"], update: ["type", "nodeId", "props", "text", "appearance", "parts"],
   rename: ["type", "name"],
 };
 
@@ -84,6 +85,16 @@ export function applyPageCommands(input: unknown, commands: readonly PageCommand
       case "update": {
         const { node } = requiredNode(page, command.nodeId);
         if (command.text !== undefined) node.text = command.text;
+        if (Object.hasOwn(command, "appearance")) {
+          const next = patchAppearance(node.appearance, command.appearance!, node.kind);
+          if (next) node.appearance = next;
+          else delete node.appearance;
+        }
+        if (Object.hasOwn(command, "parts")) {
+          const next = patchParts(node.parts, command.parts!, node.kind);
+          if (next) node.parts = next;
+          else delete node.parts;
+        }
         if (command.props !== undefined) {
           if (!command.props || typeof command.props !== "object" || Array.isArray(command.props)) throw new Error("command: invalid prop patch");
           const props = { ...node.props };

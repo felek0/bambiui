@@ -1,9 +1,10 @@
 import type { ComponentProps, ReactNode } from "react";
 import { cx } from "../cx";
+import { mergeAppearanceStyle, type AppearanceProps } from "./appearance";
 import type { Radius, Size, Tone } from "./types";
 import styles from "./components.module.css";
 
-export type BadgeProps = ComponentProps<"span"> & {
+export type BadgeProps = ComponentProps<"span"> & AppearanceProps & {
   /** Fill style. Defaults to `outline`, which uses the badge component tokens. */
   variant?: "solid" | "subtle" | "outline";
   /** Semantic color role. Defaults to `neutral`. */
@@ -27,11 +28,14 @@ export function Badge({
   startIcon,
   className,
   children,
+  appearance,
+  style,
   ...props
 }: BadgeProps) {
   return (
     <span
       {...props}
+      style={mergeAppearanceStyle(style, appearance)}
       className={cx(styles.badge, className)}
       data-variant={variant}
       data-tone={tone}
@@ -42,7 +46,7 @@ export function Badge({
       {startIcon && (
         <span className={styles.decorativeIcon} aria-hidden="true">{startIcon}</span>
       )}
-      {children}
+      {appearance?.textAlign ? <span className={styles.alignedContent}>{children}</span> : children}
     </span>
   );
 }

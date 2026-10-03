@@ -9,6 +9,7 @@ import { prepareMove, type MoveTarget } from "./movement.ts";
 import { proposeInsertion, type InsertKind } from "./insertion.ts";
 import { composerFrameToPageDocument } from "./model.ts";
 import { prepareNodeAction, type NodeAction } from "./component-actions.ts";
+import { assetSelectionReason, assetIdAllocator, createSelectionAsset, prepareAssetInsertion, type AssetInsertionTarget } from "./assets.ts";
 
 export type ProjectSession = { selection: NodeSelection | null; history: ComposerHistory; expected: ExpectedProject; pageId: string | null; frameId: string | null; status: "saved" | "unsaved"; error: string };
 export type ComposerState = {
@@ -182,6 +183,48 @@ export class ComposerController {
     try {
       const history = executeComposerCommands(active.history, [{ type: "nodeCommands", pageId: scope.pageId, frameId: scope.frameId, commands: proposal.commands }], this.catalog());
       this.commit(history, { projectId: scope.projectId, pageId: scope.pageId, frameId: scope.frameId, nodeId: proposal.nodeId });
+      this.report(proposal.hint); return true;
+    } catch (error) { this.report(errorText(error)); return false; }
+  };
+  private assetEditingReason(): string | null {
+    if (!this.writable()) return "Project editing is unavailable until loading or storage recovery is complete.";
+    if (this.state.mode !== "design") return "Switch to Design to edit saved components.";
+    if (!this.active()) return "Open a project to use saved components.";
+    return null;
+  }
+  saveSelectionAsAssetReason = (): string | null => {
+    const blocked = this.assetEditingReason();
+    if (blocked) return blocked;
+    const active = this.active()!;
+    if (active.selection && (active.selection.pageId !== active.pageId || active.selection.frameId !== active.frameId)) return "Select a component on the current page.";
+    return assetSelectionReason(active.history.present, active.selection);
+  };
+  saveSelectionAsAsset = (name: string) => {
+    try {
+      const reason = this.saveSelectionAsAssetReason();
+      if (reason) throw new Error(reason);
+      const active = this.active()!, document = active.history.present;
+      const asset = createSelectionAsset(document, active.selection, assetIdAllocator(document, this.id)(), name);
+      return this.commit(executeComposerCommands(active.history, [{ type: "saveAsset", asset }], this.catalog()));
+    } catch (error) { this.report(errorText(error)); return false; }
+  };
+  insertAsset = (assetId: string, target?: AssetInsertionTarget) => {
+    try {
+      const reason = this.assetEditingReason();
+      if (reason) throw new Error(reason);
+      const active = this.active()!, document = active.history.present;
+      if (!target) {
+        const page = document.pages.find(page => page.id === active.pageId);
+        const frame = page?.frames.find(frame => frame.id === active.frameId);
+        if (!page || !frame) throw new Error("Select a container or frame before inserting a saved component.");
+        const selected = active.selection && resolveSelection(document, active.selection);
+        if (active.selection && (!selected || active.selection.pageId !== page.id || active.selection.frameId !== frame.id)) throw new Error("Insertion selection is no longer available.");
+        const parent = selected ? selected.node : frame.root;
+        target = { projectId: document.id, pageId: page.id, frameId: frame.id, parentId: parent.id, index: parent.children?.length ?? 0 };
+      }
+      if (target.pageId !== active.pageId) throw new Error("Saved components can only be inserted on the current page.");
+      const proposal = prepareAssetInsertion(document, assetId, target, this.id);
+      this.commit(executeComposerCommands(active.history, [proposal.command], this.catalog()), proposal.selection);
       this.report(proposal.hint); return true;
     } catch (error) { this.report(errorText(error)); return false; }
   };

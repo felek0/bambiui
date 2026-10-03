@@ -10,6 +10,7 @@ import type { ComposerDocument } from "./model";
 import type { Composer } from "./use-composer";
 import { pointerDragActive } from "./pointer-drag";
 import { flattenNodes } from "./selection";
+import { canvasNodeId, closestCanvasNode } from "./canvas-elements";
 import styles from "./composer.module.css";
 
 export type ActionTarget = { projectId: string; pageId: string; frameId: string; nodeId?: string } | null;
@@ -70,7 +71,7 @@ export function CanvasContextActions({ composer, surface }: { composer: Composer
     if (pointerDragActive(composer.controller) || !composer.document || !composer.page) { details.cancel(); return; }
     const element = details.event.target instanceof Element ? details.event.target : null;
     const frameId = element?.closest<HTMLElement>('[data-frame-id]')?.dataset.frameId;
-    const nodeId = element?.closest<HTMLElement>('[data-node-move-handle]')?.dataset.nodeMoveHandle ?? element?.closest<HTMLElement>('[data-page-node]')?.dataset.pageNode;
+    const nodeId = element?.closest<HTMLElement>('[data-node-move-handle]')?.dataset.nodeMoveHandle ?? canvasNodeId(closestCanvasNode(element));
     const target: ActionTarget = frameId ? { projectId: composer.document.id, pageId: composer.page.id, frameId, ...(nodeId ? { nodeId } : {}) } : null;
     if (target?.nodeId) composer.controller.selectNode({ ...target, nodeId: target.nodeId });
     else composer.controller.selectFrame(composer.page.id, target?.frameId ?? null);

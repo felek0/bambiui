@@ -30,6 +30,6 @@ test("frame paints only its supplied project system and theme, missing reference
 test("blank frame has an explicit empty drop hint and preview-only clipping policy", () => {
   const html = render(createComposerFrame("f", "root", "mobile"));
   assert.match(html, /width:390px/); assert.match(html, /Empty frame · Drop area/);
-  assert.match(html, /Drag from Insert/); assert.match(html, /editor preview clips overflow/);
+  assert.match(html, /Add components from Assets/); assert.match(html, /editor preview clips overflow/);
   assert.match(html, /Not an isolated viewport or export preview/);
 });

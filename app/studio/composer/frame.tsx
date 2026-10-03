@@ -8,6 +8,8 @@ import type { ComposerFrame } from "./model";
 import styles from "./composer.module.css";
 import { flattenNodes } from "./selection";
 import { NodeOverlay } from "./node-overlay";
+import { closestCanvasNode, canvasNodeId } from "./canvas-elements";
+import { appearanceToStyle } from "../page-document/appearance";
 
 export const Frame = memo(function Frame({ frame, selected, system, theme, onSelect, onSelectNode, selectedNodeId, preview, onMoveNode }: { frame: ComposerFrame; selected: boolean; system: DesignSystem | null; theme: PaletteMode; onSelect: (id: string) => void; onSelectNode: (frameId: string, nodeId: string) => void; selectedNodeId: string | null; preview: boolean; onMoveNode: (event: PointerEvent<HTMLDivElement>, frameId: string, nodeId: string) => void }) {
   const surface = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null);
@@ -22,10 +24,17 @@ export const Frame = memo(function Frame({ frame, selected, system, theme, onSel
     return () => { observer.disconnect(); for (const [element, value] of saved) { if (value === null) element.removeAttribute('tabindex'); else element.setAttribute('tabindex', value); } };
   }, [preview, frame.root]);
   const targetNode = (target: EventTarget) => {
-    const element = target instanceof Element ? target.closest<HTMLElement>("[data-page-node]") : null;
-    return element && content.current?.contains(element) && kinds.has(element.dataset.pageNode!) ? element.dataset.pageNode! : null;
+    const element = target instanceof Element ? closestCanvasNode(target) : null;
+    const id = canvasNodeId(element);
+    return element && id && content.current?.contains(element) && kinds.has(id) ? id : null;
   };
   const variables = system ? toCSSVariables(system.themes[theme], theme) : {};
+  const rootStyle = appearanceToStyle(frame.root.appearance);
+  const clippingStyle = system && rootStyle ? {
+    borderTopLeftRadius: rootStyle.borderTopLeftRadius, borderTopRightRadius: rootStyle.borderTopRightRadius,
+    borderBottomRightRadius: rootStyle.borderBottomRightRadius, borderBottomLeftRadius: rootStyle.borderBottomLeftRadius,
+    boxShadow: rootStyle.boxShadow,
+  } : {};
   return <div className={styles.frame} data-frame-id={frame.id} data-selected={selected || undefined} style={{ left: frame.x, top: frame.y, width: frame.width }}>
     <button type="button" className={styles.frameTitle} data-frame-title={frame.id} aria-label={`Select frame ${frame.name}`} aria-pressed={selected} onClick={() => onSelect(frame.id)}>
       {frame.name} · {frame.width} × {frame.height}
@@ -37,11 +46,11 @@ export const Frame = memo(function Frame({ frame, selected, system, theme, onSel
           onKeyDownCapture={event => { if (!preview) { event.preventDefault(); event.stopPropagation(); } }}
           onFocusCapture={event => { if (!preview && event.target !== event.currentTarget) event.currentTarget.closest<HTMLElement>('[data-camera-zoom]')?.focus({ preventScroll: true }); }}
           onSubmitCapture={event => { event.preventDefault(); event.stopPropagation(); }}
-       data-ds-theme={system ? theme : undefined} style={{ ...variables, height: frame.height, colorScheme: theme, backgroundColor: system ? "var(--ds-background)" : undefined, color: system ? "var(--ds-foreground)" : undefined, fontFamily: system ? "var(--ds-font-family)" : undefined } as CSSProperties}>
+       data-ds-theme={system ? theme : undefined} style={{ ...variables, ...clippingStyle, height: frame.height, colorScheme: theme, backgroundColor: system ? frame.root.appearance?.background ?? "var(--ds-background)" : undefined, color: system ? "var(--ds-foreground)" : undefined, fontFamily: system ? "var(--ds-font-family)" : undefined } as CSSProperties}>
       {system ? <div ref={content} className={styles.frameContent} aria-hidden={!preview || undefined}><RenderPage key={`${preview}-${renderKey}`} page={{ version: 1, id: "composer-frame", name: frame.name, root: frame.root }} /></div> : <p className={styles.frameHint}>Linked system unavailable. Content preserved.</p>}
       {system && !preview && <NodeOverlay surface={surface} content={content} frame={frame} selectedId={selectedNodeId} hoverId={hoverId} kinds={kinds} />}
-      {system && !frame.root.children?.length && <div className={styles.frameHint}>Empty frame · Drop area<br />Drag from Insert or select this frame and click a palette item.</div>}
+      {system && !frame.root.children?.length && <div className={styles.frameHint}>Empty frame · Drop area<br />Add components from Assets.</div>}
     </div>
-    <p className={styles.frameFootnote}>Fixed-height editor preview clips overflow. Not an isolated viewport or export preview.</p>
+    <span className="sr-only">Fixed-height editor preview clips overflow. Not an isolated viewport or export preview.</span>
   </div>;
 });

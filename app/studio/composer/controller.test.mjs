@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ComposerController } from "./controller.ts";
 import { isComposerRoute } from "./workspace-route.ts";
+import { flattenNodes, nodePath } from "./selection.ts";
 import { createComposerDocument, createComposerPage, createComposerFrame } from "./model.ts";
 import { COMPOSER_INDEX_KEY, composerDocumentKey, createStoredComposerProject, readComposerIndex, selectComposerProject } from "./storage.ts";
 
@@ -16,6 +17,154 @@ function fixture() {
   const controller = new ComposerController(() => systems, () => `id${++serial}`);
   return { local, systems, controller };
 }
+function assetFixture() {
+  const setup = fixture(), document = createComposerDocument("asset-project", "a"), page = createComposerPage("asset-page"), frame = createComposerFrame("asset-frame", "asset-root");
+  frame.root.children = [
+    { id: "stack", kind: "stack", children: [{ id: "email", kind: "input", props: { label: "Email", name: "email", readOnly: false, size: "lg" }, appearance: { paddingTop: 10.25, shadow: "sm" }, parts: { label: { fontSize: 13.5, color: "#112233" } } }] },
+    { id: "grid", kind: "grid", children: [] },
+    { id: "card", kind: "card", children: [{ id: "body", kind: "cardContent", children: [] }] },
+  ];
+  page.frames.push(frame); document.pages.push(page); seed(setup.local, document, true); setup.controller.hydrate(setup.local);
+  const selection = { projectId: document.id, pageId: page.id, frameId: frame.id, nodeId: "email" };
+  setup.controller.selectNode(selection);
+  return { ...setup, document, page, frame, selection, target: { projectId: document.id, pageId: page.id, frameId: frame.id, parentId: frame.root.id, index: frame.root.children.length } };
+}
+
+test("save selected asset is one history/save step, supports undo to old records and restores overrides on redo/reload", () => {
+  const { local, controller, document, frame } = assetFixture();
+  assert.equal(controller.saveSelectionAsAssetReason(), null);
+  const before = activeDocument(controller), selected = controller.active().selection;
+  local.writes = [];
+  assert.equal(controller.saveSelectionAsAsset("Custom input"), true);
+  assert.equal(local.writes.length, 1); assert.equal(controller.active().history.past.length, 1);
+  const saved = activeDocument(controller), asset = saved.assets[0];
+  assert.equal(asset.name, "Custom input"); assert.deepEqual(asset.root, frame.root.children[0].children[0]);
+  assert.deepEqual(controller.active().selection, selected); assert.deepEqual(stored(local, document.id), saved);
+  assert.equal(controller.travel("undo"), true); assert.deepEqual(activeDocument(controller), before);
+  assert.equal(Object.hasOwn(stored(local, document.id), "assets"), false);
+  assert.equal(controller.travel("redo"), true); assert.deepEqual(activeDocument(controller), saved);
+  const reload = new ComposerController(() => ["a", "b"], () => "reload-id"); local.writes = []; reload.hydrate(local);
+  assert.deepEqual(activeDocument(reload), saved); assert.equal(local.writes.length, 0);
+  assert.equal(reload.active().selection, null); assert.equal(reload.active().history.past.length, 0);
+});
+
+test("saved insertion targets selected frame/container exactly, includes adapters atomically and selects the real copy", () => {
+  const { local, controller, selection, target } = assetFixture();
+  controller.saveSelectionAsAsset("Input");
+  const saved = activeDocument(controller), assetId = saved.assets[0].id, before = controller.active().history;
+  local.writes = [];
+  assert.equal(controller.insertAsset(assetId), false); // The selected input is not an insertion slot.
+  assert.match(controller.getSnapshot().message, /insertion slot/); assert.equal(controller.active().history, before); assert.equal(local.writes.length, 0);
+  controller.selectFrame(selection.pageId, selection.frameId);
+  assert.equal(controller.insertAsset(assetId), true);
+  assert.equal(local.writes.length, 1); assert.equal(controller.active().history.past.length, before.past.length + 1);
+  const inserted = activeDocument(controller), wrapper = inserted.pages[0].frames[0].root.children.at(-1);
+  assert.equal(wrapper.kind, "stack"); assert.notEqual(wrapper.children[0].id, "email");
+  assert.deepEqual(controller.active().selection, { ...selection, nodeId: wrapper.children[0].id });
+  assert.deepEqual(wrapper.children[0].parts, saved.assets[0].root.parts);
+  assert.deepEqual(inserted.assets, saved.assets);
+  assert.equal(controller.travel("undo"), true); assert.deepEqual(activeDocument(controller), saved);
+  assert.equal(controller.active().selection, null);
+  assert.equal(controller.travel("redo"), true); assert.deepEqual(activeDocument(controller), inserted);
+  for (const [parentId, expectedKind] of [["grid", "gridItem"], ["card", "input"]]) {
+    controller.selectNode({ ...selection, nodeId: parentId }); local.writes = [];
+    const previous = controller.active().history;
+    assert.equal(controller.insertAsset(assetId), true);
+    assert.equal(local.writes.length, 1); assert.equal(controller.active().history.past.length, previous.past.length + 1);
+    const tree = activeDocument(controller).pages[0].frames[0].root;
+    const parent = nodePath(tree, parentId === "card" ? "body" : parentId).at(-1);
+    assert.equal(parent.children.at(-1).kind, expectedKind);
+    controller.travel("undo"); assert.deepEqual(activeDocument(controller), previous.present);
+  }
+  local.writes = []; const history = controller.active().history;
+  for (const invalid of [{ ...target, projectId: "foreign" }, { ...target, pageId: "foreign" }, { ...target, frameId: "foreign" }, { ...target, parentId: "email", index: 0 }, { ...target, parentId: "missing", index: 0 }]) {
+    assert.equal(controller.insertAsset(assetId, invalid), false); assert.ok(controller.getSnapshot().message);
+  }
+  assert.equal(controller.insertAsset("missing", target), false);
+  assert.equal(controller.active().history, history); assert.equal(local.writes.length, 0);
+});
+
+test("asset controller allocator handles repeated IDs for saves and insertions without cross-frame collisions", () => {
+  const { local, controller, systems, selection, target } = assetFixture();
+  controller.saveSelectionAsAsset("Input");
+  const repeated = new ComposerController(() => systems, () => "email"); repeated.hydrate(local); repeated.selectNode(selection);
+  assert.equal(repeated.saveSelectionAsAsset("Second"), true); assert.equal(repeated.saveSelectionAsAsset("Third"), true);
+  const assets = activeDocument(repeated).assets;
+  assert.equal(new Set(assets.map(asset => asset.id)).size, 3);
+  const reserved = new Set(assets.flatMap(asset => [asset.id, asset.root.id]));
+  for (let i = 0; i < 3; i++) {
+    assert.equal(repeated.insertAsset(assets[0].id, { ...target, parentId: "grid", index: 0 }), true);
+    const selected = repeated.active().selection;
+    assert.equal(reserved.has(selected.nodeId), false); reserved.add(selected.nodeId);
+  }
+  const ids = flattenNodes(activeDocument(repeated).pages[0].frames[0].root).map(({ node }) => node.id);
+  assert.equal(new Set(ids).size, ids.length);
+});
+
+test("assets and local appearance/parts survive source resets, system switches, catalog browsing, deletion and project copy", () => {
+  const { local, systems, controller, selection } = assetFixture();
+  const catalog = structuredClone(systems);
+  controller.saveSelectionAsAsset("Input"); const saved = structuredClone(activeDocument(controller).assets);
+  assert.equal(controller.execute({ type: "nodeCommands", pageId: selection.pageId, frameId: selection.frameId, commands: [{ type: "update", nodeId: "email", appearance: null, parts: null, props: { size: null } }] }), true);
+  const source = activeDocument(controller).pages[0].frames[0].root.children[0].children[0];
+  assert.equal(Object.hasOwn(source, "appearance"), false); assert.equal(Object.hasOwn(source, "parts"), false);
+  assert.deepEqual(activeDocument(controller).assets, saved);
+  const before = activeDocument(controller), history = controller.active().history;
+  assert.equal(controller.execute({ type: "changeProjectSystem", systemId: "b" }), true);
+  assert.deepEqual(activeDocument(controller), { ...before, systemId: "b" });
+  assert.equal(controller.active().history.past.length, history.past.length + 1);
+  controller.travel("undo"); assert.deepEqual(activeDocument(controller), before);
+  controller.travel("redo"); assert.deepEqual(activeDocument(controller).assets, saved);
+  assert.deepEqual(systems, catalog); systems.reverse(); assert.equal(activeDocument(controller).systemId, "b");
+  controller.execute({ type: "deletePage", pageId: selection.pageId }); assert.deepEqual(activeDocument(controller).assets, saved);
+  const original = structuredClone(activeDocument(controller));
+  assert.equal(controller.duplicate(), true); assert.deepEqual(activeDocument(controller).assets, saved);
+  assert.notEqual(activeDocument(controller).id, original.id); assert.equal(controller.active().history.past.length, 0);
+  assert.equal(controller.execute({ type: "renameAsset", assetId: saved[0].id, name: "Copy-only name" }), true);
+  assert.deepEqual(stored(local, original.id), original);
+  assert.equal(controller.execute({ type: "deleteAsset", assetId: saved[0].id }), true);
+  assert.deepEqual(activeDocument(controller).assets, []);
+  controller.travel("undo"); assert.equal(activeDocument(controller).assets[0].name, "Copy-only name");
+  controller.travel("undo"); assert.deepEqual(activeDocument(controller).assets, saved);
+  assert.equal(controller.create("Empty", "a"), true); assert.equal(Object.hasOwn(activeDocument(controller), "assets"), false);
+});
+
+test("invalid save selections/names, Preview, unavailable targets and stale asset IDs never write or create history", () => {
+  const { local, controller, selection, target } = assetFixture();
+  const initial = controller.active().history;
+  local.writes = [];
+  for (const name of ["", " ", "n".repeat(121)]) assert.equal(controller.saveSelectionAsAsset(name), false);
+  for (const nodeId of ["asset-root", "body"]) {
+    controller.selectNode({ ...selection, nodeId }); assert.ok(controller.saveSelectionAsAssetReason());
+    assert.equal(controller.saveSelectionAsAsset("No"), false);
+  }
+  controller.selectFrame(selection.pageId, null); assert.equal(controller.saveSelectionAsAsset("No selection"), false);
+  assert.equal(controller.insertAsset("missing"), false); assert.match(controller.getSnapshot().message, /Select a container or frame/);
+  assert.equal(controller.active().history, initial); assert.equal(local.writes.length, 0);
+  controller.selectNode(selection); controller.saveSelectionAsAsset("Input"); const saved = controller.active().history, assetId = saved.present.assets[0].id;
+  controller.setMode("preview"); local.writes = [];
+  assert.match(controller.saveSelectionAsAssetReason(), /Switch to Design/);
+  assert.equal(controller.saveSelectionAsAsset("No"), false); assert.equal(controller.insertAsset(assetId, target), false);
+  assert.equal(controller.active().history, saved); assert.equal(local.writes.length, 0);
+  controller.setMode("design"); controller.execute({ type: "deleteAsset", assetId });
+  const deleted = controller.active().history; local.writes = [];
+  assert.equal(controller.insertAsset(assetId, target), false); assert.match(controller.getSnapshot().message, /no longer available/);
+  assert.equal(controller.active().history, deleted); assert.equal(local.writes.length, 0);
+});
+
+test("asset save storage failure preserves in-memory snapshot and retry, without overwriting the old record", () => {
+  const { local, controller, document } = assetFixture();
+  const old = local.getItem(composerDocumentKey(document.id)), expected = controller.active().expected;
+  local.fail = key => key === composerDocumentKey(document.id);
+  assert.equal(controller.saveSelectionAsAsset("Unsaved input"), true);
+  assert.equal(controller.active().status, "unsaved"); assert.ok(controller.active().error);
+  assert.equal(activeDocument(controller).assets.length, 1);
+  assert.equal(local.getItem(composerDocumentKey(document.id)), old); assert.deepEqual(controller.active().expected, expected);
+  assert.equal(Object.hasOwn(JSON.parse(old).document, "assets"), false);
+  local.fail = null; assert.equal(controller.save(), true);
+  assert.equal(controller.active().status, "saved"); assert.deepEqual(stored(local, document.id).assets, activeDocument(controller).assets);
+});
+
 test('instance actions target scoped source rather than selection, save once, undo once and never change catalog',()=>{
   const {local,systems,controller}=fixture();controller.hydrate(local);controller.create('Actions','a');controller.addPage();controller.addFrame('mobile');
   let doc=controller.active().history.present;const pageId=doc.pages[0].id,frame=doc.pages[0].frames[0];

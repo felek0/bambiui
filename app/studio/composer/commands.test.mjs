@@ -34,6 +34,63 @@ function unchangedOnError(doc, commands, catalog) {
   assert.deepEqual(commands, commandBefore);
 }
 
+test("asset save, rename and delete are atomic detached commands, never edits to source instances", () => {
+  const doc = freeze(fixture());
+  const asset = freeze({ id: "saved", name: "Heading", root: { ...frame(doc).root.children[0], props: { variant: "h2", tone: "info" } } });
+  const saved = apply(doc, { type: "saveAsset", asset });
+  assert.equal(Object.hasOwn(doc, "assets"), false);
+  assert.deepEqual(saved.pages, doc.pages);
+  assert.deepEqual(saved.assets, [asset]);
+  assert.notEqual(saved.assets[0].root, asset.root);
+  const renamed = apply(saved, { type: "renameAsset", assetId: "saved", name: "Revised" });
+  assert.equal(renamed.assets[0].name, "Revised"); assert.equal(saved.assets[0].name, "Heading");
+  const deleted = apply(renamed, { type: "deleteAsset", assetId: "saved" });
+  assert.deepEqual(deleted.assets, []); assert.deepEqual(deleted.pages, doc.pages);
+  for (const invalid of [
+    { type: "saveAsset", asset }, { type: "saveAsset", asset: { ...asset, id: "other", unexpected: true } },
+    { type: "renameAsset", assetId: "missing", name: "No" }, { type: "renameAsset", assetId: "saved", name: " " },
+    { type: "deleteAsset", assetId: "missing" }, { type: "deleteAsset", assetId: 1 },
+    { type: "renameAsset", assetId: "saved", name: "Yes", root: asset.root },
+    { type: "saveAsset" }, { type: "deleteAsset" },
+  ]) unchangedOnError(saved, [rename("Transient"), invalid]);
+  const full = { ...doc, assets: Array.from({ length: COMPOSER_LIMITS.assets }, (_, i) => ({ ...asset, id: `asset${i}` })) };
+  unchangedOnError(full, [{ type: "saveAsset", asset }]);
+  assert.throws(() => apply(doc, { type: "saveAsset", asset: { ...asset, root: { ...asset.root, get props() { assert.fail("getter must not run"); } } } }));
+});
+
+test("asset history restores absence/empty state, no-op rename preserves redo, and system rebind preserves snapshots", () => {
+  const doc = fixture(), catalog = ["original", "other"];
+  const save = { type: "saveAsset", asset: { id: "saved", name: "Reusable", root: frame(doc).root.children[0] } };
+  const saved = execute(history(doc), [save]);
+  assert.equal(saved.past.length, 1);
+  const original = undo(saved, catalog);
+  assert.deepEqual(original.present, doc); assert.equal(Object.hasOwn(original.present, "assets"), false);
+  assert.deepEqual(redo(original, catalog).present, saved.present);
+  const renamed = execute(saved, [{ type: "renameAsset", assetId: "saved", name: "Named" }]);
+  const reverted = undo(renamed, catalog);
+  assert.equal(execute(reverted, [{ type: "renameAsset", assetId: "saved", name: "Reusable" }]), reverted);
+  const rebound = execute(saved, [rebind("other")], catalog);
+  assert.deepEqual(rebound.present, { ...saved.present, systemId: "other" });
+  assert.deepEqual(undo(rebound, catalog).present, saved.present);
+  const removed = execute(rebound, [{ type: "deleteAsset", assetId: "saved" }]);
+  assert.deepEqual(removed.present.assets, []);
+  assert.deepEqual(undo(removed, catalog).present, rebound.present);
+  assert.deepEqual(redo(undo(removed, catalog), catalog).present, removed.present);
+  removed.past[0].pages[0].name = "Independent";
+  assert.deepEqual(saved.present.pages, doc.pages);
+});
+
+test("project duplication detaches project-local assets without filtering fields or resetting old records", () => {
+  const doc = fixture();
+  doc.assets = [{ id: "saved", name: "Reusable", root: { ...frame(doc).root.children[0], props: { tone: "danger", size: "lg" } } }];
+  const copy = duplicateComposerProject(doc, "copy", "Copy", { page: { pageId: "copy-page", frames: { frame: frameIds() } } });
+  assert.deepEqual(copy.assets, doc.assets); assert.equal(copy.systemId, doc.systemId);
+  copy.assets[0].root.props.tone = "success";
+  assert.equal(doc.assets[0].root.props.tone, "danger");
+  const empty = createComposerDocument("empty", "original");
+  assert.equal(Object.hasOwn(duplicateComposerProject(empty, "copy-empty", "Copy", {}), "assets"), false);
+});
+
 test("atomic project batch supports page/frame CRUD and after-removal reorder", () => {
   const doc = freeze(fixture());
   const commands = freeze([

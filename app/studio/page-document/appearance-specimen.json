@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "id": "appearance-specimen",
+  "name": "Local appearance specimen",
+  "root": {
+    "id": "appearance-root",
+    "kind": "container",
+    "props": { "maxWidth": "full" },
+    "appearance": { "maxWidth": 960, "paddingTop": 24, "paddingRight": 32, "paddingBottom": 40, "paddingLeft": 16 },
+    "children": [{
+      "id": "appearance-form", "kind": "form", "props": { "action": "/example" },
+      "appearance": { "marginTop": 8, "marginRight": 2, "marginBottom": 12, "marginLeft": 4 },
+      "children": [{
+        "id": "appearance-stack", "kind": "stack", "appearance": { "gap": 19.5 },
+        "children": [{
+          "id": "appearance-card", "kind": "card", "props": { "variant": "filled" },
+          "appearance": { "background": "#f8fafc", "color": "#182230", "borderColor": "#667085", "borderWidth": 2, "shadow": "md", "borderTopLeftRadius": 24, "borderTopRightRadius": 12, "borderBottomRightRadius": 6, "borderBottomLeftRadius": 0, "paddingTop": 20, "paddingRight": 24, "paddingBottom": 28, "paddingLeft": 16 },
+          "children": [
+            { "id": "appearance-header", "kind": "cardHeader", "appearance": { "width": "fill", "gap": 12, "paddingBottom": 6 }, "children": [
+              { "id": "appearance-title", "kind": "cardTitle", "text": "Independent card slots", "appearance": { "fontSize": 26, "fontWeight": 650, "letterSpacing": -0.5, "color": "#101828" } },
+              { "id": "appearance-card-description", "kind": "cardDescription", "text": "These instance values do not change theme tokens.", "appearance": { "fontSize": 14, "lineHeight": 1.7, "color": "#475467" } }
+            ] },
+            { "id": "appearance-content", "kind": "cardContent", "appearance": { "gap": 18, "paddingTop": 7, "background": "transparent" }, "children": [
+              { "id": "appearance-grid", "kind": "grid", "props": { "columns": 1 }, "appearance": { "gap": 15 }, "children": [
+                { "id": "appearance-cell", "kind": "gridItem", "appearance": { "minWidth": 0, "minHeight": 50, "paddingLeft": 3 }, "children": [
+                  { "id": "appearance-text", "kind": "text", "props": { "variant": "caption", "as": "span" }, "text": "A locally sized text box", "appearance": { "width": "fill", "height": "hug", "fontSize": 15, "fontWeight": 500, "textAlign": "right", "marginBottom": 9 } },
+                  { "id": "appearance-input", "kind": "input", "props": { "label": "Email", "name": "email", "error": "Enter a valid email", "description": "Used for notifications", "errorPosition": "above", "errorIcon": "warning" },
+                    "appearance": { "width": "fill", "paddingTop": 11, "paddingRight": 17, "paddingBottom": 13, "paddingLeft": 19, "borderTopLeftRadius": 14, "fontSize": 18, "lineHeight": 1.8, "letterSpacing": 0.4, "textAlign": "right", "background": "#ffffff", "borderWidth": 3 },
+                    "parts": { "root": { "gap": 9, "marginBottom": 14 }, "label": { "fontSize": 13, "fontWeight": 700, "color": "#344054" }, "control": { "borderColor": "#b42318", "paddingLeft": 23 }, "description": { "color": "#475467", "fontSize": 12 }, "error": { "color": "#b42318", "gap": 6, "fontSize": 13 } }
+                  },
+                  { "id": "appearance-switch", "kind": "switch", "props": { "label": "Notifications", "name": "notifications", "defaultChecked": true, "error": "Review this setting", "errorIcon": "info" },
+                    "appearance": { "width": 76, "height": 32, "background": "#175cd3", "color": "#ffffff", "paddingLeft": 5, "paddingRight": 5 },
+                    "parts": { "root": { "paddingLeft": 0, "gap": 6 }, "row": { "width": "fill", "gap": 16 }, "label": { "fontSize": 15, "fontWeight": 600, "color": "#182230" }, "error": { "fontSize": 12, "color": "#b42318" } }
+                  },
+                  { "id": "appearance-checkbox", "kind": "checkbox", "props": { "label": "Accept terms", "name": "terms", "defaultChecked": true, "description": "Required to continue", "error": "Please review the terms", "errorIcon": "none" },
+                    "appearance": { "width": 28, "height": 28, "borderTopLeftRadius": 8, "borderBottomRightRadius": 3, "background": "#175cd3", "color": "#ffffff" },
+                    "parts": { "root": { "paddingLeft": 0 }, "row": { "gap": 14 }, "label": { "fontWeight": 600, "color": "#182230" }, "description": { "fontSize": 12 }, "error": { "fontSize": 12, "color": "#b42318" } }
+                  }
+                ] }
+              ] }
+            ] },
+            { "id": "appearance-footer", "kind": "cardFooter", "appearance": { "gap": 20, "paddingTop": 12, "borderWidth": 1, "borderColor": "#d0d5dd" }, "children": [
+              { "id": "appearance-button", "kind": "button", "text": "Continue", "appearance": { "width": 200, "height": 48, "paddingLeft": 20, "paddingRight": 24, "fontSize": 16, "fontWeight": 600, "textAlign": "left", "background": "#175cd3", "color": "#ffffff", "shadow": "sm" } },
+              { "id": "appearance-badge", "kind": "badge", "text": "Local draft", "appearance": { "width": "hug", "paddingTop": 6, "paddingBottom": 6, "borderWidth": 1, "opacity": 0.9, "fontSize": 12, "color": "#182230", "background": "#ffffff" } }
+            ] }
+          ]
+        }]
+      }]
+    }]
+  }
+}

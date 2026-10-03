@@ -25,6 +25,7 @@ import {
 import styles from "./developer.module.css";
 import { developerCopy, type NoteKey } from "./developer-copy";
 import type { PaletteMode } from "./color-engine";
+import { appearanceFieldsFor, appearanceParts } from "./page-document/appearance";
 
 
 export type DeveloperViewProps = {
@@ -35,18 +36,29 @@ export type DeveloperViewProps = {
 
 };
 
-type PropRow = readonly [prop: string, type: string, defaultValue: string, noteKey: NoteKey];
+const instanceNotes = {
+  appearance: "Theme-independent instance values on the painted element. Omitted values inherit the shared component tokens; these are not new CSS tokens.",
+  parts: "Independent root, label, control, description and error appearance; choices also support row. Control part values take precedence over appearance.",
+  errorPosition: "Place the error before the label/control group or after the description. DOM order matches visual order.",
+  errorIcon: "Fixed decorative, aria-hidden glyph; never a replacement for the textual error.",
+} as const;
+const propNotes = { ...developerCopy.notes, ...instanceNotes };
+type PropRow = readonly [prop: string, type: string, defaultValue: string, noteKey: NoteKey | keyof typeof instanceNotes];
 
 const size: PropRow = ["size", '"sm" | "md" | "lg"', '"md"', "size"];
 const radius: PropRow = ["radius", '"sm" | "md" | "lg"', "omitted (global md by default)", "radius"];
 const content: PropRow = ["children", "ReactNode", "—", "content"];
 const className: PropRow = ["className", "string", "—", "className"];
 const icons: PropRow = ["startIcon / endIcon", "ReactNode", "—", "icons"];
+const appearance: PropRow = ["appearance", "NodeAppearance", "omitted", "appearance"];
+const parts: PropRow = ["parts", "NodeParts", "omitted", "parts"];
 const fields: readonly PropRow[] = [
   ["label", "ReactNode", "Required", "label"],
   ["hideLabel", "boolean", "false", "hideLabel"],
   ["description / error", "ReactNode", "—", "description"],
-  size,
+  ["errorPosition", '"below" | "above"', '"below"', "errorPosition"],
+  ["errorIcon", '"none" | "info" | "warning"', '"none"', "errorIcon"],
+  appearance, parts, size,
   ["disabled / readOnly / required", "boolean", "false", "states"],
   ["name", "string", "—", "name"],
   className,
@@ -72,7 +84,7 @@ const reference: Record<ComponentId, { name: string; props: readonly PropRow[] }
       ["loading", "boolean", "false", "loading"],
       ["fullWidth", "boolean", "false", "fullWidth"],
       ["iconOnly", "boolean", "false", "iconOnly"],
-      icons, content, className,
+      icons, content, className, appearance,
       ["render", "Base UI render prop", "—", "render"],
     ],
   },
@@ -104,14 +116,14 @@ const reference: Record<ComponentId, { name: string; props: readonly PropRow[] }
       size,
       ["dot", "boolean", "false", "dot"], radius,
       ["startIcon", "ReactNode", "—", "startIcon"],
-      content, className,
+      content, className, appearance,
     ],
   },
   card: {
     name: "Card",
     props: [
       ["variant", '"outlined" | "elevated" | "filled"', '"outlined"', "surface"],
-      size, radius, content, className,
+      size, radius, content, className, appearance,
     ],
   },
   text: {
@@ -121,7 +133,7 @@ const reference: Record<ComponentId, { name: string; props: readonly PropRow[] }
       size,
       ["tone", '"neutral" | "primary" | "success" | "warning" | "danger" | "info"', '"neutral"', "textTone"],
       ["as", '"h1"–"h6" | "p" | "span"', "By variant", "textAs"],
-      content, className,
+      content, className, appearance,
       ["native attributes", "HTML attributes for the rendered element", "—", "textNative"],
     ],
   },
@@ -398,13 +410,25 @@ export function DeveloperView({ selected, system, mode, cssOutput }: DeveloperVi
                       <th scope="row"><code>{prop}</code></th>
                       <td><code>{type}</code></td>
                       <td><code>{defaultValue === "Required" ? copy.required : defaultValue === "Base UI defaults" ? copy.baseUIDefaults : defaultValue === "Base UI default" ? copy.baseUIDefault : defaultValue}</code></td>
-                      <td>{copy.notes[noteKey]}</td>
+                      <td>{propNotes[noteKey]}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </ScrollRegion>
             <p>{copy.componentNotes[selected]}</p>
+          </details>
+          <details className={styles.reference} data-instance-appearance-reference>
+            <summary>Local instance appearance (not tokens)</summary>
+            <p><code>appearance</code> overrides only this instance. It targets the Input shell, Switch track, Checkbox box, or the component root. Unset values keep their existing theme, variant and state inheritance. Lengths are pixels; lineHeight is unitless. Colors are six-digit hex (background and borderColor also accept transparent); shadow uses the existing none/sm/md/lg presets.</p>
+            <p>Consumed primary fields: {appearanceFieldsFor(selected).map(({ key }, index) => <span key={key}>{index > 0 && ", "}<code>{key}</code></span>)}.</p>
+            {appearanceParts(selected).length > 0 && <>
+              <p><code>parts</code> independently styles these field elements. <code>parts.control</code> merges over primary appearance; error gap separates its optional icon. The label and description relationships remain managed by Base UI.</p>
+              <ul>{appearanceParts(selected).map(({ key, label }) => <li key={key}><code>{key}</code> — {label}</li>)}</ul>
+            </>}
+            {selected === "card" && <p>Set <code>appearance</code> separately on Card.Header, Card.Title, Card.Description, Card.Content and Card.Footer. They are independent page nodes, not entries in a Card parts object.</p>}
+            <p>width/height accept a finite number, hug or fill; minWidth/minHeight are numeric and maxWidth also accepts fill. Hug means fit-content width or auto height. Fill is 100% of the containing block, not flex-grow.</p>
+            <p>Reset by omitting a React appearance key; page-document update commands use null to reset a field, part or entire override object. Values are stored in the page and copied into TSX, not exported as new theme CSS variables. Local colors and opacity can fail contrast even when the token audit passes; review both themes. Decorative borders and shadows never replace the shared focus outline.</p>
           </details>
         </>
       )}

@@ -20,6 +20,12 @@ try {
   const sample = JSON.parse(await readFile(join(root, "app/studio/page-document/design-safe.json"), "utf8"));
   const sampleFiles = await createPageSourceFiles(createPageBundle(sample, defaultSystem));
   for (const [name, text] of sampleFiles) files.set(`design-safe/${name}`, text);
+  const appearance = JSON.parse(await readFile(join(root, "app/studio/page-document/appearance-specimen.json"), "utf8"));
+  const appearanceFiles = await createPageSourceFiles(createPageBundle(appearance, defaultSystem));
+  for (const [name, text] of appearanceFiles) files.set(`appearance/${name}`, text);
+  const autoLayout = JSON.parse(await readFile(join(root, "app/studio/page-document/container-auto-layout.json"), "utf8"));
+  const autoLayoutFiles = await createPageSourceFiles(createPageBundle(autoLayout, defaultSystem));
+  for (const [name, text] of autoLayoutFiles) files.set(`auto-layout/${name}`, text);
   await mkdir(join(root, ".next"), { recursive: true });
   fixture = await mkdtemp(join(root, ".next/page-source-"));
   const ui = join(fixture, "ui");
@@ -46,6 +52,12 @@ try {
   await writeFile(join(fixture, "app/dark/page.tsx"), 'import Page from "../../ui/Page";\nexport default function Example() { return <Page mode="dark" />; }\n');
   await mkdir(join(fixture, "app/design-safe"));
   await writeFile(join(fixture, "app/design-safe/page.tsx"), 'import Page from "../../ui/design-safe/Page";\nexport default function Example() { return <Page />; }\n');
+  await mkdir(join(fixture, "app/appearance"));
+  await writeFile(join(fixture, "app/appearance/page.tsx"), 'import Page from "../../ui/appearance/Page";\nexport default function Example() { return <Page />; }\n');
+  await mkdir(join(fixture, "app/appearance-dark"));
+  await writeFile(join(fixture, "app/appearance-dark/page.tsx"), 'import Page from "../../ui/appearance/Page";\nexport default function Example() { return <Page mode="dark" />; }\n');
+  await mkdir(join(fixture, "app/auto-layout"));
+  await writeFile(join(fixture, "app/auto-layout/page.tsx"), 'import Page from "../../ui/auto-layout/Page";\nexport default function Example() { return <Page />; }\n');
   if (browser) {
     await mkdir(join(fixture, "app/examples/account-settings"), { recursive: true });
     await writeFile(join(fixture, "app/examples/account-settings/page.tsx"), 'import Page from "../../../ui/Page";\nexport default function Example() { return <Page />; }\n');
@@ -72,6 +84,27 @@ try {
   assert.match(sampleHTML, /data-page-node="design-checkbox"/);
   assert.match(sampleHTML, /data-indeterminate/);
   assert.match(sampleHTML, /data-page-node="design-badge"/);
+  for (const route of ["appearance", "appearance-dark"]) {
+    const localHTML = await readFile(join(fixture, `out/${route}.html`), "utf8");
+    assert.match(localHTML, /Independent card slots/);
+    assert.match(localHTML, /padding-left:23px/);
+    assert.match(localHTML, /font-weight:650/);
+    assert.match(localHTML, /data-error-icon="warning"/);
+    assert.match(localHTML, /data-error-icon="info"/);
+    assert.match(localHTML, /box-shadow:var\(--ds-shadow-md\)/);
+    assert.match(localHTML, /aria-invalid="true"/);
+    for (const kind of ["input", "switch", "checkbox"]) {
+      assert.match(localHTML, new RegExp(`data-page-owner="appearance-${kind}"`));
+      assert.match(localHTML, new RegExp(`data-page-node="appearance-${kind}"`));
+    }
+    for (const part of ["root", "label", "control", "description", "error", "row"]) assert.match(localHTML, new RegExp(`data-appearance-part="${part}"`));
+  }
+  const autoLayoutHTML = await readFile(join(fixture, "out/auto-layout.html"), "utf8");
+  const autoLayoutRoot = [...autoLayoutHTML.matchAll(/<div[^>]*>/g)].map(([tag]) => tag).find((tag) => tag.includes('data-page-node="auto-layout-root"'));
+  assert.ok(autoLayoutRoot, "Missing auto-layout Container root");
+  for (const [key, value] of Object.entries({ "max-width": "full", direction: "row", gap: "lg", align: "center", justify: "between", wrap: "true" })) assert.ok(autoLayoutRoot.includes(`data-${key}="${value}"`), `Missing Container ${key}`);
+  assert.match(autoLayoutRoot, /gap:22.5px/);
+  assert.match(autoLayoutHTML, /Direct children use the frame layout without an inner Stack/);
   const dark = await readFile(join(fixture, "out/dark.html"), "utf8");
   assert.match(dark, /data-ds-theme="dark"/);
   assert.match(dark, /Hesap ayarları/);

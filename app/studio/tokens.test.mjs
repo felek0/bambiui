@@ -3,6 +3,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
+import * as appearance from "./components/appearance.ts";
 import {
   componentIds, componentTokenKeys, componentEditableTokenKeys, componentVariantKeys, defaultSystem, exportCSS, isComponentKey,
   parseDesignSystem, resolveColorScale, resolveComponent, resolveTypography, shareNonColorTokens, STORAGE_KEY, systemConstants,
@@ -748,6 +749,7 @@ test("Text variants use their own CSS tokens and default semantic elements", () 
     require(id) {
       if (id === "react/jsx-runtime") return { jsx: (tag, props) => ({ tag, props }) };
       if (id === "../cx") return { cx: (...names) => names.filter(Boolean).join(" ") };
+      if (id === "./appearance") return appearance;
       if (id === "./components.module.css") return { __esModule: true, default: { text: "text" } };
       throw new Error(`Unexpected module: ${id}`);
     },

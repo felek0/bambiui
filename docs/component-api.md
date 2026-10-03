@@ -29,31 +29,37 @@ The same concept always uses the same prop name, type and default.
 | `hideLabel` | `boolean` | `false` | Hides the label visually while keeping the accessible name. |
 | `description` | `ReactNode` | — | Helper text linked with `aria-describedby`. |
 | `error` | `ReactNode` | — | Error message. Its presence marks the field invalid (`aria-invalid`) and links the message. |
+| `errorPosition` | `"below" \| "above"` | `"below"` | Error after description or before the label/control group; DOM order matches visual order. |
+| `errorIcon` | `"none" \| "info" \| "warning"` | `"none"` | Fixed decorative, aria-hidden error glyph. |
+| `appearance` | `NodeAppearance` | omitted | Typed local design overrides on the primary painted element, not a variant synonym. |
+| `parts` | `NodeParts` | omitted | Field/choice-only typed overrides for root, label, control, description, error, plus choice row. |
 | `labelPosition` | `"start" \| "end"` | `"end"` | Label side for inline choice controls. |
 | `checked` / `defaultChecked` / `onCheckedChange` | Base UI | — | Controlled and uncontrolled pair for binary controls. |
 | `value` / `defaultValue` / `onValueChange` | Base UI | — | Controlled and uncontrolled pair for value controls. |
 | `className` | `string` | — | Applied to the root element. |
 
-Do not invent synonyms such as `buttonSize`, `dimension`, `density`, `kind`, `appearance`, `color`, `isDisabled` or `helperText`.
+Do not invent synonyms such as `buttonSize`, `dimension`, `density`, `kind`, `color`, `isDisabled` or `helperText`.
 
 ## 2. Required props by category
+
+All categories support the typed local `appearance` API in addition to the props below. Text fields and choices also support typed `parts`; these are instance values, not shared token axes.
 
 | Category | Examples | Must support |
 | --- | --- | --- |
 | Action | Button, IconButton, MenuItem | `variant`, `size`, `radius`, `disabled`, `loading`, `fullWidth`, `iconOnly`, `startIcon`, `endIcon`, all native button props, `render` (Base UI composition) |
-| Text field | Input, Textarea, NumberField, Select trigger | `label`, `hideLabel`, `description`, `error`, `size`, `radius` where corners are configurable, `disabled`, `readOnly`, `required`, `placeholder`, `name`, `value`/`defaultValue`/`onValueChange`, `startIcon`/`endIcon` where applicable, `type` for native inputs |
-| Choice | Checkbox, Switch, Radio | `label`, `hideLabel`, `description`, `error`, `size`, `radius` where corners are configurable, `labelPosition`, `disabled`, `readOnly`, `required`, `name`, `value`, `checked`/`defaultChecked`/`onCheckedChange` (Checkbox also supports `indeterminate`) |
+| Text field | Input, Textarea, NumberField, Select trigger | `label`, `hideLabel`, `description`, `error`, `errorPosition`, `errorIcon`, `size`, `radius` where corners are configurable, `disabled`, `readOnly`, `required`, `placeholder`, `name`, `value`/`defaultValue`/`onValueChange`, `startIcon`/`endIcon` where applicable, `type` for native inputs |
+| Choice | Checkbox, Switch, Radio | `label`, `hideLabel`, `description`, `error`, `errorPosition`, `errorIcon`, `size`, `radius` where corners are configurable, `labelPosition`, `disabled`, `readOnly`, `required`, `name`, `value`, `checked`/`defaultChecked`/`onCheckedChange` (Checkbox also supports `indeterminate`) |
 | Status | Badge, Tag, Alert, Toast | `variant` (`solid \| subtle \| outline`), `tone`, `size` (for inline statuses), `radius` for shape-bearing statuses, `startIcon` or `dot` |
 | Container | Card, Dialog, Popover | `variant` (`outlined \| elevated \| filled` for surfaces), `size` (density), `radius`, compound parts: `.Header`, `.Title`, `.Description`, `.Content`, `.Footer`, and `.Icon` or `.Media` where relevant |
 | Typography | Text | `variant` (`heading \| h1 \| h2 \| h3 \| h4 \| h5 \| h6 \| paragraph \| label \| caption`), `size`, `tone`, `as` (native `h1`–`h6`, `p`, or `span`), `children`, `className`, native HTML attributes |
 
-Current components:
+Current components (all also accept `appearance`; every Card compound slot accepts its own `appearance`):
 
 | Component | `variant` | Other props |
 | --- | --- | --- |
 | Button | `primary`, `secondary`, `outline`, `ghost`, `destructive`, `link` | `size`, `radius`, `loading`, `disabled`, `fullWidth`, `iconOnly`, `startIcon`, `endIcon` |
-| Input | — | `type`, `size`, `radius`, `label`, `hideLabel`, `description`, `error`, `readOnly`, `disabled`, `required`, `startIcon`, `endIcon` |
-| Switch | — | `size`, `label`, `hideLabel`, `description`, `error`, `labelPosition`, `disabled`, `readOnly`, `required`; switch track keeps a pill shape |
+| Input | — | `type`, `size`, `radius`, `label`, `hideLabel`, `description`, `error`, `errorPosition`, `errorIcon`, `parts`, `readOnly`, `disabled`, `required`, `startIcon`, `endIcon` |
+| Switch | — | `size`, `label`, `hideLabel`, `description`, `error`, `errorPosition`, `errorIcon`, `parts`, `labelPosition`, `disabled`, `readOnly`, `required`; shared switch radius keeps a pill shape |
 | Checkbox | — | Same as Switch, plus `radius` and `indeterminate` |
 | Badge | `solid`, `subtle`, `outline` | `tone`, `size`, `radius`, `dot`, `startIcon` |
 | Card | `outlined`, `elevated`, `filled` | `size`, `radius`; parts: `Card.Icon`, `Card.Header`, `Card.Title`, `Card.Description`, `Card.Content`, `Card.Footer` |
@@ -75,7 +81,11 @@ The shared `fontFamily` preset (`system` by default; six other local presets plu
 
 ### Layout Container
 
-`Container` accepts `maxWidth="narrow" | "wide" | "full"`. The omitted default remains `wide` (72rem); `narrow` remains 42rem. Both retain centered margins and inline `--ds-spacing-lg` padding. `full` is 100% border-box width with no max-width cap or inline padding; new composer frame roots opt into it explicitly. Existing/imported roots are not rewritten. Frame width, height and clipping are editor geometry, not Container props or responsive viewport breakpoints. Renderer and TSX export consume the same root prop.
+`Container` accepts `maxWidth="narrow" | "wide" | "full"`. The omitted default remains `wide` (72rem); `narrow` remains 42rem. Both retain centered margins and inline `--ds-spacing-lg` padding. `full` is 100% border-box width with no max-width cap or inline padding; new composer frame roots opt into it explicitly. Existing/imported roots are not rewritten. Frame width, height and clipping are editor geometry, not Container props or responsive viewport breakpoints. Renderer and TSX export consume the same root props.
+
+Container also accepts Stack's auto-layout vocabulary: `direction="row" | "column"`, `gap="sm" | "md" | "lg"`, `align="start" | "center" | "end" | "stretch"`, `justify="start" | "center" | "end" | "between"`, and boolean `wrap`. **Omitted direction preserves the historical block flow exactly** (including margin collapse); setting direction explicitly enables flex layout. Its active defaults are gap `md` (`--ds-spacing-md`), align `stretch`, justify `start`, and wrap `false`. The other settings can be stored while block flow is active but do not enable flex by themselves. Stack still defaults to column flex layout.
+
+An optional numeric `appearance.gap` overrides the selected shared spacing step only for that instance; it has no layout effect while direction is omitted. Removing direction restores block flow without deleting the saved other settings. All maxWidth behaviors remain independent and unchanged. These props work on page/frame roots through the same renderer/export path; no new shared tokens are introduced.
 
 ## 3. Modeling rules
 
@@ -83,8 +93,22 @@ The shared `fontFamily` preset (`system` by default; six other local presets plu
 2. **No boolean variants.** Use `variant="subtle"`, not `subtle`. Use `size="lg"`, not `large`. Booleans are only for true binary behavior.
 3. **State lives in data attributes.** Components expose public API as `data-variant`, `data-tone` and `data-size`. Interaction state uses Base UI attributes (`data-disabled`, `data-invalid`, `data-checked`, `data-pressed`, `data-active`) or native pseudo-classes. Style from those, never from ad-hoc classes such as `.active` or `.is-selected`.
 4. **Use composition for structure.** When content has more than one region, use compound parts (`Card.Header`) instead of props like `title` or `footer`. Props are for configuration; children are for content.
-5. **Keep the public surface small.** Do not expose internal classes, slot styling props or implementation toggles. Consumers get `className` on the root and the documented props.
+5. **Keep the public surface small.** `appearance` and field `parts` are the supported, typed instance/slot styling API. Do not expose arbitrary slot CSS, internal class selectors or implementation toggles. Consumers also retain `className` on the root and the other documented props.
 6. **Use Base UI first.** Build interactive components on the matching `@base-ui/react` part (see `docs/base-ui.md`) and keep its semantics, keyboard behavior and state attributes.
+
+### Local instance appearance
+
+All built-in components, Card compound slots, Container, Stack, Grid and Grid.Item accept `appearance?: NodeAppearance`. Fields additionally accept `parts?: NodeParts`. These are **local instance overrides**, not new global/component tokens or another variant axis. `components/appearance.ts` owns the reusable types and safe style conversion; `page-document/appearance.ts` supplies pure, kind-aware inspector metadata and patch/validation helpers. See [page-document.md](page-document.md#local-appearance-api-additive-version-1) for the complete allowlist, bounds, units, targets and reset contract.
+
+Appearance supports separate padding and margin edges, corner radii, width/height/minimums/maxWidth, typography, layout gap, surface/color/border/shadow/opacity. Supplied values override native `style` for the same properties; omitted fields keep component/theme defaults. Public native `style` remains the trusted React escape hatch, but it is never accepted in serialized documents. Shared tokens remain schema v3; old records without local appearance render unchanged. No raw CSS, URLs, arbitrary custom properties or focus-outline overrides can be serialized. Colors are theme-independent local choices; the existing token contrast audit does not certify them.
+
+For Input, appearance styles the painted bordered shell, including independently controlled edge padding; native input typography inherits the shell. Switch/Checkbox appearance styles the track/box, **not** its label. Their `parts.root` styles the complete Field layout, `parts.row` the wrapping label/control row (choices only), `parts.label` only label text, `parts.description` and `parts.error` their respective Base UI elements. `parts.control` merges over primary appearance. Hidden labels retain their visually-hidden wrapper even with local dimensions/spacing. Base UI still owns label associations, validation, keyboard behavior and described-by links. An optional error icon never replaces the textual error.
+
+Field DOM integration is stable independently of local values: `data-appearance-part="root|label|control|description|error|row"` identifies the corresponding element (row only for choices; optional messages only while rendered). When a field receives `data-page-node`, its Field.Root mirrors that value in `data-page-owner`, while the native Input or interactive choice control retains `data-page-node`. This lets editor code measure/select the complete field and inspect individual part styles without relying on CSS-module class names. These generated attributes are not extra serialized page props. Hidden label markers remain on the visually-hidden label wrapper, whose clipped geometry must not be treated as its unhidden layout.
+
+Develop lists these props and their consumed fields in a separate local-instance reference, not the theme CSS-variable tables. Copyable snippets and expanded specimens demonstrate local edges, typography, Card slots and field error placement/icons while leaving shared tokens unchanged.
+
+Switch's shared radius remains a pill and the `radius` prop is still unsupported; explicit local corner overrides can change only that instance. Local track geometry also adjusts checked-thumb alignment. Card slots are independently styled via each slot's own `appearance`; Card's `parts` is unsupported. No new shared token axes or Develop token references are introduced.
 
 ## 4. Design tokens
 

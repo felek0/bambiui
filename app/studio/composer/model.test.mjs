@@ -6,7 +6,7 @@ import {
   COMPOSER_LIMITS, COMPOSER_PRESETS, createComposerDocument, createComposerPage,
   createComposerFrame, parseComposerDocument, parseComposerPage, parseComposerFrame,
   parseProjectCollection, resolveComposerSystem, validateComposerSystemReference,
-  composerFrameToPageDocument, pageDocumentToComposerPage,
+  composerFrameToPageDocument, pageDocumentToComposerPage, parseComposerAsset,
 } from "./model.ts";
 
 const uuid = "123e4567-e89b-12d3-a456-426614174000";
@@ -29,6 +29,96 @@ function freeze(value) {
   if (value && typeof value === "object") { Object.values(value).forEach(freeze); Object.freeze(value); }
   return value;
 }
+
+test("assets are optional without migration; explicit empty arrays and independent snapshots round trip", () => {
+  const old = fixture(), before = structuredClone(old);
+  assert.deepEqual(parseComposerDocument(old), before);
+  assert.equal(Object.hasOwn(parseComposerDocument(old), "assets"), false);
+  assert.equal(Object.hasOwn(createComposerDocument("new", "original"), "assets"), false);
+  assert.deepEqual(parseComposerDocument({ ...old, assets: [] }).assets, []);
+  const asset = { id: "asset", name: " Label ", root: { id: "label", kind: "badge", text: "Hello", props: { tone: "info", dot: false } } };
+  const raw = { ...old, assets: [asset] };
+  const parsed = parseComposerDocument(freeze(raw));
+  assert.deepEqual(parsed, raw);
+  assert.deepEqual(parseComposerDocument(JSON.parse(JSON.stringify(parsed))), parsed);
+  parsed.assets[0].root.props.tone = "danger";
+  assert.equal(asset.root.props.tone, "info");
+  assert.deepEqual(old, before);
+});
+
+test("saved roots use strict compatible wrappers without persisting wrappers or colliding with source IDs", () => {
+  const roots = [
+    { id: "asset-validation-root", kind: "button", text: "Submit", props: { buttonType: "submit", size: "lg", disabled: false } },
+    { id: "asset-validation-stack", kind: "input", props: { label: "Email", name: "email" } },
+    { id: "switch", kind: "switch", props: { label: "Updates", name: "updates", defaultChecked: true } },
+    { id: "checkbox", kind: "checkbox", props: { label: "Agree", name: "agree", checked: false } },
+    { id: "card", kind: "card", children: [{ id: "content", kind: "cardContent", children: [] }] },
+    { id: "grid", kind: "grid", children: [{ id: "item", kind: "gridItem", children: [text("inner")] }] },
+    { id: "stack", kind: "stack", props: { gap: "lg" }, children: [] },
+    { id: "form", kind: "form", props: { action: "/save" }, children: [] },
+    text("text"), { id: "badge", kind: "badge", text: "New" },
+  ];
+  for (const root of roots) {
+    const parsed = parseComposerAsset({ id: uuid, name: "Reusable", root });
+    const expected = structuredClone(root);
+    if (root.kind === "button") { delete expected.props.buttonType; expected.props.type = "submit"; }
+    assert.deepEqual(parsed, { id: uuid, name: "Reusable", root: expected });
+    assert.notEqual(parsed.root, root);
+  }
+  for (const root of [frame(fixture()).root, { id: "item", kind: "gridItem", children: [] }, { id: "slot", kind: "cardContent", children: [] }, { id: "title", kind: "cardTitle", text: "Title" }]) {
+    assert.throws(() => parseComposerAsset({ id: "asset", name: "No", root }), /frame root or compound slot/);
+  }
+});
+
+test("assets reject invalid shapes, missing/unknown keys, unsafe data and duplicate IDs", () => {
+  const valid = { id: "asset", name: "Saved", root: text("node") };
+  for (const assets of [null, undefined, {}, "assets", [null], new Array(1), [valid, valid]]) {
+    assert.throws(() => parseComposerDocument({ ...fixture(), assets }));
+  }
+  for (const key of ["id", "name", "root"]) {
+    const asset = structuredClone(valid); delete asset[key];
+    assert.throws(() => parseComposerAsset(asset), /missing/);
+  }
+  for (const asset of [
+    { ...valid, extra: true }, { ...valid, systemId: "other" }, { ...valid, id: "" }, { ...valid, id: "a".repeat(65) },
+    { ...valid, name: " " }, { ...valid, name: "a".repeat(121) }, { ...valid, root: { ...valid.root, unknown: true } },
+    { ...valid, root: { ...valid.root, props: { style: "color:red" } } }, { ...valid, root: { ...valid.root, kind: "unknown" } },
+    { ...valid, root: { id: "stack", kind: "stack", children: [text("same"), text("same")] } },
+    { ...valid, root: { id: "card", kind: "card", children: [{ id: "a", kind: "cardContent", children: [] }, { id: "b", kind: "cardContent", children: [] }] } },
+  ]) assert.throws(() => parseComposerAsset(asset));
+  assert.equal(parseComposerAsset({ ...valid, name: "a".repeat(120) }).name.length, 120);
+  let calls = 0;
+  const getter = { ...valid, get root() { calls++; return valid.root; } };
+  const nestedGetter = { ...valid, root: { ...valid.root, parts: { get label() { calls++; return {}; } } } };
+  for (const asset of [getter, nestedGetter, Object.create(valid), { ...valid, [Symbol("hidden")]: true },
+    { ...valid, root: Object.create(valid.root) }, { ...valid, root: { ...valid.root, props: { onClick() {} } } }]) assert.throws(() => parseComposerAsset(asset));
+  assert.equal(calls, 0);
+  const sparse = [valid]; sparse.extra = true;
+  assert.throws(() => parseComposerDocument({ ...fixture(), assets: sparse }));
+  const cycle = { id: "cycle", kind: "stack", children: [] }; cycle.children.push(cycle);
+  assert.throws(() => parseComposerAsset({ ...valid, root: cycle }), /limit/);
+});
+
+test("asset count, minimal-frame node/depth and combined project quotas are bounded", () => {
+  const assets = Array.from({ length: COMPOSER_LIMITS.assets }, (_, i) => ({ id: `asset-${i}`, name: "Saved", root: text("same-scoped-node") }));
+  assert.equal(parseComposerDocument({ ...fixture(), assets }).assets.length, 32);
+  assert.throws(() => parseComposerDocument({ ...fixture(), assets: [...assets, { ...assets[0], id: "extra" }] }), /limit/);
+  const wide = { id: "asset", name: "Wide", root: { id: "stack", kind: "stack", children: Array.from({ length: 98 }, (_, i) => text(`t${i}`)) } };
+  assert.doesNotThrow(() => parseComposerAsset(wide));
+  wide.root.children.push(text("overflow")); assert.throws(() => parseComposerAsset(wide), /limit/);
+  let nested = text("deep");
+  for (let i = 0; i < 11; i++) nested = { id: `s${i}`, kind: "stack", children: [nested] };
+  assert.doesNotThrow(() => parseComposerAsset({ id: "asset", name: "Deep", root: nested }));
+  nested = { id: "one-too-deep", kind: "stack", children: [nested] };
+  assert.throws(() => parseComposerAsset({ id: "asset", name: "Deep", root: nested }), /limit/);
+  const project = fixture();
+  project.pages = Array.from({ length: 2 }, (_, p) => ({ id: `p${p}`, name: "Page", frames: Array.from({ length: 10 }, (_, f) => ({ ...createComposerFrame(`f${p}-${f}`, "root"), root: wideRoot(100) })) }));
+  assert.doesNotThrow(() => parseComposerDocument(project));
+  project.assets = [assets[0]];
+  assert.throws(() => parseComposerDocument(project), /project: node limit/);
+  project.pages[0].frames[0].root.children.pop();
+  assert.doesNotThrow(() => parseComposerDocument(project));
+});
 
 test("factories have deterministic defaults and caller-supplied IDs", () => {
   assert.deepEqual(createComposerDocument(uuid, uuid), { version: 1, id: uuid, name: "Untitled project", systemId: uuid, pages: [] });

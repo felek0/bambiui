@@ -14,8 +14,13 @@ const root = fileURLToPath(new URL('../out/', import.meta.url));
 const captureDir = fileURLToPath(new URL('../.next/color-review/', import.meta.url));
 const mime = { '.html':'text/html', '.js':'text/javascript', '.css':'text/css', '.json':'application/json', '.svg':'image/svg+xml', '.png':'image/png', '.woff2':'font/woff2', '.ico':'image/x-icon', '.webmanifest':'application/manifest+json' };
 const pending = new Map(), failures = [], errors = [];
-let server, chrome, profile, socket, sequence = 0, acceptImportDialog = false;
-const watchdog = setTimeout(() => { console.error('Smoke test exceeded 180 seconds'); process.exit(1); }, 180000);
+let server, chrome, profile, socket, sequence = 0, passes = 0, acceptImportDialog = false, timedOut = false, currentCheck = 'startup';
+const watchdog = setTimeout(() => {
+  timedOut = true;
+  console.error(`Smoke test exceeded 180 seconds during ${currentCheck}`);
+  for (const task of pending.values()) { clearTimeout(task.timer); task.reject(new Error('Smoke watchdog expired')); }
+  pending.clear(); socket?.close(); chrome?.kill('SIGKILL');
+}, 180000);
 const ids = ['button', 'input', 'card', 'badge', 'switch', 'checkbox', 'text'];
 const foundations = ['colors', 'spacing'];
 const href = (view, id = 'colors') => `${view === 'develop' ? '/develop' : ''}/${id}`;
@@ -26,11 +31,12 @@ const camera = '[data-canvas]';
 
 async function assertStudioSurfaces(mode) {
   const surface = mode === 'dark' ? 'rgb(32, 32, 32)' : 'rgb(250, 250, 250)';
-  await wait(`getComputedStyle(${q('.preview-frame')}).backgroundColor === ${JSON.stringify(surface)}`);
-  for (const selector of ['.studio-header','#token-editor','.studio-sidebar','.preview-frame']) {
+  await wait(`getComputedStyle(${q('.studio-header')}).backgroundColor === ${JSON.stringify(surface)}`);
+  for (const selector of ['.studio-header','#token-editor','.studio-sidebar']) {
     assert.equal(await evaluate(`getComputedStyle(${q(selector)}).backgroundColor`),surface,`${selector} must retain the fixed editor surface`);
   }
-  assert.equal(await evaluate(`getComputedStyle(${q('.theme-pane')}).borderColor`),mode === 'dark' ? 'rgb(133, 133, 143)' : 'rgb(113, 113, 122)');
+  assert.equal(await evaluate(`getComputedStyle(${q('.preview-frame')}).backgroundColor`),mode === 'dark' ? 'rgb(25, 25, 29)' : 'rgb(241, 241, 244)','canvas chrome is independent of system tokens');
+  assert.equal(await evaluate(`getComputedStyle(${q('.theme-pane')}).borderTopWidth`),'0px','the full-bleed workspace has no inset preview border');
 }
 
 const moved = (a,b) => Math.hypot(a.x-b.x,a.y-b.y);
@@ -62,16 +68,23 @@ async function route(view, id = 'colors') {
 async function navigate(view, id = 'colors') {
   const currentView = await evaluate(`location.pathname.startsWith('/develop') ? 'develop' : 'design'`);
   if (currentView !== view) await click(named(viewNav + ' a',view === 'design' ? 'Design' : 'Develop'));
-  await click(q(`.studio-sidebar a[href="${href(view, id)}"], ${viewNav} a[href="${href(view, id)}"]`));
+  await click(q(`.studio-sidebar a[href="${href(view, id)}"]`));
   await route(view, id);
+  if (await evaluate('innerWidth<=800')) await hideMobilePanels();
+}
+async function openStatic(view, id) {
+  const origin = await evaluate('performance.timeOrigin');
+  await send('Page.navigate',{url:`http://127.0.0.1:${server.address().port}${href(view,id)}`});
+  await wait(`performance.timeOrigin!==${origin}`); await route(view,id);
 }
 async function key(key, code = key) {
-  const windowsVirtualKeyCode = {ArrowDown:40,ArrowRight:39,Enter:13,Tab:9,' ':32}[key];
+  const windowsVirtualKeyCode = {ArrowDown:40,ArrowRight:39,Enter:13,Tab:9,Escape:27,Backspace:8,' ':32}[key];
   await send('Input.dispatchKeyEvent', {type:'keyDown', key, code, windowsVirtualKeyCode, ...(key === 'Enter' ? {text:'\r'} : {})});
   await send('Input.dispatchKeyEvent', {type:'keyUp', key, code, windowsVirtualKeyCode});
 }
 
 function send(method, params = {}) {
+  if (timedOut || socket?.readyState !== 1) return Promise.reject(new Error('CDP unavailable'));
   return new Promise((resolve, reject) => {
     const id = ++sequence;
     const timer = setTimeout(() => { pending.delete(id); reject(new Error(`CDP timed out: ${method}`)); }, 7000);
@@ -86,18 +99,32 @@ async function evaluate(expression) {
 }
 async function wait(expression) {
   const until = Date.now() + 4500;
-  do { if (await evaluate(expression)) return; await delay(60); } while (Date.now() < until);
+  do { if (await evaluate(`(async()=>!!(await (${expression})))()`)) return; await delay(60); } while (Date.now() < until && !timedOut);
   throw new Error(`Timed out: ${expression}`);
 }
 const q = selector => `document.querySelector(${JSON.stringify(selector)})`;
 const cameraState = `(() => {const view=${q(canvas)},layer=${q(camera)},matrix=new DOMMatrixReadOnly(getComputedStyle(layer).transform);return {x:matrix.m41,y:matrix.m42,scale:matrix.a,scrollLeft:view.scrollLeft,scrollTop:view.scrollTop,scrollWidth:view.scrollWidth,clientWidth:view.clientWidth,scrollHeight:view.scrollHeight,clientHeight:view.clientHeight}})()`;
 const named = (selector, name) => `[...document.querySelectorAll(${JSON.stringify(selector)})].find(e => (e.textContent.trim() === ${JSON.stringify(name)} || (!e.textContent.trim() && e.getAttribute('aria-label') === ${JSON.stringify(name)})) && !e.closest('[hidden]'))`;
-async function click(expression) {
+async function panel(id, open) {
+  const hidden = await evaluate(`${q('#' + id)}.hidden`);
+  if (hidden === open) await click(q(`[aria-controls="${id}"]`), false);
+  await wait(`${q('#' + id)}.hidden===${!open}`);
+}
+async function hideMobilePanels() {
+  if (!await evaluate('innerWidth<=800')) return;
+  await panel('workspace-sidebar', false); await panel('workspace-inspector', false);
+}
+async function click(expression, preparePanel = true) {
   assert.ok(await evaluate(`!!(${expression})`), `Missing control: ${expression}`);
-    const destination = await evaluate(`(${expression}).closest('a')?.getAttribute('href') || null`);
+  if (preparePanel && await evaluate('innerWidth<=800')) {
+    const target = await evaluate(`(${expression}).closest('#workspace-sidebar,#workspace-inspector,.studio-main')?.id || null`);
+    if (target === 'workspace-sidebar' || target === 'workspace-inspector') await panel(target, true);
+    else if (target === 'workspace') await hideMobilePanels();
+  }
+  const destination = await evaluate(`(${expression}).closest('a')?.getAttribute('href') || null`);
   await evaluate(`(${expression}).scrollIntoView({block:'center',inline:'center',behavior:'instant'})`);
   await evaluate('new Promise(resolve => requestAnimationFrame(resolve))');
-  const point = await evaluate(`(() => {const e=${expression},r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;const hit=document.elementFromPoint(x,y);if(!e.contains(hit))throw Error('Occluded: '+e.outerHTML+'; hit: '+hit?.outerHTML.slice(0,250));return {x,y};})()`);
+  const point = await evaluate(`(() => {const e=${expression},r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;const hit=document.elementFromPoint(x,y);if(!e.contains(hit))throw Error('Occluded: '+e.outerHTML+'; rect: '+JSON.stringify(r.toJSON())+'; hit: '+hit?.outerHTML.slice(0,250));return {x,y};})()`);
   await send('Input.dispatchMouseEvent', { type:'mousePressed', ...point, button:'left', clickCount:1 });
   await send('Input.dispatchMouseEvent', { type:'mouseReleased', ...point, button:'left', clickCount:1 });
   if (destination?.startsWith('/')) {
@@ -110,12 +137,26 @@ async function fill(selector, value) {
   await click(q(selector));
   await send('Input.dispatchKeyEvent', {type:'keyDown',key:'a',code:'KeyA',modifiers:4,commands:['selectAll']});
   await send('Input.dispatchKeyEvent', {type:'keyUp',key:'a',code:'KeyA',modifiers:4});
-  if(value) await send('Input.insertText',{text:value});
+  if(value) await send('Input.insertText',{text:value}); else await key('Backspace');
   await wait(`${q(selector)}.value === ${JSON.stringify(value)}`);
 }
 async function check(label, run) {
-  try { await run(); console.log(`PASS ${label}`); }
-  catch (error) { failures.push(label); console.error(`FAIL ${label}: ${error.stack || error}`); }
+  if (timedOut) throw new Error('Smoke watchdog expired');
+  currentCheck = label;
+  try { await run(); passes++; console.log(`PASS ${label}`); }
+  catch (error) {
+    failures.push(label); console.error(`FAIL ${label}: ${error.stack || error}`);
+    if (!timedOut) {
+      try {
+        console.error('EVIDENCE', await evaluate(`JSON.stringify({route:location.pathname,width:innerWidth,height:innerHeight,selected:document.querySelector('.studio-sidebar a[aria-current="page"]')?.getAttribute('href'),leftHidden:document.querySelector('#workspace-sidebar')?.hidden,rightHidden:document.querySelector('#workspace-inspector')?.hidden})`));
+        // A failed assertion must not leave a modal blocking all later System coverage.
+        for (const label of ['Close color builder','Close color pair results','Close export dialog']) {
+          const target = q(`[aria-label="${label}"]`);
+          if (await evaluate(`!!(${target}) && ${target}.getClientRects().length>0`)) await click(target);
+        }
+      } catch (cleanupError) { console.error(`Check recovery: ${cleanupError.message}`); }
+    }
+  }
 }
 const stored = () => evaluate(`JSON.parse(localStorage.getItem('bambiui.design-system.v1'))`);
 async function capture(label) {
@@ -131,17 +172,19 @@ async function reload() {
 }
 async function cleanup() {
   socket?.close();
+  for (const task of pending.values()) { clearTimeout(task.timer); task.reject(new Error('CDP cleanup')); }
+  pending.clear();
   if(chrome && chrome.exitCode === null && chrome.signalCode === null) {
     const done = new Promise(resolve => chrome.once('exit',resolve));chrome.kill('SIGTERM');
     await Promise.race([done,delay(2000)]);
-    if(chrome.exitCode === null && chrome.signalCode === null) chrome.kill('SIGKILL');
+    if(chrome.exitCode === null && chrome.signalCode === null) { chrome.kill('SIGKILL'); await Promise.race([done,delay(2000)]); }
   }
   if(server) {server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
   if(profile) await rm(profile,{recursive:true,force:true,maxRetries:4,retryDelay:200});
 }
 try {
   assert.equal(typeof WebSocket,'function','Node 22+ is required');
-  await stat(resolve(root,'index.html'));
+  await stat(resolve(root,'colors.html'));
   server = createServer(async (req,res) => {
     try {
       const name = decodeURIComponent(new URL(req.url,'http://localhost').pathname);
@@ -190,7 +233,7 @@ try {
   });
   await send('Runtime.enable');await send('Log.enable');await send('Page.enable');
   await send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
-  await send('Page.navigate',{url:`http://127.0.0.1:${server.address().port}/`});
+  await send('Page.navigate',{url:`http://127.0.0.1:${server.address().port}/colors`});
   await wait(`${q('.editor-fields')} && !${q('.editor-fields')}.disabled`);
 
   await check('header navigation and theme, full-bleed Design canvas and one visible preview',async()=>{
@@ -200,7 +243,9 @@ try {
     assert.deepEqual(await evaluate(`[...document.querySelectorAll(${JSON.stringify(viewNav + ' a')})].map(e=>e.textContent.trim())`),['Design','Develop']);
     assert.deepEqual(await evaluate(`[...document.querySelectorAll(${JSON.stringify(themeControl + ' button')})].map(e=>e.getAttribute('aria-label'))`),['Light','Dark']);
     assert.ok(await evaluate(`[...document.querySelectorAll(${JSON.stringify(themeControl + ' button')})].every(e=>!e.textContent.trim() && !!e.querySelector('svg'))`));
-    assert.ok(await evaluate(`${q('.studio-header .brand')}.nextElementSibling === ${q(viewNav)}`),'view links should follow the brand');
+    assert.ok(await evaluate(`${q('.studio-header .brand')}.nextElementSibling === ${q('.studio-header nav[aria-label="Workspace"]')}`),'workspace switch follows the brand');
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('.studio-header nav[aria-label="Workspace"] a')].map(e=>e.textContent.trim())`),['Project','System']);
+    assert.equal(await evaluate(`${q('.studio-header nav[aria-label="Workspace"] [aria-current]')}.textContent`),'System');
     assert.ok(await evaluate(`${q('.studio-header .system-switcher summary')}?.getClientRects().length > 0`),'active system belongs in the header');
     assert.equal(await evaluate(`!!${q('.studio-sidebar #design-system-name')}`),false);
     assert.deepEqual(await evaluate(`[...document.querySelectorAll('.component-group')].map(e=>[e.querySelector('.component-group-label').textContent,...[...e.querySelectorAll('a')].map(a=>a.textContent.trim())])`),[['Actions','Button'],['Forms','Input','Switch','Checkbox'],['Content','Card','Badge','Text']]);
@@ -243,7 +288,7 @@ try {
     await assertStudioSurfaces('light');
     assert.equal(await evaluate(`getComputedStyle(${q(canvas)}).backgroundColor`),'rgb(255, 248, 246)');
 
-    assert.ok(await evaluate(`(()=>{const area=${q('.preview-frame')}.getBoundingClientRect(),specimen=${q('.theme-pane')}.getBoundingClientRect();return specimen.left>=area.left+7 && specimen.right<=area.right-7 && specimen.top>=area.top+7 && specimen.bottom<=area.bottom-7})()`));
+    assert.ok(await evaluate(`(()=>{const area=${q('.preview-frame')}.getBoundingClientRect(),specimen=${q('.theme-pane')}.getBoundingClientRect();return ['left','right','top','bottom'].every(edge=>Math.abs(specimen[edge]-area[edge])<2)})()`),'preview fills the work area without an inset border');
     assert.equal(await evaluate(`${q('.canvas-label')}`),null);
     for(const foundation of ['colors','spacing','text']) assert.ok(await evaluate(`${q(`[data-foundation="${foundation}"]`)}.getBoundingClientRect().width > 0 && ${q(`[data-foundation="${foundation}"]`)}.getBoundingClientRect().height > 0`),`visible ${foundation} foundation`);
     assert.equal(await evaluate(`getComputedStyle(${q('.theme-pane:not([hidden]) section[aria-label="Button preview"]')}).borderTopWidth`),'0px');
@@ -620,7 +665,7 @@ try {
     assert.ok(await evaluate(`${q('.editor-title h2')}.textContent.startsWith('Button tokens · ')`));
     assert.equal(await evaluate(`!!${q('.editor-intro')}`),false,'component inspector must not repeat its title or description');
     assert.equal(await evaluate(`${q('.editor-title > svg path')}.getAttribute('d') === ${q('.studio-sidebar a[href="/button"] svg path')}.getAttribute('d')`),true,'inspector title uses the component icon');
-    assert.ok(await evaluate(`(()=>{const button=${q(trigger)}.getBoundingClientRect(),header=${q('.editor-title')}.getBoundingClientRect();return Math.abs(header.right-button.right-18)<3})()`),'component color pair action aligns to the inspector right edge');
+    assert.ok(await evaluate(`(()=>{const button=${q(trigger)}.getBoundingClientRect(),header=${q('.editor-title')}.getBoundingClientRect();return Math.abs(header.right-button.right-parseFloat(getComputedStyle(${q('.editor-title')}).paddingRight))<3})()`),'component color pair action aligns to the inspector right edge');
     assert.equal(await evaluate(`${q(trigger)}.hasAttribute('data-failing')`),true);
     assert.ok((await evaluate(`${q(trigger)}.getAttribute('aria-label')`)).includes('need attention'));
     const buttonLink='.studio-sidebar a[href="/button"]';
@@ -725,7 +770,8 @@ try {
       assert.equal(await evaluate(`${q('[data-specimen="input"] input[type="email"]')}.value`),'retained@example.com');
       assert.ok(await evaluate(`${q('[data-specimen="button"]')}.textContent.includes('successfully (1)')`));
       assert.equal(await evaluate(`document.querySelectorAll('.theme-pane').length`),1);
-      assert.equal(await evaluate(`document.querySelectorAll('[data-specimen="card"] article').length`),3);
+      assert.equal(await evaluate(`document.querySelectorAll('[data-specimen="card"] article:not([data-instance-specimen])').length`),3,'all three system Card variants remain mounted');
+      assert.equal(await evaluate(`document.querySelectorAll('[data-specimen="card"] article[data-instance-specimen="card"]').length`),1,'the added local-appearance specimen remains mounted too');
       assert.ok(await evaluate(`${q('[data-specimen="text"]')}.isConnected`));
       assert.ok(await evaluate(`!!${q('[data-specimen="input"] input[readonly]')} && !!${q('[data-specimen="button"] [aria-busy="true"]')} && !!${q('[data-specimen="checkbox"] [aria-checked="mixed"]')}`));
       assert.equal(await evaluate(`${q('.theme-pane [data-ds-theme]')}.dataset.dsTheme`),'dark');
@@ -994,88 +1040,100 @@ try {
     }
     await navigate('design','button');
   });
-  await check('narrow desktop tools do not overlap; 700px uses natural page layout',async()=>{
+  await check('narrow desktop tools do not overlap or overflow',async()=>{
     for (const width of [1100,980,820]) {
       await send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});
       await delay(100);
       assert.ok(await evaluate(`(()=>{const help=${q('[class*="canvasHelp"]')}.getBoundingClientRect(),zoom=${q('[aria-label="Canvas zoom"]')}.getBoundingClientRect();return help.right<=zoom.left || help.left>=zoom.right || help.bottom<=zoom.top || help.top>=zoom.bottom})()`),`canvas tools overlap at ${width}px`);
       assert.ok(await evaluate('document.documentElement.scrollWidth <= innerWidth'),`overflow at ${width}px`);
     }
-    await send('Emulation.setDeviceMetricsOverride',{width:700,height:900,deviceScaleFactor:1,mobile:false});
-    await delay(100);
-    assert.equal(await evaluate(`getComputedStyle(${q(canvas)}).overflowY`),'visible');
-    assert.ok(await evaluate(`(()=>{const editor=${q('#token-editor')}.getBoundingClientRect(),workspace=${q('.studio-main')}.getBoundingClientRect();return editor.top>=workspace.bottom-1})()`),'inspector must follow the naturally scrolling preview');
-    assert.ok(await evaluate('document.documentElement.scrollWidth <= innerWidth'));
   });
-  await check('responsive layout, English accessible names and selectable preview themes',async()=>{
+  await check('700px uses overlay panels and focus canvas, never stacked navigation',async()=>{
+    await send('Emulation.setDeviceMetricsOverride',{width:700,height:900,deviceScaleFactor:1,mobile:false});
+    await delay(100); await hideMobilePanels();
+    const main=await evaluate(`(()=>{const r=${q('.studio-main')}.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}})()`);
+    assert.deepEqual(main,{x:0,y:48,width:700,height:852});
+    assert.equal(await evaluate(`${q('.studio-header')}.getBoundingClientRect().height`),48);
+    await panel('workspace-sidebar',true);
+    assert.equal(await evaluate(`${q('#workspace-inspector')}.hidden`),true);
+    assert.equal(await evaluate(`${q('#workspace-sidebar')}.getBoundingClientRect().width`),224);
+    await panel('workspace-inspector',true);
+    assert.equal(await evaluate(`${q('#workspace-sidebar')}.hidden`),true);
+    assert.equal(await evaluate(`${q('#workspace-inspector')}.getBoundingClientRect().width`),272);
+    assert.ok(await evaluate(`(()=>{const editor=${q('#workspace-inspector')}.getBoundingClientRect(),workspace=${q('.studio-main')}.getBoundingClientRect();return editor.top===workspace.top && editor.bottom===workspace.bottom && workspace.width===700})()`),'inspector overlays rather than moving the canvas');
+    await click(q('[aria-label="Focus canvas"]'));
+    assert.equal(await evaluate(`${q('#workspace-sidebar')}.hidden && ${q('#workspace-inspector')}.hidden`),true);
+    await click(q('[aria-label="Show panels"]')); await hideMobilePanels();
+    assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth && document.documentElement.scrollHeight<=innerHeight'));
+  });
+  await check('responsive shell keeps view, theme and system controls accessible',async()=>{
     await send('Emulation.setDeviceMetricsOverride',{width:375,height:812,deviceScaleFactor:1,mobile:false});
+    await navigate('design','button');
     for(const view of ['Design','Develop']) {
-      await click(named(viewNav + ' a',view));
-      await route(view.toLowerCase(),'button');
-
-
-      const overflow = await evaluate('({width:innerWidth,scrollWidth:document.documentElement.scrollWidth})');
+      await click(named(viewNav + ' a',view)); await route(view.toLowerCase(),'button');
+      const overflow=await evaluate('({width:innerWidth,scrollWidth:document.documentElement.scrollWidth})');
       assert.ok(overflow.scrollWidth<=overflow.width,JSON.stringify(overflow));
       assert.ok(await evaluate(`${q(viewNav)}.getClientRects().length>0 && ${q(themeControl)}.getClientRects().length>0`));
       assert.ok(await evaluate(`${q('.studio-header .system-switcher summary')}.getClientRects().length>0`));
-      if (view === 'Design') assert.ok(await evaluate(`(()=>{const canvas=${q('[data-foundation="colors"] h2')}.getBoundingClientRect(),history=${q('.canvas-history')}.getBoundingClientRect(),theme=${q('.canvas-theme')}.getBoundingClientRect(),viewport=${q('[aria-label="Component canvas"]')}.getBoundingClientRect();return history.top>=viewport.top && theme.top>=viewport.top && canvas.top>Math.max(history.bottom,theme.bottom)})()`),'mobile specimen must start below floating canvas controls');
+      if(view==='Design') assert.ok(await evaluate(`(()=>{const main=${q('.studio-main')}.getBoundingClientRect();return ['.canvas-history','.canvas-theme'].every(selector=>{const r=document.querySelector(selector).getBoundingClientRect();return r.top>=main.top && r.bottom<=main.bottom && r.left>=main.left && r.right<=main.right})})()`),'floating controls stay in the visible work area');
       assert.equal(await evaluate(`!!${q('.breadcrumbs')} || !!${q('.viewport-controls')}`),false);
       await capture(`studio-375-${view.toLowerCase()}`);
     }
-    await click(named(viewNav + ' a','Design'));
-    for(const view of ['design','develop']) for(const id of [...foundations,...ids]) {
-      await navigate(view,id);
-      assert.ok(await evaluate('document.documentElement.scrollWidth <= innerWidth'),`mobile overflow: ${view}/${id}`);
-      assert.ok(await evaluate(`${q(viewNav)}.getBoundingClientRect().right <= innerWidth && ${q(themeControl)}.getBoundingClientRect().right <= innerWidth`),`view/theme controls overflow: ${view}/${id}`);
-      if(view === 'design') assert.ok(await evaluate(`${q(`[data-canvas-unit="${id}"]`)}.getClientRects().length>0`));
-      if(view === 'design' && (id === 'colors' || ids.includes(id))) assert.ok(await evaluate(`(()=>{const h=${q('.editor-title')}.getBoundingClientRect(),a=${q('.editor-title-actions')}.getBoundingClientRect(),back=${q('.mobile-preview-link')}.getBoundingClientRect();return Math.abs(h.right-a.right-20)<3 && back.top>=a.bottom})()`),`mobile inspector actions and preview link must not compete: ${id}`);
-      if(view === 'design' && id === 'text') {
-        await evaluate(`${q('#typography-tokens')}.scrollIntoView({block:'start',behavior:'instant'})`);
-        await capture('studio-375-text');
-      }
-      if(view === 'design' && id === 'spacing') {
-        await evaluate(`${q('[data-foundation="spacing"]')}.scrollIntoView({block:'start',behavior:'instant'})`);
-        await capture('studio-375-spacing');
-        await evaluate(`${q('#token-editor')}.scrollIntoView({block:'start',behavior:'instant'})`);
-        await capture('studio-375-spacing-inspector');
+  });
+  for(const view of ['design','develop']) for(const id of [...foundations,...ids]) await check(`mobile System navigation and inspector ${view}/${id}`,async()=>{
+    await navigate(view,id);
+    assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth'),`mobile overflow: ${view}/${id}`);
+    assert.ok(await evaluate(`${q(viewNav)}.getBoundingClientRect().right<=innerWidth && ${q(themeControl)}.getBoundingClientRect().right<=innerWidth`),`view/theme controls overflow: ${view}/${id}`);
+    if(view==='design') {
+      assert.ok(await evaluate(`${q(`[data-canvas-unit="${id}"]`)}.getClientRects().length>0`));
+      await panel('workspace-inspector',true);
+      if(id==='colors' || ids.includes(id)) assert.ok(await evaluate(`(()=>{const h=${q('.editor-title')}.getBoundingClientRect(),a=${q('.editor-title-actions')}.getBoundingClientRect();return a.left>=h.left && a.right<=h.right && Math.abs(h.right-a.right-parseFloat(getComputedStyle(${q('.editor-title')}).paddingRight))<3})()`),`inspector actions fit the overlay: ${id}`);
+      assert.equal(await evaluate(`!!${q('.mobile-preview-link')} && ${q('.mobile-preview-link')}.getClientRects().length>0`),false,'panel toggles replace the old stacked-layout anchor');
+      if(id==='text') { await evaluate(`${q('#typography-tokens')}.scrollIntoView({block:'start',behavior:'instant'})`); await capture('studio-375-text'); }
+      if(id==='spacing') {
+        await capture('studio-375-spacing-inspector'); await hideMobilePanels();
+        await evaluate(`${q('[data-foundation="spacing"]')}.scrollIntoView({block:'start',behavior:'instant'})`); await capture('studio-375-spacing');
       }
     }
-    await navigate('design','button');
-    assert.ok(await evaluate(`${q('.mobile-editor-link')}.getClientRects().length > 0`));
-    await click(q('.mobile-editor-link'));
-    assert.equal(await evaluate('location.hash'),'#token-editor');
-    assert.equal(await evaluate('document.activeElement.id'),'token-editor');
-    await capture('studio-375-inspector');
+    await hideMobilePanels();
+  });
+  await check('mobile inspector toggle, compact hex field, themes and English accessibility names',async()=>{
+    // Isolate this coverage from a failed mobile header view-switch hit test.
+    await openStatic('design','button'); await panel('workspace-inspector',true);
+    assert.equal(await evaluate(`${q('[aria-controls="workspace-inspector"]')}.getAttribute('aria-expanded')`),'true');
+    assert.ok(await evaluate(`${q('#token-editor')}.getClientRects().length>0`)); await capture('studio-375-inspector');
     await send('Emulation.setDeviceMetricsOverride',{width:320,height:812,deviceScaleFactor:1,mobile:false});
-    assert.ok(await evaluate('document.documentElement.scrollWidth <= innerWidth'),'compact component inspector must fit 320px');
+    assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth'),'compact component inspector must fit 320px');
     assert.ok(await evaluate(`(()=>{const row=${q('.color-fields .token-input')}.getBoundingClientRect(),input=${q('.color-fields .token-input input[type="text"]')}.getBoundingClientRect();return row.right<=innerWidth && input.width>=65})()`),'compact color field must keep its hex value editable');
     await send('Emulation.setDeviceMetricsOverride',{width:375,height:812,deviceScaleFactor:1,mobile:false});
-    await click(q('.mobile-preview-link'));
-    assert.equal(await evaluate('document.activeElement.id'),'workspace-content');
+    await click(q('#token-background')); await key('Escape');
+    await wait(`${q('#workspace-inspector')}.hidden`);
+    assert.equal(await evaluate(`document.activeElement.getAttribute('aria-controls')`),'workspace-inspector','Escape returns focus to the panel toggle');
     for(const mode of ['light','dark']) {
-      await click(named(themeControl + ' button',mode === 'light' ? 'Light' : 'Dark'));
+      await click(named(themeControl + ' button',mode==='light'?'Light':'Dark'));
       assert.ok(await evaluate(`!!${q(`.theme-pane:not([hidden]) [data-ds-theme="${mode}"]`)}`));
       assert.equal(await evaluate(`[...document.querySelectorAll('.theme-pane')].filter(e=>e.getClientRects().length).length`),1);
     }
-    await navigate('design','colors');
-    await click(q('[aria-label="Open color builder"]'));
+    await navigate('design','colors'); await click(q('[aria-label="Open color builder"]'));
     const {nodes}=await send('Accessibility.getFullAXTree');
-    for(const name of ['Source brand color','Close color builder'])assert.ok(nodes.some(node=>!node.ignored && node.name?.value===name),`AX name: ${name}`);
-    await click(q('[aria-label="Close color builder"]'));
+    for(const name of ['Source brand color','Close color builder']) assert.ok(nodes.some(node=>!node.ignored && node.name?.value===name),`AX name: ${name}`);
+    await click(q('[aria-label="Close color builder"]')); await hideMobilePanels();
   });
-  await check('mobile document scroll and touch gestures remain native',async()=>{
+  await check('mobile work-area scrolling and touch gestures remain native',async()=>{
     await send('Emulation.setDeviceMetricsOverride',{width:375,height:812,deviceScaleFactor:1,mobile:true});
     await send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:2});
     try {
-      await navigate('design');
-      await navigate('design','button');
+      await openStatic('design','button');
       assert.ok(await evaluate(`!document.querySelector('meta[name="viewport"]')?.content.includes('user-scalable=no')`),'mobile viewport must permit browser zoom');
       assert.ok(await evaluate(`getComputedStyle(${q(canvas)}).touchAction!=='none'`),'canvas must not disable native touch zoom/scroll');
-      await evaluate('window.scrollTo(0,0)');
-      assert.ok(await evaluate('document.documentElement.scrollHeight>innerHeight'),'mobile document should have scrollable content');
-      await evaluate('window.scrollTo(0,180)');
-      await wait('window.scrollY>0');
       assert.equal(await evaluate(`(()=>{const e=new Event('touchmove',{bubbles:true,cancelable:true});${q(canvas)}.dispatchEvent(e);return e.defaultPrevented})()`),false,'mobile touchmove must not be consumed by the camera');
+      // The shell no longer scrolls as a document; long specimens still need an accessible native scroll region.
+      await evaluate(`void(window.__mobileScroll=(()=>{for(let e=${q('[data-canvas]')}.parentElement;e;e=e.parentElement)if(e.scrollHeight>e.clientHeight+4 && /^(auto|scroll)$/.test(getComputedStyle(e).overflowY))return e;return null})())`);
+      console.log('MOBILE SCROLL',await evaluate(`JSON.stringify((()=>{const result=[];for(let e=${q('[data-canvas]')}.parentElement;e;e=e.parentElement)result.push({element:e.id||e.className,overflow:getComputedStyle(e).overflowY,height:e.clientHeight,scrollHeight:e.scrollHeight});return result})())`));
+      assert.ok(await evaluate('!!window.__mobileScroll'),'mobile preview needs a natively scrollable work area, not clipped content');
+      await evaluate('window.__mobileScroll.scrollTop=0');
+      await evaluate('window.__mobileScroll.scrollTop=180'); await wait('window.__mobileScroll.scrollTop>0');
+      assert.equal(await evaluate('window.scrollY'),0,'scroll stays in the work area instead of pushing the shell offscreen');
     } finally {
       await send('Emulation.setTouchEmulationEnabled',{enabled:false});
       await send('Emulation.setDeviceMetricsOverride',{width:375,height:812,deviceScaleFactor:1,mobile:false});
@@ -1285,7 +1343,7 @@ try {
       assert.equal(await evaluate(`${q('h1')}.textContent`),view==='develop'?(id==='spacing'?'Shape & spacing documentation':`${name} documentation`):(id==='spacing'?'Shape & spacing':name));
     });
   }
-  for(const [view,path] of [['design','/'],['develop','/develop']]) {
+  for(const [view,path] of [['design','/colors'],['develop','/develop']]) {
     await check(`default ${view} entry opens Colors at ${path}`,async()=>{
       const url=`http://127.0.0.1:${server.address().port}${path}`;
       const response=await fetch(url);
@@ -1300,12 +1358,23 @@ try {
       assert.equal(await evaluate(`${q('h1')}.textContent`),view==='design'?'Colors':'Colors documentation');
     });
   }
+  await check('/ opens Project without creating records and System switch restores Colors',async()=>{
+    const before=await stored(), origin=await evaluate('performance.timeOrigin');
+    await send('Page.navigate',{url:`http://127.0.0.1:${server.address().port}/`});
+    await wait(`performance.timeOrigin!==${origin} && ${q('[aria-label="New project name"]')} && !${q('[aria-label="New project name"]')}.disabled`);
+    assert.equal(await evaluate(`${q('[aria-label="Workspace"] [aria-current]')}.textContent`),'Project');
+    assert.equal(await evaluate(`localStorage.getItem('bambiui.composer.projects.v1')`),null);
+    assert.deepEqual(await evaluate(`Object.keys(localStorage).filter(key=>key.startsWith('bambiui.composer.document.v1.'))`),[]);
+    assert.deepEqual(await stored(),before);
+    await click(named('[aria-label="Workspace"] a','System'));
+    await route('design','colors'); assert.deepEqual(await stored(),before);
+  });
   await check('no runtime, browser console or resource errors',async()=>{await delay(200);assert.deepEqual(errors,[]);});
 } catch(error) {failures.push('harness');console.error(`FAIL harness: ${error.stack || error}`);}
 finally {
   try {await cleanup();}catch(error){failures.push('cleanup');console.error(`FAIL cleanup: ${error}`);}
   clearTimeout(watchdog);
-  console.log(`RESULT: ${failures.length ? 'FAILED: '+failures.join(', ') : 'all smoke checks passed'}`);
+  console.log(`RESULT: ${passes} passed, ${failures.length} failed${failures.length ? ': '+failures.join(', ') : ' — all smoke checks passed'}`);
   console.log('SCOPE: automated Chromium/CDP checks, not a real screen-reader or native browser-zoom session.');
   if(failures.length)process.exitCode=1;
 }

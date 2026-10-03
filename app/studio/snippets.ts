@@ -36,6 +36,11 @@ export function Example() {
       <Button disabled endIcon={<Icon name="arrow" />}>
         Disabled
       </Button>
+
+      {/* Local instance values, not shared theme tokens. */}
+      <Button appearance={{ paddingTop: 12, paddingRight: 24, paddingBottom: 8, paddingLeft: 16, borderTopLeftRadius: 20 }}>
+        Local spacing
+      </Button>
     </>
   );
 }
@@ -77,6 +82,18 @@ export function Example() {
       <Input label="Small" size="sm" placeholder='size="sm"' />
       <Input label="Medium" size="md" placeholder='size="md"' />
       <Input label="Large" size="lg" placeholder='size="lg"' />
+
+      {/* appearance targets the painted shell; parts styles the field pieces. */}
+      <Input
+        label="Locally styled email"
+        name="localEmail"
+        description="Shared tokens remain unchanged."
+        error="Enter a valid email."
+        errorPosition="above"
+        errorIcon="warning"
+        appearance={{ paddingTop: 12, paddingRight: 18, paddingBottom: 8, paddingLeft: 14, borderTopLeftRadius: 16 }}
+        parts={{ root: { gap: 8 }, label: { fontWeight: 700 }, description: { fontSize: 12 }, error: { fontSize: 13, gap: 6 } }}
+      />
     </>
   );
 }
@@ -122,6 +139,16 @@ export function Example() {
           </Card.Description>
         </Card.Header>
       </Card>
+
+      {/* Card slots each accept appearance; Card has no parts object. */}
+      <Card appearance={{ paddingTop: 20, paddingRight: 24, paddingBottom: 16, paddingLeft: 12, borderTopLeftRadius: 24, shadow: "md" }}>
+        <Card.Header appearance={{ gap: 12, paddingBottom: 4 }}>
+          <Card.Title appearance={{ fontSize: 22, fontWeight: 650 }}>Independent slots</Card.Title>
+          <Card.Description appearance={{ lineHeight: 1.8 }}>Instance values leave shared tokens unchanged.</Card.Description>
+        </Card.Header>
+        <Card.Content appearance={{ gap: 20, paddingTop: 8 }}>Local content spacing.</Card.Content>
+        <Card.Footer appearance={{ gap: 16, marginTop: 4 }}><Button>Continue</Button></Card.Footer>
+      </Card>
     </>
   );
 }
@@ -154,6 +181,8 @@ export function Example() {
       <Badge size="lg" dot tone="success">
         Large
       </Badge>
+      {/* Local instance geometry; tone and variant still supply the colors. */}
+      <Badge appearance={{ paddingTop: 6, paddingBottom: 8, borderTopLeftRadius: 12, borderBottomRightRadius: 4 }}>Local draft</Badge>
     </>
   );
 }
@@ -174,6 +203,16 @@ export function Example() {
       <Switch label="Read-only setting" readOnly defaultChecked />
       <Switch label="Needs attention" error="Turn this setting on to continue." />
       <Switch label="Unavailable" disabled defaultChecked />
+      {/* appearance targets the track, not the field's label. */}
+      <Switch
+        label="Local notification setting"
+        description="Shared tokens remain unchanged."
+        error="Review this setting."
+        errorPosition="below"
+        errorIcon="info"
+        appearance={{ width: 64, height: 30 }}
+        parts={{ root: { gap: 8 }, row: { gap: 16 }, label: { fontSize: 15, fontWeight: 600 }, error: { fontSize: 13, gap: 6 } }}
+      />
     </>
   );
 }
@@ -195,6 +234,10 @@ export function Example() {
       <Text variant="label" as="span">Visual label, not a form label</Text>
       <Text variant="caption" as="span" tone="primary">Updated today</Text>
       <Text tone="danger" size="lg">An important warning.</Text>
+      {/* Local instance typography, not a new typography token. */}
+      <Text appearance={{ width: "fill", fontSize: 18, fontWeight: 500, lineHeight: 1.8, letterSpacing: 0.3, textAlign: "right" }}>
+        Locally aligned text; shared typography is unchanged.
+      </Text>
     </>
   );
 }
@@ -214,6 +257,16 @@ export function Example() {
       <Checkbox label="Small print" size="sm" />
       <Checkbox label="Read-only selection" readOnly defaultChecked />
       <Checkbox label="Unavailable" disabled defaultChecked />
+      {/* Control part values merge over primary appearance. */}
+      <Checkbox
+        label="Local terms acceptance"
+        description="Shared tokens remain unchanged."
+        error="Review the terms."
+        errorPosition="above"
+        errorIcon="info"
+        appearance={{ width: 26, height: 26, borderTopLeftRadius: 8 }}
+        parts={{ row: { gap: 14 }, control: { borderBottomRightRadius: 4 }, label: { fontWeight: 600 }, description: { fontSize: 12 }, error: { fontSize: 13 } }}
+      />
     </>
   );
 }

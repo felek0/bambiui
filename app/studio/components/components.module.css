@@ -196,6 +196,11 @@
   display: inline-flex;
 }
 
+.alignedContent {
+  flex: 1;
+  min-width: 0;
+}
+
 .button:active:not([data-disabled]) {
   --button-fill: var(--button-active-fill);
 }
@@ -231,6 +236,18 @@
 
 .error {
   color: var(--ds-danger);
+}
+
+.error[data-error-icon] {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-spacing-sm);
+}
+
+.errorIcon {
+  width: var(--ds-icon-size);
+  height: var(--ds-icon-size);
+  flex: 0 0 auto;
 }
 
 /* Input */
@@ -387,6 +404,12 @@
   transform: translateX(100%);
 }
 
+/* Local track geometry must not retain the preset's one-thumb-width travel. */
+.switch[data-local-geometry] .thumb[data-checked] {
+  transform: none;
+  margin-inline-start: auto;
+}
+
 .checkbox {
   --checkbox-state-background: var(--checkbox-variant-checked-background);
   --checkbox-state-foreground: var(--checkbox-variant-checked-foreground);
@@ -491,6 +514,12 @@
   line-height: var(--text-line-height);
   font-weight: var(--text-font-weight);
   letter-spacing: var(--text-letter-spacing);
+}
+
+/* Inline text also needs a box when local dimensions or edge spacing are set. */
+span.text[data-appearance-box],
+.cardTitle[data-appearance-box] {
+  display: inline-block;
 }
 
 .text[data-variant="heading"] {

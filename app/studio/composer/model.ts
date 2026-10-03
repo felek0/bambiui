@@ -6,15 +6,18 @@ export type ComposerFrame = {
   x: number; y: number; width: number; height: number; root: PageNode;
 };
 export type ComposerPage = { id: string; name: string; frames: ComposerFrame[] };
-export type ComposerDocument = { version: 1; id: string; name: string; systemId: string; pages: ComposerPage[] };
+export type ComposerAsset = { id: string; name: string; root: PageNode };
+export type ComposerDocument = { version: 1; id: string; name: string; systemId: string; pages: ComposerPage[]; assets?: ComposerAsset[] };
 export type ProjectCollection = { version: 1; activeProjectId: string | null; projectIds: string[] };
 export type ComposerSelection = { projectId: string; pageId: string; frameId: string; nodeId: string };
 
 // Structural quotas, not import byte quotas. Depth is root-relative, matching the old parser.
 export const COMPOSER_LIMITS = Object.freeze({
-  pages: 20, framesPerPage: 10, nodes: 2000, nodesPerFrame: 100, depth: 12,
+  pages: 20, framesPerPage: 10, assets: 32, nodes: 2000, nodesPerFrame: 100, depth: 12,
   nameLength: 120, idLength: 64, minDimension: 1, maxDimension: 10000, maxCoordinate: 100000,
 });
+// Whole components/layouts only; frame roots and parent-dependent compound slots are not templates.
+export const ASSET_ROOT_KINDS = ["button", "input", "switch", "checkbox", "badge", "card", "text", "stack", "grid", "form"] as const;
 export const COMPOSER_PRESETS = Object.freeze({
   web: Object.freeze({ width: 1440, height: 900 }),
   tablet: Object.freeze({ width: 768, height: 1024 }),
@@ -35,10 +38,10 @@ function object(value: unknown, path: string): Record<string, unknown> {
   }
   return value as Record<string, unknown>;
 }
-function exact(value: unknown, keys: readonly string[], path: string) {
+function exact(value: unknown, keys: readonly string[], path: string, optional: readonly string[] = []) {
   const data = object(value, path);
   for (const key of Object.keys(data)) if (!keys.includes(key)) throw new Error(`${path}: unknown key ${key}`);
-  for (const key of keys) if (!Object.hasOwn(data, key)) throw new Error(`${path}: missing ${key}`);
+  for (const key of keys) if (!optional.includes(key) && !Object.hasOwn(data, key)) throw new Error(`${path}: missing ${key}`);
   return data;
 }
 function list(value: unknown, max: number, path: string): unknown[] {
@@ -110,8 +113,40 @@ export function parseComposerPage(value: unknown): ComposerPage {
   });
   return { id: identifier(data.id, "page.id"), name: name(data.name, "page.name"), frames };
 }
+/** Validate all nested snapshot data without projecting away new PageNode fields (appearance, parts, etc.). */
+function assetData(value: unknown, depth = 0, budget = { left: 20000 }, strings = new Set<string>()): Set<string> {
+  if (--budget.left < 0 || depth > 32) throw new Error("asset.root: data limit exceeded");
+  if (typeof value === "string") strings.add(value);
+  else if (value === null || typeof value === "boolean" || (typeof value === "number" && Number.isFinite(value))) { /* JSON primitives */ }
+  else {
+    const values = Array.isArray(value) ? list(value, 1000, "asset.root") : Object.values(object(value, "asset.root"));
+    for (const child of values) assetData(child, depth + 1, budget, strings);
+  }
+  return strings;
+}
+
+export function parseComposerAsset(value: unknown): ComposerAsset {
+  const data = exact(value, ["id", "name", "root"], "asset");
+  const id = identifier(data.id, "asset.id"), assetName = name(data.name, "asset.name");
+  const used = assetData(data.root);
+  const raw = object(data.root, "asset.root");
+  if (!(ASSET_ROOT_KINDS as readonly unknown[]).includes(raw.kind))
+    throw new Error("asset.root: select a whole component or layout, not a frame root or compound slot");
+  const temporaryId = (base: string) => {
+    let candidate = base, serial = 0;
+    while (used.has(candidate)) candidate = `${base}-${++serial}`;
+    used.add(candidate); return candidate;
+  };
+  // Use the smallest legal frame wrapper. Its nodes/depth count toward the existing page limits,
+  // so a snapshot accepted here can fit in at least one empty frame. Wrapper IDs never persist.
+  const needsStack = ["button", "input", "switch", "checkbox"].includes(raw.kind as string);
+  const child = needsStack ? { id: temporaryId("asset-validation-stack"), kind: "stack", children: [data.root] } : data.root;
+  const parsed = rootDocument({ id: temporaryId("asset-validation-root"), kind: "container", children: [child] }).root.children![0];
+  return { id, name: assetName, root: needsStack ? parsed.children![0] : parsed };
+}
+
 export function parseComposerDocument(value: unknown): ComposerDocument {
-  const data = exact(value, ["version", "id", "name", "systemId", "pages"], "project");
+  const data = exact(value, ["version", "id", "name", "systemId", "pages", "assets"], "project", ["assets"]);
   if (data.version !== 1) throw new Error("project: unsupported version");
   const pageIds = new Set<string>();
   const frameIds = new Set<string>();
@@ -127,7 +162,18 @@ export function parseComposerDocument(value: unknown): ComposerDocument {
     }
     return page;
   });
-  return { version: 1, id: identifier(data.id, "project.id"), name: name(data.name, "project.name"), systemId: identifier(data.systemId, "project.systemId"), pages };
+  const document: ComposerDocument = { version: 1, id: identifier(data.id, "project.id"), name: name(data.name, "project.name"), systemId: identifier(data.systemId, "project.systemId"), pages };
+    if (Object.hasOwn(data, "assets")) {
+      const assetIds = new Set<string>();
+      document.assets = list(data.assets, COMPOSER_LIMITS.assets, "project.assets").map((raw) => {
+        const asset = parseComposerAsset(raw);
+        unique(asset.id, assetIds, "project.assets");
+        nodes += count(asset.root);
+        if (nodes > COMPOSER_LIMITS.nodes) throw new Error("project: node limit exceeded");
+        return asset;
+      });
+    }
+    return document;
 }
 
 // Index IDs are unique across the collection; null means no active project, even in a nonempty index.

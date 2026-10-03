@@ -3,6 +3,7 @@ import test from "node:test";
 import { auditSystemColors, colorCheckTargets } from "./color-audit.ts";
 import { contrastRatio, deriveRoleColors, generatePalette } from "./color-engine.ts";
 import { componentIds, componentVariantKeys, defaultSystem, parseDesignSystem, resolveComponent, toCSSVariables } from "./tokens.ts";
+import { appearanceToStyle, parseNodeAppearance, parseNodeParts } from "./page-document/appearance.ts";
 
 const modes = ["light", "dark"];
 const fresh = (mode = "light") => structuredClone(defaultSystem.themes[mode]);
@@ -111,6 +112,49 @@ test("equal component overrides still fail without changing globals", () => {
     pair(checks.get("text.foreground"), "#123456", theme.global.background);
     assert.deepEqual(auditSystemColors(theme, mode).filter((c) => !c.component),
       auditSystemColors(fresh(mode), mode).filter((c) => !c.component));
+  }
+});
+
+test("valid local instance colors can fail contrast without changing or being certified by the token audit", () => {
+  for (const mode of modes) {
+    const theme = fresh(mode);
+    const before = structuredClone(theme);
+    const tokenChecks = allPass(theme, mode);
+    for (const kind of componentIds) {
+      const appearance = parseNodeAppearance({ background: "#777777", color: "#777777", borderColor: "#777777", borderWidth: 2 }, kind);
+      const painted = appearanceToStyle(appearance);
+      const minimum = ["switch", "checkbox"].includes(kind) ? 3 : 4.5;
+      const ratio = contrastRatio(painted.color, painted.backgroundColor);
+      assert.equal(ratio, 1, `${mode}/${kind}: explicit instance ink and surface`);
+      assert.ok(ratio < minimum);
+      assert.equal(contrastRatio(painted.borderColor, painted.backgroundColor), 1);
+      assert.deepEqual(appearance.color, "#777777", "invalid contrast is preserved, not silently recolored");
+    }
+    assert.deepEqual(theme, before);
+    assert.deepEqual(auditSystemColors(theme, mode), tokenChecks, "theme diagnostics are not a page-instance audit");
+  }
+});
+
+test("field part ink and transparent local surfaces use the actual parent, not passing global defaults", () => {
+  for (const mode of modes) for (const kind of ["input", "switch", "checkbox"]) {
+    const theme = fresh(mode);
+    const checks = allPass(theme, mode);
+    const parts = parseNodeParts({
+      root: { background: "#eeeeee" },
+      label: { color: "#eeeeee" },
+      description: { color: "#eeeeee", background: "transparent" },
+      error: { color: "#eeeeee", background: "#eeeeee" },
+    }, kind);
+    const parent = appearanceToStyle(parts.root).backgroundColor;
+    for (const part of ["label", "description", "error"]) {
+      const style = appearanceToStyle(parts[part]);
+      const surface = !style.backgroundColor || style.backgroundColor === "transparent" ? parent : style.backgroundColor;
+      assert.equal(contrastRatio(style.color, surface), 1, `${mode}/${kind}/${part}`);
+      assert.equal(checks.find((check) => check.id === `${kind}.${part}`).passes, true, "the shared-token pair still passes independently");
+    }
+    const effects = appearanceToStyle(parseNodeAppearance({ borderWidth: 0, shadow: "none" }, kind));
+    assert.ok(!Object.keys(effects).some((key) => key.startsWith("outline")));
+    for (const check of checks.filter((check) => check.id.startsWith(`${kind}.focus.`))) assert.equal(check.passes, true);
   }
 });
 

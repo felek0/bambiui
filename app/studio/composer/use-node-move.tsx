@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { canvasTarget, rectOf, type CanvasTarget } from "./canvas-target";
+import { canvasNodeElements } from "./canvas-elements";
 import { moveProposalCache } from "./movement";
 import { startPointerDrag } from "./pointer-drag";
 import type { Composer } from "./use-composer";
@@ -17,7 +18,7 @@ export function useNodeMove(composer: Composer, edgePan: (point: { x: number; y:
   const down = (event: ReactPointerEvent<HTMLDivElement>, frameId: string, nodeId: string) => {
     if (event.pointerType !== "mouse" || event.button !== 0 || composer.state.mode !== "design" || !composer.document || !composer.page || composer.state.indexBlocked || composer.state.partial) return;
     const expected = composer.document, pageId = composer.page.id, session = composer.controller.insertionSession();
-    const element = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[data-page-node]')).find(element => element.dataset.pageNode === nodeId);
+    const element = canvasNodeElements(event.currentTarget).get(nodeId);
     if (!element) return;
     const surface = event.currentTarget;
     const sourceRect = () => {

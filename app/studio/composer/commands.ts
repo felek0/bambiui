@@ -2,8 +2,8 @@ import { applyPageCommands, type PageCommand } from "../page-document/commands.t
 import { prepareMove, type MoveTarget } from "./movement.ts";
 import type { PageNode } from "../page-document/model.ts";
 import {
-  composerFrameToPageDocument, parseComposerDocument, parseComposerFrame, parseComposerPage,
-  validateComposerSystemReference, type ComposerDocument, type ComposerFrame, type ComposerPage,
+  composerFrameToPageDocument, parseComposerDocument, parseComposerFrame, parseComposerPage, parseComposerAsset,
+  validateComposerSystemReference, type ComposerDocument, type ComposerFrame, type ComposerPage, type ComposerAsset,
 } from "./model.ts";
 
 /** Already validated system IDs or StoredSystem-shaped records. No token/catalog mutation or custom registry mapping. */
@@ -17,6 +17,9 @@ export type ComposerCommand =
   | ({ type: "moveNode"; wrapperIds: string[] } & MoveTarget)
   | { type: "renameProject"; name: string }
   | { type: "changeProjectSystem"; systemId: string }
+    | { type: "saveAsset"; asset: ComposerAsset }
+    | { type: "renameAsset"; assetId: string; name: string }
+    | { type: "deleteAsset"; assetId: string }
   | { type: "insertPage"; index: number; page: ComposerPage }
   | { type: "renamePage"; pageId: string; name: string }
   | { type: "deletePage"; pageId: string }
@@ -32,6 +35,7 @@ export type ComposerCommand =
 
 const commandKeys: Record<ComposerCommand["type"], readonly string[]> = {
   renameProject: ["type", "name"], changeProjectSystem: ["type", "systemId"],
+    saveAsset: ["type", "asset"], renameAsset: ["type", "assetId", "name"], deleteAsset: ["type", "assetId"],
   insertPage: ["type", "index", "page"], renamePage: ["type", "pageId", "name"],
   deletePage: ["type", "pageId"], duplicatePage: ["type", "pageId", "index", "ids"],
   reorderPage: ["type", "pageId", "index"], insertFrame: ["type", "pageId", "index", "frame"],
@@ -44,7 +48,7 @@ const commandKeys: Record<ComposerCommand["type"], readonly string[]> = {
 };
 const nodeKeys: Record<ComposerNodeCommand["type"], readonly string[]> = {
   insert: ["type", "parentId", "index", "node"], delete: ["type", "nodeId"],
-  move: ["type", "nodeId", "parentId", "index"], update: ["type", "nodeId", "props", "text"],
+  move: ["type", "nodeId", "parentId", "index"], update: ["type", "nodeId", "props", "text", "appearance", "parts"],
 };
 
 // Inspect descriptors before reading values: no getters, executable values, inherited fields,
@@ -81,8 +85,8 @@ function tagged(value: unknown, allowlist: Record<string, readonly string[]>, no
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("command: expected object");
   const record = value as Record<string, unknown>;
   if (typeof record.type !== "string" || !Object.hasOwn(allowlist, record.type)) throw new Error("command: unknown command");
-  exact(record, allowlist[record.type], node && record.type === "update" ? ["props", "text"] : []);
-  for (const key of ["name", "pageId", "frameId", "nodeId", "parentId", "systemId", "text"])
+  exact(record, allowlist[record.type], node && record.type === "update" ? ["props", "text", "appearance", "parts"] : []);
+  for (const key of ["name", "pageId", "frameId", "nodeId", "parentId", "systemId", "assetId", "text"])
     if (Object.hasOwn(record, key) && typeof record[key] !== "string") throw new Error(`command: invalid ${key}`);
 }
 function index(value: number, length: number): void {
@@ -167,7 +171,21 @@ export function applyComposerCommands(input: unknown, commands: readonly Compose
         document = result.document;
         break;
       }
-      case "renameProject": document.name = command.name; break;
+      case "saveAsset": {
+              const asset = parseComposerAsset(command.asset);
+              if (document.assets?.some(entry => entry.id === asset.id)) throw new Error("command: duplicate asset id");
+              (document.assets ??= []).push(asset);
+              break;
+            }
+            case "renameAsset":
+            case "deleteAsset": {
+              const asset = document.assets?.find(entry => entry.id === command.assetId);
+              if (!asset) throw new Error("command: saved component is no longer available");
+              if (command.type === "renameAsset") asset.name = command.name;
+              else document.assets!.splice(document.assets!.indexOf(asset), 1);
+              break;
+            }
+            case "renameProject": document.name = command.name; break;
       case "changeProjectSystem":
         if (!systems) throw new Error("command: system catalog required");
         validateComposerSystemReference({ systemId: command.systemId }, systems);

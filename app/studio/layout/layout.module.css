@@ -9,6 +9,26 @@
 .container[data-max-width="narrow"] { max-width: 42rem; }
 .container[data-max-width="full"] { max-width: none; padding-inline: 0; }
 
+/* Container auto layout is opt-in; legacy block flow and margin collapse stay intact. */
+.container[data-direction] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-spacing-md);
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.container[data-direction="row"] { flex-direction: row; }
+.container[data-direction][data-gap="sm"] { gap: var(--ds-spacing-sm); }
+.container[data-direction][data-gap="lg"] { gap: var(--ds-spacing-lg); }
+.container[data-direction][data-align="start"] { align-items: flex-start; }
+.container[data-direction][data-align="center"] { align-items: center; }
+.container[data-direction][data-align="end"] { align-items: flex-end; }
+.container[data-direction][data-justify="center"] { justify-content: center; }
+.container[data-direction][data-justify="end"] { justify-content: flex-end; }
+.container[data-direction][data-justify="between"] { justify-content: space-between; }
+.container[data-direction][data-wrap] { flex-wrap: wrap; }
+
 .stack {
   display: flex;
   min-width: 0;

@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "id": "container-auto-layout",
+  "name": "Container auto layout",
+  "root": {
+    "id": "auto-layout-root",
+    "kind": "container",
+    "props": {
+      "maxWidth": "full",
+      "direction": "row",
+      "gap": "lg",
+      "align": "center",
+      "justify": "between",
+      "wrap": true
+    },
+    "appearance": { "gap": 22.5, "paddingTop": 16, "paddingRight": 24, "paddingBottom": 16, "paddingLeft": 24 },
+    "children": [
+      { "id": "auto-layout-title", "kind": "text", "props": { "variant": "h2" }, "text": "Container auto layout" },
+      { "id": "auto-layout-body", "kind": "text", "text": "Direct children use the frame layout without an inner Stack." },
+      { "id": "auto-layout-status", "kind": "badge", "props": { "tone": "success" }, "text": "Ready" }
+    ]
+  }
+}

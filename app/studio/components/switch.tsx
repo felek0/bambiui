@@ -2,6 +2,7 @@ import { Field } from "@base-ui/react/field";
 import { Switch as BaseSwitch } from "@base-ui/react/switch";
 import { FieldRoot, labelClassName, type FieldProps } from "./field";
 import styles from "./components.module.css";
+import { appearanceToStyle, hasAppearanceBox, mergeAppearanceStyle } from "./appearance";
 
 export type SwitchProps = Omit<
   BaseSwitch.Root.Props,
@@ -17,33 +18,50 @@ export function Switch({
   hideLabel,
   description,
   error,
+  errorPosition,
+  errorIcon,
+  appearance,
+  parts,
+  style,
   size,
   className,
   labelPosition = "end",
   disabled,
   ...props
 }: SwitchProps) {
+  const control = appearance || parts?.control ? { ...appearance, ...parts?.control } : undefined;
   return (
     <FieldRoot
       kind="choice"
+      pageOwner={props["data-page-node"]}
       size={size}
       disabled={disabled}
       description={description}
       error={error}
+      errorPosition={errorPosition}
+      errorIcon={errorIcon}
+      parts={parts}
       className={className}
     >
       <Field.Label
+        data-appearance-part="row"
         className={styles.choice}
+        style={appearanceToStyle(parts?.row)}
         data-label-position={labelPosition}
       >
         <BaseSwitch.Root
           {...props}
+          data-appearance-part="control"
           disabled={disabled}
           className={styles.switch}
+          style={mergeAppearanceStyle(style, control)}
+          data-local-geometry={hasAppearanceBox(control) || control?.borderWidth !== undefined || undefined}
         >
           <BaseSwitch.Thumb className={styles.thumb} />
         </BaseSwitch.Root>
-        <span className={labelClassName(hideLabel)}>{label}</span>
+        <span data-appearance-part="label" className={labelClassName(hideLabel)} style={hideLabel ? undefined : appearanceToStyle(parts?.label)}>
+          {hideLabel && parts?.label ? <span style={appearanceToStyle(parts.label)}>{label}</span> : label}
+        </span>
       </Field.Label>
     </FieldRoot>
   );

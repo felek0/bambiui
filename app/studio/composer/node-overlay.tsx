@@ -4,6 +4,7 @@ import { useEffect, useRef, type RefObject } from "react";
 import type { ComposerFrame } from "./model";
 import { clipRect } from "./selection";
 import { nodeRegistry } from "../page-document/registry";
+import { canvasNodeElements } from "./canvas-elements";
 import styles from "./composer.module.css";
 
 /** Two measured targets only; movement never parses a document or scans the tree. */
@@ -12,7 +13,7 @@ export function NodeOverlay({ surface, content, frame, selectedId, hoverId, kind
   useEffect(() => {
     const container = surface.current, root = content.current; if (!container || !root) return;
     let raf = 0;
-    const elements = new Map([...root.querySelectorAll<HTMLElement>("[data-page-node]")].map(element => [element.dataset.pageNode!, element]));
+    const elements = canvasNodeElements(root);
     const paint = () => {
       raf = 0;
       const bounds = container.getBoundingClientRect(), scale = bounds.width / frame.width;

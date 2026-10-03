@@ -1,10 +1,14 @@
 import { nodeRegistry, type PageKind, type PageProp } from "./registry.ts";
 export type { PageKind, PageProp } from "./registry.ts";
+import { parseNodeAppearance, parseNodeParts, type NodeAppearance, type NodeParts } from "./appearance.ts";
+export type { NodeAppearance, NodePart, NodeParts, AppearancePatch, PartsPatch } from "./appearance.ts";
 
 export type PageNode = {
   id: string;
   kind: PageKind;
   props?: Record<string, PageProp>;
+  appearance?: NodeAppearance;
+  parts?: NodeParts;
   text?: string;
   children?: PageNode[];
 };
@@ -29,7 +33,7 @@ export function parsePageDocument(value: unknown): PageDocument {
   function visit(raw: unknown, path: string, depth: number, parent?: PageKind, insideForm = false): PageNode {
     if (depth > 12 || ids.size >= 100) throw new Error(`${path}: page limit exceeded`);
     if (!record(raw)) throw new Error(`${path}: expected node`);
-    exact(raw, ["id", "kind", "props", "text", "children"], path);
+    exact(raw, ["id", "kind", "props", "appearance", "parts", "text", "children"], path);
     identifier(raw.id, `${path}.id`);
     if (ids.has(raw.id as string)) throw new Error(`${path}: duplicate id`);
     ids.add(raw.id as string);
@@ -39,6 +43,8 @@ export function parsePageDocument(value: unknown): PageDocument {
     if (parent ? !nodeRegistry[parent].children.includes(kind) : kind !== "container") throw new Error(`${path}: invalid parent/slot for ${kind}`);
     if (kind === "form" && insideForm) throw new Error(`${path}: nested form`);
     const node: PageNode = { id: raw.id as string, kind };
+    if (Object.hasOwn(raw, "appearance")) node.appearance = parseNodeAppearance(raw.appearance, kind, undefined, `${path}.appearance`);
+    if (Object.hasOwn(raw, "parts")) node.parts = parseNodeParts(raw.parts, kind, `${path}.parts`);
     if (raw.props !== undefined) {
       if (!record(raw.props)) throw new Error(`${path}: invalid props`);
       const aliases = definition.legacyAliases ?? {};

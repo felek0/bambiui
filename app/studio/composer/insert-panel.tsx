@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
+import { Icon } from "../icons";
 import { INSERT_KINDS, insertionProposalCache, type InsertKind, type InsertionResult } from "./insertion";
 import { composerFrameToPageDocument } from "./model";
 import { canvasTarget as hit, type CanvasTarget as Target } from "./canvas-target";
@@ -63,8 +64,8 @@ export function InsertPanel({ composer }: { composer: Composer }) {
     });
   };
   return <section className={styles.insertPanel} aria-label="Insert palette">
-    <h2>Insert</h2><p className={styles.hint}>{composer.state.mode === 'preview' ? 'Switch to Design to insert.' : 'Drag to a canvas slot. Click or press Enter/Space to insert into the selected slot. Mouse drag; keyboard alternative available.'}</p>
-    <div className={styles.insertItems}>{INSERT_KINDS.map(kind => <button key={kind} type="button" data-insert-kind={kind} disabled={disabled} draggable={false} title={`Drag ${kind} to canvas or insert into selected slot`} onPointerDown={event => down(event, kind)} onClick={event => { if (event.detail === 0) suppressClick.current = false; insertSelected(kind); }}><span aria-hidden="true">⠿</span> {kind[0].toUpperCase() + kind.slice(1)}</button>)}</div>
+    <h2>Components</h2><p className={styles.hint}>{composer.state.mode === 'preview' ? 'Switch to Design to insert.' : 'Drag onto a frame, or click to add to the selection.'}</p>
+    <div className={styles.insertItems}>{INSERT_KINDS.map(kind => <button key={kind} type="button" data-insert-kind={kind} disabled={disabled} draggable={false} title={`Drag ${kind} to canvas or insert into selected slot`} onPointerDown={event => down(event, kind)} onClick={event => { if (event.detail === 0) suppressClick.current = false; insertSelected(kind); }}><Icon name={kind === "stack" ? "box" : kind} size={18} /><span>{kind === "stack" ? "Auto layout" : kind[0].toUpperCase() + kind.slice(1)}</span></button>)}</div>
     {ghost && createPortal(<div className={styles.insertOverlay} data-insertion-valid={ghost.valid}>
       {ghost.target && <><div className={styles.dropHighlight} style={{ left: ghost.target.rect.x, top: ghost.target.rect.y, width: ghost.target.rect.width, height: ghost.target.rect.height }} />{ghost.valid && ghost.target.line && <div className={styles.insertionLine} style={{ left: ghost.target.line.x, top: ghost.target.line.y, width: ghost.target.line.width, height: ghost.target.line.height }} />}</>}
       <div className={styles.insertGhost} style={{ left: ghost.x + 14, top: ghost.y + 14 }}>{ghost.kind} · {ghost.hint}{ghost.valid && ` · position ${ghost.target!.index + 1}`}</div>

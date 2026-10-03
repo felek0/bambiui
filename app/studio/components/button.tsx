@@ -2,10 +2,11 @@ import type { ReactNode } from "react";
 import { Button as BaseButton } from "@base-ui/react/button";
 import { cx } from "../cx";
 import { Spinner } from "./spinner";
+import { mergeAppearanceStyle, type AppearanceProps } from "./appearance";
 import type { Radius, Size } from "./types";
 import styles from "./components.module.css";
 
-type ButtonBaseProps = Omit<BaseButton.Props, "className"> & {
+type ButtonBaseProps = Omit<BaseButton.Props, "className"> & AppearanceProps & {
   /** Visual hierarchy and intent. Defaults to `primary`. */
   variant?: "primary" | "secondary" | "outline" | "ghost" | "destructive" | "link";
   /** Height, padding and font size from the shared size scale. Defaults to `md`. */
@@ -42,11 +43,14 @@ export function Button({
   endIcon,
   className,
   children,
+  appearance,
+  style,
   ...props
 }: ButtonProps) {
   return (
     <BaseButton
       {...props}
+      style={mergeAppearanceStyle(style, appearance)}
       className={cx(styles.button, className)}
       disabled={disabled || loading}
       // Keep focus on the button when it enters the loading state after activation.
@@ -62,7 +66,7 @@ export function Button({
       {loading ? <Spinner /> : startIcon && (
               <span className={styles.decorativeIcon} aria-hidden="true">{startIcon}</span>
             )}
-      {iconOnly && loading ? null : children}
+      {iconOnly && loading ? null : appearance?.textAlign ? <span className={styles.alignedContent}>{children}</span> : children}
       {!iconOnly && endIcon && (
               <span className={styles.decorativeIcon} aria-hidden="true">{endIcon}</span>
             )}

@@ -52,6 +52,46 @@ test("seven-component source collects Checkbox client boundary, icons and Base U
   }
 });
 
+test("local appearance source includes standalone helpers and no editor/model dependencies", async () => {
+  const sample = JSON.parse(await readFile(new URL("./appearance-specimen.json", import.meta.url), "utf8"));
+  const files = await createPageSourceFiles(createPageBundle(sample, defaultSystem));
+  assert.equal(files.get("components/appearance.ts"), await readFile(new URL("../components/appearance.ts", import.meta.url), "utf8"));
+  assert.deepEqual(parsePageBundle(files.get("page.bambiui.json")).page, sample);
+  assert.match(files.get("PageContent.tsx"), /appearance=\{\{/);
+  assert.match(files.get("PageContent.tsx"), /parts=\{\{/);
+  assert.match(files.get("PageContent.tsx"), /errorPosition=\{"above"\}/);
+  for (const name of files.keys()) assert.ok(!/^(page-document|composer)\//.test(name), name);
+  assert.equal(files.get("components/field.tsx"), await readFile(new URL("../components/field.tsx", import.meta.url), "utf8"));
+});
+
+test("Container auto layout exports direct children, its exact consumers and unchanged theme CSS", async () => {
+  const input = { version: 1, id: "auto-layout", name: "Auto layout", root: {
+    id: "root", kind: "container",
+    props: { maxWidth: "full", direction: "row", gap: "sm", align: "end", justify: "between", wrap: false },
+    appearance: { gap: 12.25 },
+    children: [{ id: "first", kind: "text", text: "First" }, { id: "second", kind: "badge", text: "Second" }],
+  } };
+  const files = await createPageSourceFiles(createPageBundle(input, defaultSystem));
+  assert.deepEqual(parsePageBundle(files.get("page.bambiui.json")).page, input);
+  const source = files.get("PageContent.tsx");
+  assert.match(source, /<Container[^>]+direction=\{"row"\}/);
+  assert.match(source, /gap=\{"sm"\}/);
+  assert.match(source, /align=\{"end"\}/);
+  assert.match(source, /justify=\{"between"\}/);
+  assert.match(source, /wrap=\{false\}/);
+  assert.match(source, /appearance=\{\{"gap":12.25\}\}/);
+  assert.doesNotMatch(source, /<Stack/);
+  assert.equal(files.get("layout/index.tsx"), await readFile(new URL("../layout/index.tsx", import.meta.url), "utf8"));
+  assert.equal(files.get("layout/layout.module.css"), await readFile(new URL("../layout/layout.module.css", import.meta.url), "utf8"));
+  assert.match(files.get("layout/layout.module.css"), /\.container\[data-direction\] \{/);
+  const legacy = structuredClone(input);
+  legacy.root.props = { maxWidth: "full" };
+  delete legacy.root.appearance;
+  const legacyFiles = await createPageSourceFiles(createPageBundle(legacy, defaultSystem));
+  assert.equal(files.get("theme.css"), legacyFiles.get("theme.css"), "auto layout introduces no shared tokens");
+  assert.doesNotMatch(legacyFiles.get("PageContent.tsx"), /direction=|gap=|align=|justify=|wrap=|appearance=/);
+});
+
 test("source delivery revalidates its bundle rather than trusting the caller", async () => {
   const bundle = createPageBundle(page, defaultSystem);
   bundle.page.root.props.onClick = "alert(1)";

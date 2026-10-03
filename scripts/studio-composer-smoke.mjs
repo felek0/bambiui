@@ -16,14 +16,18 @@ const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css
 const errors = [], pending = new Map();
 const firstDragOnly = process.argv.includes('--first-drag');
 const smokeBudget = firstDragOnly ? 45000 : 120000;
-let server, chrome, profile, socket, sequence = 0, checks = 0, timedOut = false, previewRequests = 0;
+let server, chrome, profile, socket, sequence = 0, checks = 0, timedOut = false, previewRequests = 0, stage = 'startup';
 const watchdog = setTimeout(() => {
   timedOut = true; chrome?.kill('SIGKILL'); socket?.close();
   for (const task of pending.values()) { clearTimeout(task.timer); task.reject(new Error(`Smoke exceeded ${smokeBudget / 1000} seconds`)); }
   pending.clear();
 }, smokeBudget);
 const q = (selector) => `document.querySelector(${JSON.stringify(selector)})`;
-const named = (selector, name) => `[...document.querySelectorAll(${JSON.stringify(selector)})].find(e => e.textContent.trim() === ${JSON.stringify(name)} && !e.closest('[hidden]'))`;
+const named = (selector, name, includeHidden = false) => `[...document.querySelectorAll(${JSON.stringify(selector)})].find(e => e.textContent.trim() === ${JSON.stringify(name)} && (${includeHidden} || !e.closest('[hidden]')))`;
+const visible = expression => `(()=>{const e=(${expression});return !!e && e.getClientRects().length>0 && !e.closest('[hidden]') && getComputedStyle(e).visibility!=='hidden'})()`;
+const modeButton = name => named('[aria-label="Canvas mode"] button', name);
+const layer = (frameId, nodeId) => q(`[role="treeitem"][data-layer-id="${frameId}${nodeId ? '/' + nodeId : ''}"]`);
+const instanceKind = () => `document.querySelector('[aria-label="Instance settings"] h3')?.firstChild?.textContent`;
 function send(method, params = {}, moveBeforePress = true) {
   // Move the real mouse to the target before pressing, not just on mouse-down.
   if (moveBeforePress && method === 'Input.dispatchMouseEvent' && params.type === 'mousePressed')
@@ -42,18 +46,95 @@ async function evaluate(expression) {
 async function wait(expression) {
   const until = Date.now() + 6500;
   do { if (await evaluate(`!!(${expression})`)) return; await delay(60); } while (Date.now() < until);
-  throw new Error(`Timed out: ${expression}`);
+  throw new Error(`Timed out during ${stage}: ${expression}`);
+}
+async function reveal(expression) {
+  // Resolve mounted, inactive sidebar panels through their actual Base UI tabs.
+  const tab = await evaluate(`(()=>{const e=(${expression});return e?.closest('#workspace-sidebar [role="tabpanel"]')?.hidden ? (e.closest('[aria-label="Insert palette"]') || e.closest('section')?.textContent.includes('Saved components') ? 'Assets' : 'Layers') : null})()`);
+  if (tab) await sidebar(tab);
+  await wait(`!!(${expression})`);
+  for (let i = 0; i < 6; i++) {
+    const summary = `(()=>{const e=(${expression});let closed=null;for(let p=e?.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS'&&!p.open&&!p.querySelector(':scope > summary')?.contains(e))closed=p;return closed?.querySelector(':scope > summary')})()`;
+    if (!await evaluate(`!!(${summary})`)) return;
+    await click(summary);
+  }
+  throw new Error(`Cannot reveal details for ${expression}`);
+}
+async function sidebar(tab) {
+  if (await evaluate(visible(q('[aria-label="Show left panel"]')))) await click(q('[aria-label="Show left panel"]'));
+  const target = named('#workspace-sidebar [role="tab"]', tab);
+  if (!await evaluate(`(${target})?.getAttribute('aria-selected')==='true'`)) await click(target);
+  await wait(`(${target})?.getAttribute('aria-selected')==='true'`);
+}
+async function inspector(tab) {
+  if (await evaluate(visible(q('[aria-label="Show inspector"]')))) await click(q('[aria-label="Show inspector"]'));
+  const target = named('#project-inspector [role="tab"]', tab);
+  if (!await evaluate(`(${target})?.getAttribute('aria-selected')==='true'`)) await click(target);
+  await wait(`(${target})?.getAttribute('aria-selected')==='true'`);
+}
+async function fit(selection = false) {
+  await click(q('[aria-label="Canvas tools"] [aria-label^="Canvas zoom "]'));
+  await click(named('[role="menuitem"]', selection ? 'Fit selection' : 'Fit page'));
+  await wait(`!${q('[role="menu"]')}`);
+  // Fit covers the geometric viewport; the new floating chrome is above it. Leave
+  // visible breathing room with the real toolbar, still focused outside the canvas.
+  const titles = selection ? '[data-frame-id][data-selected] [data-frame-title]' : '[data-frame-title]';
+  for (let i = 0; i < 4 && await evaluate(`[...document.querySelectorAll(${JSON.stringify(titles)})].some(e=>{const r=e.getBoundingClientRect();return !e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))})`); i++) await click(q('[aria-label="Zoom out"]'));
+}
+async function addFrame(preset) {
+  await inspector('Design');
+  await click(q('[aria-label="Canvas tools"] [aria-label="Add frame"]'));
+  await click(q(`[role="menuitem"][aria-label="Add ${preset} frame"]`));
+  await wait(`!${q('[role="menu"]')}`);
+}
+async function canvasPoint(expression) {
+  // Keep exact scene targets while panning around the floating notice/toolbar. This
+  // uses the real wheel path and does not change zoom, selection or document data.
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const point = await evaluate(expression);
+    const shift = await evaluate(`(()=>{const v=${q('[aria-label="Interactive frame canvas"]')},r=v.getBoundingClientRect(),p=${JSON.stringify(point)},hit=document.elementFromPoint(p.x,p.y);if(p.x<r.left||p.x>r.right||p.y<r.top||p.y>r.bottom||hit?.closest('[data-camera-zoom]'))return null;const c=[...${q('[aria-label="Page canvas"]')}.children].find(e=>e.contains(hit)&&!e.contains(v));if(!c)return null;const b=c.getBoundingClientRect();return {dy:p.y<r.y+r.height/2?b.bottom-p.y+24:b.top-p.y-24,x:r.right-40,y:r.y+r.height/2,oldY:Number(v.dataset.cameraY)}})()`);
+    if (!shift) return point;
+    await evaluate(`${q('[aria-label="Interactive frame canvas"]')}.focus({preventScroll:true})`);
+    await send('Input.dispatchMouseEvent',{type:'mouseWheel',x:shift.x,y:shift.y,deltaX:0,deltaY:-shift.dy});
+    await wait(`Math.abs(Number(${q('[aria-label="Interactive frame canvas"]')}.dataset.cameraY)-${shift.oldY + shift.dy})<.1`);
+  }
+  throw new Error(`Floating canvas chrome still covers ${expression}`);
+}
+async function chooseLayer(frameId, nodeId) {
+  await sidebar('Layers'); await inspector('Design');
+  const item = layer(frameId, nodeId);
+  await reveal(item); await evaluate(`(${item}).scrollIntoView({block:'nearest',behavior:'instant'});(${item}).focus()`);
+  await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
+  await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
+  await wait(`(${item}).getAttribute('aria-selected')==='true'`);
+}
+async function systemWorkspace() {
+  await click(named('[aria-label="Workspace"] a', 'System'));
+  await wait(`${q('.studio-shell')}.dataset.workspace==='system'`);
+}
+async function projectWorkspace() {
+  await click(named('[aria-label="Workspace"] a', 'Project')); await pages(); await sidebar('Layers');
 }
 async function click(expression) {
-  assert.ok(await evaluate(`!!(${expression})`), `Missing: ${expression}`);
-  await evaluate(`(${expression}).scrollIntoView({block:'center',inline:'center',behavior:'instant'})`);
+  await reveal(expression); await wait(visible(expression));
+  // Floating notices/toolbars can cover a fitted frame title. Use real zoom controls,
+  // never DOM clicks or CSS removal, to expose that canvas target before clicking it.
+  for (let i = 0; i < 4 && await evaluate(`(()=>{const e=(${expression});if(!e.closest('[data-frame-id]'))return false;const r=e.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return !e.contains(hit)&&!hit?.closest('[data-camera-zoom]')})()`); i++) await click(q('[aria-label="Zoom out"]'));
+  await evaluate(`(()=>{const e=(${expression});if(!e.closest('[data-camera-zoom]'))e.scrollIntoView({block:'center',inline:'center',behavior:'instant'})})()`);
   await evaluate('new Promise(resolve => requestAnimationFrame(resolve))');
-  const point = await evaluate(`(()=>{const e=${expression},r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;if(!e.contains(document.elementFromPoint(x,y)))throw Error('Occluded: '+e.outerHTML);return {x,y}})()`);
+  const point = await evaluate(`(()=>{const e=${expression},r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;if(!e.contains(document.elementFromPoint(x,y)))throw Error('Occluded: '+e.outerHTML+' at '+JSON.stringify({x,y,hit:document.elementFromPoint(x,y)?.outerHTML}));return {x,y}})()`);
   await send('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', clickCount: 1 });
   await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', clickCount: 1 });
-  await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+  try { await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))'); }
+  catch (error) {
+    if (!/Inspected target navigated|Execution context was destroyed|Cannot find context/.test(error.message)) throw error;
+    // A real route navigation can destroy the old RAF promise; the caller still verifies its destination.
+    await wait('document.readyState === "complete"');
+  }
 }
 async function fill(selector, text) {
+  if (selector === '[aria-label="Project name"]') await inspector('Project');
+  if (selector === '[aria-label="Page name"]' || selector.startsWith('[aria-label="Frame ') && selector !== '[aria-label="Frame theme"]') await inspector('Design');
   await click(q(selector));
   await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'a', code: 'KeyA', modifiers: 4, commands: ['selectAll'] });
   await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'a', code: 'KeyA', modifiers: 4 });
@@ -62,14 +143,16 @@ async function fill(selector, text) {
   await wait(`${q(selector)}.value === ${JSON.stringify(text)}`);
 }
 async function select(selector, value) {
+  if (selector === '[aria-label="Project design system"]') await inspector('Project');
+  await reveal(q(selector)); await wait(visible(q(selector)));
   await evaluate(`(()=>{const e=${q(selector)};e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('change',{bubbles:true}))})()`);
   await wait(`${q(selector)}.value === ${JSON.stringify(value)}`);
 }
-async function check(label, run) { await run(); checks++; console.log(`PASS ${label}`); }
+async function check(label, run) { stage = label; await run(); checks++; console.log(`PASS ${label}`); }
 const index = () => evaluate(`JSON.parse(localStorage.getItem('${indexKey}'))`);
 const project = (id) => evaluate(`JSON.parse(localStorage.getItem(${JSON.stringify(documentPrefix + id)})).document`);
 const catalog = () => evaluate(`localStorage.getItem('bambiui.systems.v1')`);
-async function pages() { await wait(`location.pathname === '/pages' && ${q('[data-project-status]')}?.textContent !== 'Loading projects…'`); }
+async function pages() { await wait(`['/', '/pages'].includes(location.pathname) && ${q('[aria-label="New project name"]')} && !${q('[aria-label="New project name"]')}.disabled && !${q('[data-project-status]')}?.textContent.includes('Loading')`); }
 async function openManager() { if (!await evaluate(`${q('.studio-header details:has([aria-label="New project name"])')}.open`)) await click(q('.studio-header details:has([aria-label="New project name"]) summary')); }
 async function createProject(name) {
   await openManager(); await fill('[aria-label="New project name"]', name);
@@ -101,14 +184,14 @@ async function cleanup() {
 // moves explicit: this Chromium/CDP build drops capture when `button` defaults to none.
 async function firstDragChecks() {
   await send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});await wait('innerWidth===1440');
-  const id=await createProject('First drag regression');await click(q('[aria-label="Add page"]'));await click(named('button','Add Mobile frame'));
+  const id=await createProject('First drag regression');await click(q('[aria-label="Add page"]'));await addFrame('Mobile');await fit(true);
   await click(q('[data-insert-kind="stack"]'));await click(q('[data-insert-kind="badge"]'));await click(named('#project-inspector button','Select parent'));await click(q('[data-insert-kind="text"]'));
   let doc=await project(id),frame=doc.pages[0].frames[0],source=frame.root.children[0].children[0].id;
   const title=q(`[data-frame-title="${frame.id}"]`),node=id=>q(`[data-frame-id="${frame.id}"] [data-page-node="${id}"]`);
   await click(title);await click(q('[data-insert-kind="stack"]'));doc=await project(id);const target=doc.pages[0].frames[0].root.children[1].id;
   const revision=()=>evaluate(`JSON.parse(localStorage.getItem(${JSON.stringify(documentPrefix+id)})).revision`);
   for(const focus of ['toolbar','input']) for(const timing of ['immediate','settled']) await check(`first mouse drag of unselected node from ${focus} focus (${timing}): one move/save/undo`,async()=>{
-    await click(title);await click(named('button','Fit selection'));
+    await click(title);await fit(true);
     if(focus==='input')await click(q('[aria-label="Frame width"]'));
     assert.equal(await evaluate('document.activeElement.tagName'),focus==='input'?'INPUT':'BUTTON','Focus starts outside canvas');
     assert.equal(await evaluate(`!!document.querySelector('[data-node-overlay="selected"]:not([hidden])')`),false,'No preselected node');
@@ -148,7 +231,7 @@ async function firstDragChecks() {
   await check('ContextMenu trigger right-click/left-click never activates Design Button, Switch, Checkbox or Input',async()=>{
     await click(title);await click(q('[data-insert-kind="stack"]'));
     for(const kind of ['button','switch','checkbox','input']) {await click(q(`[data-insert-kind="${kind}"]`));await click(named('#project-inspector button','Select parent'));}
-    await click(named('button','Fit selection'));const before=await project(id),rev=await revision(),controls=before.pages[0].frames[0].root.children[2].children;
+    await fit(true);const before=await project(id),rev=await revision(),controls=before.pages[0].frames[0].root.children[2].children;
     const state=()=>evaluate(`Array.from(document.querySelectorAll('[data-frame-id="${frame.id}"] [data-frame-surface] input,[data-frame-id="${frame.id}"] [data-frame-surface] [role="switch"],[data-frame-id="${frame.id}"] [data-frame-surface] [role="checkbox"]')).map(e=>({value:e.value??null,checked:e.checked??null,aria:e.getAttribute('aria-checked')}))`);
     const original=await state();
     await evaluate(`(()=>{window.designActivations=[];window.designActivationStop?.();const root=document.querySelector('[data-frame-id="${frame.id}"] [data-frame-surface]');const types=['click','input','change','submit'];const record=e=>window.designActivations.push(e.type);for(const type of types)root.addEventListener(type,record);window.designActivationStop=()=>{for(const type of types)root.removeEventListener(type,record)}})()`);
@@ -199,13 +282,15 @@ try {
   });
   await send('Runtime.enable'); await send('Log.enable'); await send('Page.enable');
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-  await send('Page.navigate', { url: `http://127.0.0.1:${server.address().port}/pages` }); await pages();
+  await send('Page.navigate', { url: `http://127.0.0.1:${server.address().port}/` }); await pages();
   if(firstDragOnly) { await firstDragChecks(); }
   else {
-  await check('static Pages hydration is blank and does not write project storage', async () => {
-    assert.equal(await index(), null); assert.equal(await evaluate(`${q('#token-editor')}.hidden`), true);
+  await check('initial Project workspace is blank, excludes system controls/Develop and does not write project storage', async () => {
+    assert.equal(await index(), null); assert.equal(await evaluate(visible(q('#token-editor'))), false);
     assert.equal(await evaluate(`getComputedStyle(${q('.header-actions')}).display`), 'none');
-    assert.equal(await evaluate(`${q('.view-switch [aria-disabled]')}.textContent.trim()`), 'Develop');
+    assert.equal(await evaluate(`${q('[aria-label="Workspace"] [aria-current]')}.textContent.trim()`), 'Project');
+    assert.equal(await evaluate(`!!${q('.view-switch')}`), false);
+    assert.equal(await evaluate(visible(named('button', 'Create or open a project'))), true);
   });
   let first, second, originalSystem, otherSystem, firstPage;
   await check('create/rename first project with two independent blank pages', async () => {
@@ -232,11 +317,12 @@ try {
     assert.deepEqual(await project(second), before); await openProject('Beta', second);
   });
   await check('design-system manager browsing does not rebind either project', async () => {
-    await click(q('.system-switcher:has(#design-system-name) summary'));
+    await systemWorkspace(); await click(q('.system-switcher:has(#design-system-name) summary'));
     await click(named('.system-switcher-actions button', 'New design system'));
     otherSystem = await evaluate(`JSON.parse(localStorage.getItem('bambiui.systems.v1')).activeId`);
     assert.notEqual(otherSystem, originalSystem);
     assert.equal((await project(second)).systemId, originalSystem); assert.equal((await project(first)).systemId, originalSystem);
+    await projectWorkspace();
     assert.equal(await evaluate(`${q('[aria-label="Page canvas"]')}.dataset.systemId`), originalSystem);
   });
   await check('explicit project rebind confirms impact, preserves content, undo/redo saves and does not touch catalog', async () => {
@@ -260,7 +346,7 @@ try {
     await openProject('Alpha', first); await reload(); assert.equal(await evaluate(`${q('[aria-label="Page canvas"]')}.dataset.pageId`), firstPage);
   });
   await check('referenced system deletion is explicitly blocked, component tokens/Develop remain independent', async () => {
-    await click(q('.system-switcher:has(#design-system-name) summary'));
+    await systemWorkspace(); await click(q('.system-switcher:has(#design-system-name) summary'));
     await click(q(`.system-switcher-list button[aria-current="true"]`));
     await click(q('.studio-sidebar a[href="/button"]')); await wait(`location.pathname === '/button' && !${q('#token-editor')}.hidden`);
     await wait(`${q('.editor-fields')} && !${q('.editor-fields')}.disabled`);
@@ -271,14 +357,14 @@ try {
     await click(q('.view-switch a[href="/develop/button"]')); await wait(`location.pathname === '/develop/button' && ${q('#token-editor')}.hidden`);
     await click(q('.view-switch a[href="/button"]')); await wait(`location.pathname === '/button' && !${q('#token-editor')}.hidden`);
     assert.deepEqual([await project(first), await project(second)], projectsBefore);
-    await click(named('[aria-label="Pages"] a', 'Page 1')); await pages();
+    await projectWorkspace(); await click(named('[aria-label="Pages"] a', 'Page 1')); await pages();
   });
   await check('page history cannot travel token history; native draft undo remains independent', async () => {
-    await click(q('.studio-sidebar a[href="/button"]')); await wait(`location.pathname === '/button' && !${q('#token-editor')}.hidden`);
+    await systemWorkspace(); await click(q('.studio-sidebar a[href="/button"]')); await wait(`location.pathname === '/button' && !${q('#token-editor')}.hidden`);
     const systemBefore = await catalog(); await fill('#token-paddingX', '27');
     await wait(`JSON.parse(localStorage.getItem('bambiui.systems.v1')).systems.find(e=>e.id===${JSON.stringify(otherSystem)}).system.themes.light.components.button.paddingX === 27`);
     const systemEdited = await catalog(); assert.notEqual(systemEdited, systemBefore);
-    await click(named('[aria-label="Pages"] a', 'Page 1')); await pages();
+    await projectWorkspace(); await click(named('[aria-label="Pages"] a', 'Page 1')); await pages();
     const pageBefore = await project(first);
     await fill('[aria-label="Page name"]', 'Draft only');
     await send('Input.dispatchKeyEvent', {type:'keyDown',key:'z',code:'KeyZ',modifiers:4,commands:['undo']});
@@ -287,9 +373,9 @@ try {
     await fill('[aria-label="Page name"]', 'Renamed page'); await click(named('#project-inspector button', 'Rename page'));
     await click(q('[aria-label="Undo project edit"]')); assert.deepEqual(await project(first), pageBefore); assert.equal(await catalog(), systemEdited);
     await click(q('[aria-label="Redo project edit"]')); const pageAfter = await project(first);
-    await click(q('.studio-sidebar a[href="/button"]')); await wait(`location.pathname === '/button' && !${q('#token-editor')}.hidden`);
+    await systemWorkspace(); await click(q('.studio-sidebar a[href="/button"]')); await wait(`location.pathname === '/button' && !${q('#token-editor')}.hidden`);
     await click(q('[aria-label="Undo change"]')); assert.equal(await catalog(), systemBefore); assert.deepEqual(await project(first), pageAfter);
-    await click(named('[aria-label="Pages"] a', 'Renamed page')); await pages();
+    await projectWorkspace(); await click(named('[aria-label="Pages"] a', 'Renamed page')); await pages();
   });
   let webFrame;
   const cameraState = () => evaluate(`(()=>{const e=${q('[aria-label="Interactive frame canvas"]')};return {zoom:Number(e.dataset.cameraZoom),x:Number(e.dataset.cameraX),y:Number(e.dataset.cameraY)}})()`);
@@ -302,11 +388,11 @@ try {
     await evaluate('new Promise(resolve=>requestAnimationFrame(resolve))');
   };
   await check('three independent real-width frames appear together at their stored scene positions', async () => {
-    for (const preset of ['Web','Tablet','Mobile']) await click(named('button',`Add ${preset} frame`));
+    for (const preset of ['Web','Tablet','Mobile']) await addFrame(preset);
     const frames = (await project(first)).pages[0].frames; webFrame = frames[0].id;
     assert.deepEqual(frames.map(f=>[f.width,f.height,f.x]),[[1440,900,0],[768,1024,1520],[390,844,2368]]);
     assert.equal(new Set(frames.map(f=>f.root.id)).size,3); assert.ok(frames.every(f=>!f.root.children.length));
-    await click(named('button','Fit page'));
+    await fit();
     await wait(`${q('[data-frame-surface]')} && Number(${q('[aria-label="Interactive frame canvas"]')}.dataset.cameraZoom) < .5`);
     const dom = await evaluate(`(()=>{const v=${q('[aria-label="Interactive frame canvas"]')},r=v.getBoundingClientRect(),z=Number(v.dataset.cameraZoom);return [...v.querySelectorAll('[data-frame-id]')].map(e=>{const s=e.querySelector('[data-frame-surface]'),b=s.getBoundingClientRect();return {width:parseFloat(getComputedStyle(s).width),height:parseFloat(getComputedStyle(s).height),x:parseFloat(e.style.left),scaled:b.width/z,visible:b.left>=r.left-1&&b.right<=r.right+1}})})()`);
     assert.deepEqual(dom.map(f=>[f.width,f.height,f.x]),[[1440,900,0],[768,1024,1520],[390,844,2368]]); assert.ok(dom.every(f=>f.visible));
@@ -317,7 +403,8 @@ try {
     assert.equal(await evaluate(`document.querySelectorAll('main:not([hidden])').length`),1);
   });
   await check('frame rename/valid geometry drafts/custom preset/duplicate preserve independent roots', async () => {
-    await click(frameTitle(webFrame)); await fill('[aria-label="Frame name"]','Desktop'); await click(named('#project-inspector button','Rename frame'));
+    await click(frameTitle(webFrame)); await fill('[aria-label="Frame name"]','Desktop'); await click(q('[aria-label="Frame width"]'));
+        assert.equal((await project(first)).pages[0].frames[0].name,'Desktop');
     const before = await project(first); await fill('[aria-label="Frame width"]','-');
     await click(q('[aria-label="Frame height"]')); assert.deepEqual(await project(first),before);
     await fill('[aria-label="Frame width"]','1200.5'); await click(q('[aria-label="Frame height"]'));
@@ -325,12 +412,12 @@ try {
     assert.deepEqual(doc.pages[0].frames[0].root,before.pages[0].frames[0].root); assert.deepEqual(doc.pages[0].frames.slice(1),before.pages[0].frames.slice(1));
     await click(named('#project-inspector button','Duplicate frame')); doc = await project(first);
     const copy=doc.pages[0].frames[3]; assert.notEqual(copy.id,webFrame); assert.notEqual(copy.root.id,doc.pages[0].frames[0].root.id); assert.equal(copy.width,1200.5); assert.equal(copy.name,'Desktop copy');
-    await click(named('button','Add Custom frame')); assert.equal((await project(first)).pages[0].frames[4].preset,'custom');
+    await addFrame('Custom'); assert.equal((await project(first)).pages[0].frames[4].preset,'custom');
     await click(q('[aria-label="Undo project edit"]')); await click(q('[aria-label="Undo project edit"]'));
     assert.equal((await project(first)).pages[0].frames.length,3); assert.equal(await evaluate(`!!${q('[aria-label="Frame name"]')}`),false);
   });
   await check('camera wheel pan/anchored zoom/Fit stay session-only and do not touch project bytes', async () => {
-    const before=await project(first),rev=await revision(); await click(named('button','Fit page'));
+    const before=await project(first),rev=await revision(); await fit();
     await click(q('[aria-label="Interactive frame canvas"]')); const old=await cameraState();
     const point=await evaluate(`(()=>{const r=${q('[aria-label="Interactive frame canvas"]')}.getBoundingClientRect();return {x:Math.round(r.x+r.width*.7),y:Math.round(r.y+r.height*.5),left:r.left,top:r.top}})()`);
     await send('Input.dispatchMouseEvent',{type:'mouseWheel',x:point.x,y:point.y,deltaX:30,deltaY:45});
@@ -340,12 +427,12 @@ try {
     await wait(`Number(${q('[aria-label="Interactive frame canvas"]')}.dataset.cameraZoom) > ${pan.zoom}`);
     const next=await cameraState(),px=point.x-point.left,py=point.y-point.top;
     assert.ok(Math.abs((px-pan.x)/pan.zoom-(px-next.x)/next.zoom)<.01,JSON.stringify({point,pan,next})); assert.ok(Math.abs((py-pan.y)/pan.zoom-(py-next.y)/next.zoom)<.01,JSON.stringify({point,pan,next}));
-    await click(named('button','Fit page')); await click(frameTitle(webFrame)); await click(named('button','Fit selection'));
+    await fit(); await click(frameTitle(webFrame)); await fit(true);
     assert.deepEqual(await project(first),before); assert.equal(await revision(),rev);
     await reload(); assert.equal((await cameraState()).zoom,.5); assert.deepEqual(await project(first),before);
   });
   await check('title drag previews without writes, drop is one save/undo and reload retains geometry', async () => {
-    await click(named('button','Fit page')); const before=await project(first),rev=await revision(),cam=await cameraState(),point=await framePoint(webFrame);
+    await fit(); const before=await project(first),rev=await revision(),cam=await cameraState(),point=await framePoint(webFrame);
     await movePointer(point,40,30); assert.equal(await revision(),rev); assert.deepEqual(await project(first),before);
     const preview=await evaluate(`parseFloat(${q(`[data-frame-id="${webFrame}"]`)}.style.left)`); assert.ok(preview>before.pages[0].frames[0].x);
     await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:point.x+40,y:point.y+30,button:'left',clickCount:1});
@@ -356,7 +443,7 @@ try {
     await click(q('[aria-label="Redo project edit"]')); assert.deepEqual(await project(first),moved); await reload(); assert.deepEqual(await project(first),moved);
   });
   await check('click threshold, Escape/pointercancel/blur rollback and Space/middle pan never move frames', async () => {
-    await click(named('button','Fit page')); const before=await project(first),rev=await revision();
+    await fit(); const before=await project(first),rev=await revision();
     let point=await framePoint(webFrame); await movePointer(point,2,1); await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:point.x+2,y:point.y+1,button:'left',clickCount:1});
     for (const cancel of ['escape','pointercancel','blur']) {
       point=await framePoint(webFrame); await movePointer(point,25,20);
@@ -400,19 +487,19 @@ try {
   await check('C06 fixture seeds both full frames with seven real kinds and identical node IDs', async () => {
     await evaluate(`(()=>{const key=${JSON.stringify(documentPrefix+first)},env=JSON.parse(localStorage.getItem(key));env.document.pages[0].frames=env.document.pages[0].frames.slice(0,2);env.document.pages[0].frames.forEach((f,i)=>{f.x=i?1520:0;f.y=0;f.width=i?390:1440;f.height=844;f.preset='custom';f.root={id:'fixtureRoot',kind:'container',props:{maxWidth:'full'},children:[{id:'fixtureForm',kind:'form',props:{action:'/preview-blocked'},children:[{id:'fixtureStack',kind:'stack',props:{gap:'md'},children:[{id:'fixtureText',kind:'text',text:i?'Mobile heading':'Web heading'},{id:'fixtureInput',kind:'input',props:{label:'Fixture email',name:'email',defaultValue:'initial'}},{id:'fixtureSwitch',kind:'switch',props:{label:'Fixture switch',name:'choice',defaultChecked:false}},{id:'fixtureCheckbox',kind:'checkbox',props:{label:'Fixture checkbox',name:'check'}},{id:'fixtureButton',kind:'button',text:'Fixture action',props:{type:'submit'}},{id:'fixtureBadge',kind:'badge',text:'Fixture status'},{id:'fixtureCard',kind:'card',children:[{id:'fixtureHeader',kind:'cardHeader',children:[{id:'fixtureTitle',kind:'cardTitle',text:'Card title'}]},{id:'fixtureContent',kind:'cardContent',children:[{id:'fixtureBody',kind:'text',text:'Card body'}]}]}]}]}]}});env.revision++;localStorage.setItem(key,JSON.stringify(env))})()`);
     await reload(); await wait(`${q('[data-page-node="fixtureSwitch"]')}`); c06Frames=(await project(first)).pages[0].frames.map(f=>f.id); c06Tokens=await catalog();
-    await click(named('button','Fit page'));
-    await click(scoped(c06Frames[1],'[data-frame-title]')); await click(named('button','Fit selection'));
+    await fit();
+    await click(scoped(c06Frames[1],'[data-frame-title]')); await fit(true);
     assert.equal(await evaluate(`document.querySelectorAll('[data-page-node="fixtureButton"]').length`),2);
   });
   await check('C06 Design selects real Input/Button/Switch without activation, typing or layout shift', async () => {
     const frame=c06Frames[1], before=await project(first);
     const bounds=await evaluate(`(()=>{const r=${scoped(frame,'[data-page-node="fixtureInput"]')}.getBoundingClientRect();return [r.x,r.y,r.width,r.height]})()`);
-    await click(scoped(frame,'input[data-page-node="fixtureInput"]')); await wait(`${instance()}.textContent.includes('Input instance')`);
+    await click(scoped(frame,'input[data-page-node="fixtureInput"]')); await wait(`${instance()}.textContent.includes('InputLocal instance')`);
     assert.notEqual(await evaluate('document.activeElement.tagName'),'INPUT');
     await send('Input.insertText',{text:'blocked'}); assert.equal(await evaluate(`${scoped(frame,'input[data-page-node="fixtureInput"]')}.value`),'initial');
-    await click(scoped(frame,'[data-page-node="fixtureSwitch"][role="switch"]')); await wait(`${instance()}.textContent.includes('Switch instance')`);
+    await click(scoped(frame,'[data-page-node="fixtureSwitch"][role="switch"]')); await wait(`${instance()}.textContent.includes('SwitchLocal instance')`);
     assert.equal(await evaluate(`${scoped(frame,'[role="switch"]')}.getAttribute('aria-checked')`),'false');
-    await click(scoped(frame,'[data-page-node="fixtureButton"]')); await wait(`${instance()}.textContent.includes('Button instance')`);
+    await click(scoped(frame,'[data-page-node="fixtureButton"]')); await wait(`${instance()}.textContent.includes('ButtonLocal instance')`);
     assert.equal(await evaluate('location.pathname'),'/pages'); assert.deepEqual(await project(first),before);
     assert.deepEqual(await evaluate(`(()=>{const r=${scoped(frame,'[data-page-node="fixtureInput"]')}.getBoundingClientRect();return [r.x,r.y,r.width,r.height]})()`),bounds);
     await evaluate(`${scoped(frame,'[data-page-node="fixtureButton"]')}.focus()`);
@@ -439,6 +526,7 @@ try {
     await click(scoped(frame,'[data-page-node="fixtureButton"]'));
     await fill('[aria-label="Instance text"]',''); await enter();
     assert.ok(await evaluate(`!!${instance()}.querySelector('[role="alert"]')`)); assert.deepEqual(await project(first),before);
+        assert.equal(await evaluate(`!!${q('[aria-label="Clear instance radius"]')}`),false,'No reset icon before a radius override exists');
     await fill('[aria-label="Instance text"]','Native draft');
         await send('Input.dispatchKeyEvent',{type:'keyDown',key:'z',code:'KeyZ',modifiers:4,commands:['undo']}); await send('Input.dispatchKeyEvent',{type:'keyUp',key:'z',code:'KeyZ',modifiers:4});
         assert.deepEqual(await project(first),before); assert.equal(await evaluate('document.activeElement.getAttribute("aria-label")'),'Instance text');
@@ -450,31 +538,31 @@ try {
     assert.equal((await project(first)).pages[0].frames[1].root.children[0].children[0].children[4].props.disabled,false);
     assert.equal(await evaluate(`${scoped(frame,'[data-page-node="fixtureButton"]')}.dataset.radius`),'lg');
     await click(q('[aria-label="Clear instance radius"]')); assert.ok(!Object.hasOwn((await project(first)).pages[0].frames[1].root.children[0].children[0].children[4].props,'radius'));
+        assert.equal(await evaluate(`!!${q('[aria-label="Clear instance radius"]')}`),false,'Clearing removes the reset icon');
     await click(q('[aria-label="Undo project edit"]')); assert.equal(await evaluate(`${scoped(frame,'[data-page-node="fixtureButton"]')}.dataset.radius`),'lg');
     assert.equal(await catalog(),tokens);
   });
   await check('C06 keyboard layers, parent/breadcrumb, Escape and undo fallback remain frame scoped', async () => {
     const frame=c06Frames[1];
-    await click(named('#project-inspector button','Select parent')); assert.match(await evaluate(`${instance()}.textContent`),/Stack instance/);
-    await click(named('[aria-label="Selection path"] button','Container')); assert.match(await evaluate(`${instance()}.textContent`),/Container instance/);
-    await click(q('[aria-label="Instance settings"] details summary'));
-    await evaluate(`${q('[aria-label="Select Input: Fixture email"]')}.focus()`); await enter(); await wait(`${instance()}.textContent.includes('Input instance')`);
+    await click(named('#project-inspector button','Select parent')); assert.match(await evaluate(`${instance()}.textContent`),/StackLocal instance/);
+    await click(named('[aria-label="Selection path"] button','Container')); assert.match(await evaluate(`${instance()}.textContent`),/ContainerLocal instance/);
+    await chooseLayer(frame, 'fixtureInput'); await wait(`${instanceKind()}==='Input'`);
     await fill('[aria-label="Instance label"]',''); await enter(); assert.ok(await evaluate(`!!${instance()}.querySelector('[role="alert"]')`));
     await fill('[aria-label="Instance label"]','Mobile email'); await enter();
     await fill('[aria-label="Instance name"]','bad name'); await enter(); assert.ok(await evaluate(`!!${instance()}.querySelector('[role="alert"]')`));
     await fill('[aria-label="Instance name"]','mobile_email'); await enter();
     await evaluate(`${q('[aria-label="Interactive frame canvas"]')}.focus()`); await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'}); await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape'});
-    await wait(`!${instance()}.textContent.includes('Input instance')`);
-    await click(named('button','Fit selection')); await click(scoped(frame,'[data-frame-title]')); await click(named('#project-inspector button','Duplicate frame')); if (!await evaluate(`${q('[aria-label="Instance settings"] details')}.open`)) await click(q('[aria-label="Instance settings"] details summary'));
-    await evaluate(`${q('[aria-label="Frame layers"] button')}.focus()`); await enter();
-    assert.match(await evaluate(`${instance()}.textContent`),/Container instance/);
-    await click(q('[aria-label="Undo project edit"]')); await wait(`!${instance()}.textContent.includes('Container instance')`);
+    await wait(`${instanceKind()}!=='Input'`);
+    await fit(true); await click(scoped(frame,'[data-frame-title]')); await click(named('#project-inspector button','Duplicate frame'));
+    const duplicate=(await project(first)).pages[0].frames.at(-1);
+    await chooseLayer(duplicate.id, duplicate.root.id);
+    assert.match(await evaluate(`${instance()}.textContent`),/ContainerLocal instance/);
+    await click(q('[aria-label="Undo project edit"]')); await wait(`${instanceKind()}!=='Container'`);
     assert.equal((await project(first)).pages[0].frames.length,2);
-    await click(scoped(frame,'[data-frame-title]')); await click(named('button','Fit selection'));
+    await click(scoped(frame,'[data-frame-title]')); await fit(true);
   });
   await check('C06 binding drafts replace controlled/default pairs atomically and clearing removes only the override', async () => {
-    if (!await evaluate(`${q('[aria-label="Instance settings"] details')}.open`)) await click(q('[aria-label="Instance settings"] details summary'));
-    await evaluate(`${q('[aria-label="Select Input: Mobile email"]')}.focus()`); await enter();
+    await chooseLayer(c06Frames[1], 'fixtureInput');
     const before=await project(first), tokens=await catalog(), rev=await revision();
     await fill('[aria-label="Instance value"]','Snapshot'); await enter();
     let field=(await project(first)).pages[0].frames[1].root.children[0].children[0].children[1];
@@ -488,7 +576,7 @@ try {
   });
   await check('C06 Preview enables native controls but prevents forms/navigation and never edits project data', async () => {
     const frame=c06Frames[1], before=await project(first), origin=await evaluate('performance.timeOrigin');
-    await click(named('button','Preview')); await wait(`${scoped(frame,'[data-frame-surface]')}.dataset.editorMode==='preview'`);
+    await click(modeButton('Preview')); await wait(`${scoped(frame,'[data-frame-surface]')}.dataset.editorMode==='preview'`);
     await fill(`[data-frame-id="${frame}"] input[data-page-node="fixtureInput"]`,'preview edit');
     assert.equal(await evaluate(`${scoped(frame,'input[data-page-node="fixtureInput"]')}.value`),'preview edit');
     await click(scoped(frame,'[role="switch"]')); assert.equal(await evaluate(`${scoped(frame,'[role="switch"]')}.getAttribute('aria-checked')`),'true');
@@ -497,27 +585,25 @@ try {
     assert.deepEqual(await evaluate('window.c06Submitted'),[true]); assert.equal(previewRequests,0); assert.equal(await evaluate('location.pathname'),'/pages'); assert.equal(await evaluate('performance.timeOrigin'),origin);
     assert.deepEqual(await project(first),before); assert.equal(await catalog(),c06Tokens);
     assert.equal(await evaluate(`${scoped(frame,'[data-node-overlay="selected"]')}`),null);
-    await click(named('button','Design'));
+    await click(modeButton('Design'));
   });
   await check('C06 clipped selection shows only the visible intersection, fully hidden layers show no outline', async () => {
     const frame=c06Frames[1]; await click(scoped(frame,'[data-frame-title]'));
     await fill('[aria-label="Frame height"]','160'); await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter'}); await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter'});
-    if(!await evaluate(`${q('[aria-label="Instance settings"] details')}.open`)) await click(q('[aria-label="Instance settings"] details summary'));
-    await evaluate(`${q('[aria-label="Select Stack: layout"]')}.focus()`); await enter(); await wait(`!${selectedOutline(frame)}.hidden`);
+    await chooseLayer(frame, 'fixtureStack'); await wait(`!${selectedOutline(frame)}.hidden`);
     assert.ok(await evaluate(`(()=>{const a=${selectedOutline(frame)}.getBoundingClientRect(),b=${scoped(frame,'[data-frame-surface]')}.getBoundingClientRect();return a.bottom<=b.bottom+.5&&a.top>=b.top-.5})()`));
-    await evaluate(`${q('[aria-label="Select Card.Title: Card title"]')}.focus()`); await enter(); await wait(`${selectedOutline(frame)}.hidden`);
+    await chooseLayer(frame, 'fixtureTitle'); await wait(`${selectedOutline(frame)}.hidden`);
     await click(q('[aria-label="Undo project edit"]')); await wait(`!${selectedOutline(frame)}.hidden`);
   });
   await check('C06 instance system link activates the linked kind; shared color edit repaints both frames without project changes', async () => {
     const before=await project(first);
-    if (!await evaluate(`${q('[aria-label="Instance settings"] details')}.open`)) await click(q('[aria-label="Instance settings"] details summary'));
-    await evaluate(`${q('[aria-label="Select Button: Mobile only"]')}.focus()`); await enter();
+    await chooseLayer(c06Frames[1], 'fixtureButton');
     await click(named('#project-inspector button','Edit shared system styles')); await wait(`location.pathname==='/button' && !${q('#token-editor')}.hidden`);
     assert.equal((JSON.parse(await catalog())).activeId,originalSystem);
     await click(q('.studio-sidebar a[href="/colors"]')); await wait(`location.pathname==='/colors' && ${q('#token-background')}`);
     await fill('#token-background','#e4edf2');
     await wait(`JSON.parse(localStorage.getItem('bambiui.systems.v1')).systems.find(e=>e.id===${JSON.stringify(originalSystem)}).system.themes.light.global.background==='#e4edf2'`);
-    await click(q('[aria-label="Pages"] a')); await pages();
+    await projectWorkspace(); await click(q('[aria-label="Pages"] a')); await pages();
     await wait(`[...document.querySelectorAll('[data-frame-surface]')].every(e=>getComputedStyle(e).backgroundColor==='rgb(228, 237, 242)')`);
     assert.equal(await evaluate(`document.querySelectorAll('[data-frame-surface]').length`),2); assert.deepEqual(await project(first),before);
   });
@@ -526,15 +612,17 @@ try {
   const palette = kind => q(`[data-insert-kind="${kind}"]`);
   const node = id => q(`[data-frame-id="${c07Frame}"] [data-page-node="${id}"]`);
   async function paletteDrag(kind, target, cancel) {
+    await sidebar('Assets');
     await evaluate(`(${palette(kind)}).scrollIntoView({block:'nearest',behavior:'instant'})`);
     const start=await evaluate(`(()=>{const r=${palette(kind)}.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
-    const end=await evaluate(`(()=>{const r=(${target}).getBoundingClientRect(),v=${q('[aria-label="Interactive frame canvas"]')}.getBoundingClientRect();return {x:Math.max(r.x,v.x)+Math.min(r.width,80)/2,y:Math.max(r.y,v.y)+Math.min(r.height,40)/2}})()`);
+    const end=await canvasPoint(`(()=>{const r=(${target}).getBoundingClientRect(),v=${q('[aria-label="Interactive frame canvas"]')}.getBoundingClientRect();return {x:Math.max(r.x,v.x)+Math.min(r.width,80)/2,y:Math.max(r.y,v.y)+Math.min(r.height,40)/2}})()`);
     const before=await project(c07Project), rev=await c07Revision();
     await send('Input.dispatchMouseEvent',{type:'mousePressed',...start,button:'left',clickCount:1});
     await send('Input.dispatchMouseEvent',{type:'mouseMoved',...end,button:'left',buttons:1});
     await wait(`document.querySelector('[data-insertion-valid]')`);
     assert.deepEqual(await project(c07Project),before); assert.equal(await c07Revision(),rev);
     const valid=await evaluate(`document.querySelector('[data-insertion-valid]').dataset.insertionValid`);
+        if (valid==='false' && !cancel) console.log('DROP rejected',kind,await evaluate(`document.querySelector('[data-insertion-valid]').textContent`));
     if(cancel==='escape') await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'});
     if(cancel==='blur') await evaluate(`window.dispatchEvent(new Event('blur'))`);
     if(cancel==='pointercancel') await evaluate(`document.querySelector('[data-insert-kind="${kind}"]').dispatchEvent(new PointerEvent('pointercancel',{bubbles:true,pointerId:1}))`);
@@ -545,7 +633,7 @@ try {
     return {before,valid};
   }
   await check('C07 visible palette builds Button → Grid → Card cell from a blank project; each drop one save/undo',async()=>{
-    c07Project=await createProject('Palette build'); await click(q('[aria-label="Add page"]')); await click(named('button','Add Mobile frame'));
+    c07Project=await createProject('Palette build'); await click(q('[aria-label="Add page"]')); await addFrame('Mobile');
     c07Frame=(await project(c07Project)).pages[0].frames[0].id;
     const surface=q(`[data-frame-id="${c07Frame}"] [data-frame-surface]`);
     const camera=await cameraState(); const result=await paletteDrag('button',surface);
@@ -570,7 +658,7 @@ try {
     const before=await project(c07Project), rev=await c07Revision();
     await evaluate(`(()=>{const dt=new DataTransfer();dt.setData('application/json',JSON.stringify({kind:'button'}));const e=${node(root.id)};e.dispatchEvent(new DragEvent('dragover',{bubbles:true,dataTransfer:dt}));e.dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:dt}))})()`);
     assert.deepEqual(await project(c07Project),before); assert.equal(await c07Revision(),rev);
-    await click(named('button','Preview')); assert.equal(await evaluate(`${palette('button')}.disabled`),true); await click(named('button','Design'));
+    await click(modeButton('Preview')); assert.equal(await evaluate(`${palette('button')}.disabled`),true); await click(modeButton('Design'));
   });
   await check('C07 selected row slot and palette mouse drops at 50/100/150/400% after pan',async()=>{
     const root=(await project(c07Project)).pages[0].frames[0].root, stack=root.children[0];
@@ -581,10 +669,10 @@ try {
     assert.equal((await project(c07Project)).pages[0].frames[0].root.children[0].children.length,2);
     for(const zoom of [.5,1,1.5,4]) {
       await evaluate(`${q('[aria-label="Interactive frame canvas"]')}.focus({preventScroll:true})`);
-      let cam=await cameraState(); const p=await evaluate(`(()=>{const r=${q('[aria-label="Interactive frame canvas"]')}.getBoundingClientRect();return {x:r.x+30,y:r.y+40}})()`);
+      let cam=await cameraState(); const p=await evaluate(`(()=>{const r=${q('[aria-label="Interactive frame canvas"]')}.getBoundingClientRect();return {x:r.x+r.width*.7,y:r.y+r.height*.5}})()`);
       await send('Input.dispatchMouseEvent',{type:'mouseWheel',...p,deltaX:0,deltaY:-Math.log(zoom/cam.zoom)/.002,modifiers:2});
       await wait(`Math.abs(Number(${q('[aria-label="Interactive frame canvas"]')}.dataset.cameraZoom)-${zoom})<.001`);
-      cam=await cameraState(); await send('Input.dispatchMouseEvent',{type:'mouseWheel',...p,deltaX:cam.x-20,deltaY:cam.y-40});
+      cam=await cameraState(); await send('Input.dispatchMouseEvent',{type:'mouseWheel',...p,deltaX:cam.x-20,deltaY:cam.y-140});
       await wait(`Math.abs(Number(${q('[aria-label="Interactive frame canvas"]')}.dataset.cameraX)-20)<.01`);
       const children=(await project(c07Project)).pages[0].frames[0].root.children[0].children;
       // The painted gap, not a child leaf or selected-ancestor fallback, is the exact Stack slot.
@@ -595,7 +683,7 @@ try {
     await openProject('Alpha',first);
   });
   await check('C07 all nine palette entries insert by real mouse into full empty-root geometry and select the inserted node',async()=>{
-    c07Project=await createProject('All palette entries'); await click(q('[aria-label="Add page"]')); await click(named('button','Add Mobile frame')); await click(named('button','Fit selection'));
+    c07Project=await createProject('All palette entries'); await click(q('[aria-label="Add page"]')); await addFrame('Mobile'); await fit(true);
     c07Frame=(await project(c07Project)).pages[0].frames[0].id;
     const surface=q(`[data-frame-id="${c07Frame}"] [data-frame-surface]`);
     const blank=`({getBoundingClientRect(){const r=${surface}.getBoundingClientRect();return {x:r.x+20,y:r.bottom-50,width:40,height:20}}})`;
@@ -606,7 +694,8 @@ try {
       const root=(await project(c07Project)).pages[0].frames[0].root;
       const last=root.children.at(-1), inserted=['button','input','switch','checkbox'].includes(kind)?last.children[0]:last;
       assert.equal(inserted.kind,kind);
-      assert.equal(await evaluate(`(()=>{const buttons=[...document.querySelectorAll('[aria-label="Frame layers"] button')],i=buttons.findIndex(b=>b.getAttribute('aria-pressed')==='true'),walk=n=>[n,...(n.children??[]).flatMap(walk)];return walk(${JSON.stringify(root)})[i]?.id})()`),inserted.id);
+      assert.equal(await evaluate(`${layer(c07Frame, inserted.id)}?.getAttribute('aria-selected')`),'true');
+            assert.equal(await evaluate(`${layer(c07Frame, inserted.id)}?.tagName`),'LI');
       assert.equal(await catalog(),tokenBytes);
     }
   });
@@ -630,12 +719,15 @@ try {
     const before=await project(c07Project),rev=await c07Revision();
     const surface=q(`[data-frame-id="${c07Frame}"] [data-frame-surface]`);
     for(const reason of ['page','project']) {
+      await sidebar('Assets');
       await evaluate(`${palette('badge')}.scrollIntoView({block:'nearest'})`);
       const start=await evaluate(`(()=>{const r=${palette('badge')}.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
       const end=await evaluate(`(()=>{const r=${surface}.getBoundingClientRect();return {x:r.x+30,y:r.bottom-50}})()`);
       await send('Input.dispatchMouseEvent',{type:'mousePressed',...start,button:'left',clickCount:1});
       await send('Input.dispatchMouseEvent',{type:'mouseMoved',...end,button:'left',buttons:1});await wait(`document.querySelector('[data-insertion-valid]')`);
-      if(reason==='page') {await evaluate(`${named('[aria-label="Pages"] a','Page 2')}.click()`);await wait(`${q('[aria-label="Page canvas"]')}.dataset.pageId!==${JSON.stringify(before.pages[0].id)}`);await evaluate(`${named('[aria-label="Pages"] a','Page 1')}.click()`);}
+      // Deliberate session interruption while the mouse is captured. The mounted page
+            // link is inactive under Assets; switching tabs first would test tab-unmount cancellation instead.
+            if(reason==='page') {await evaluate(`${named('[aria-label="Pages"] a','Page 2',true)}.click()`);await wait(`${q('[aria-label="Page canvas"]')}.dataset.pageId!==${JSON.stringify(before.pages[0].id)}`);await evaluate(`${named('[aria-label="Pages"] a','Page 1',true)}.click()`);}
       else {await evaluate(`${named('details button','Alpha')}.click()`);await wait(`${q('[aria-label="Page canvas"]')}.dataset.projectId===${JSON.stringify(first)}`);await evaluate(`${named('details button','All palette entries')}.click()`);await wait(`${q('[aria-label="Page canvas"]')}.dataset.projectId===${JSON.stringify(c07Project)}`);}
       await wait(`!document.querySelector('[data-insertion-valid]')`);
       await send('Input.dispatchMouseEvent',{type:'mouseReleased',...end,button:'left',clickCount:1});
@@ -658,28 +750,28 @@ try {
     if(cancel==='escape') await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'});
     if(cancel==='blur') await evaluate(`window.dispatchEvent(new Event('blur'))`);
     if(cancel==='pointercancel') await evaluate(`window.dispatchEvent(new PointerEvent('pointercancel',{pointerId:1}))`);
-    if(cancel==='mode') await evaluate(`${named('button','Preview')}.click()`);
+    if(cancel==='mode') await evaluate(`${modeButton('Preview')}.click()`);
     await send('Input.dispatchMouseEvent',{type:'mouseReleased',...end,button:'left',clickCount:1});
     await wait(`!document.querySelector('[data-node-move-valid]')`);
     if(cancel||valid==='false'||JSON.stringify(await project(c07Project))===JSON.stringify(before)) {assert.deepEqual(await project(c07Project),before);assert.equal(await c07Revision(),rev);}
     else await wait(`JSON.parse(localStorage.getItem(${JSON.stringify(documentPrefix+c07Project)})).revision===${rev+1}`);
-    if(cancel==='mode') await click(named('button','Design'));
+    if(cancel==='mode') await click(modeButton('Design'));
     return {before,valid};
   }
   await check('C08 direct canvas threshold selects without editing; row/column reorder is one save/undo',async()=>{
-    c07Project=await createProject('Canvas moves');await click(q('[aria-label="Add page"]'));await click(named('button','Add Mobile frame'));
+    c07Project=await createProject('Canvas moves');await click(q('[aria-label="Add page"]'));await addFrame('Mobile');
     c07Frame=(await project(c07Project)).pages[0].frames[0].id;
     await click(palette('stack'));c08Row=(await project(c07Project)).pages[0].frames[0].root.children[0].id;
     await click(palette('badge'));await click(named('#project-inspector button','Select parent'));await click(palette('text'));
     let row=(await project(c07Project)).pages[0].frames[0].root.children[0];c08Node=row.children[0].id;
     await click(named('#project-inspector button','Select parent'));await select('[aria-label="Instance direction"]','row');
-    await click(named('button','Fit selection'));
+    await fit(true);
     const start=await evaluate(pointAt(node(c08Node))),before=await project(c07Project),rev=await c07Revision();
     await send('Input.dispatchMouseEvent',{type:'mousePressed',...start,button:'left',clickCount:1});await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:start.x+2,y:start.y,button:'left',buttons:1});await delay(50);
     assert.equal(await evaluate(`!!document.querySelector('[data-node-move-valid]')`),false);
     await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:start.x+2,y:start.y,button:'left',clickCount:1});
     assert.deepEqual(await project(c07Project),before);assert.equal(await c07Revision(),rev);
-    assert.equal(await evaluate(`${q('[aria-label="Instance settings"]')}.textContent.includes('Badge instance')`),true);
+    assert.equal(await evaluate(`${q('[aria-label="Instance settings"]')}.textContent.includes('BadgeLocal instance')`),true);
     const result=await nodeDrag(c08Node,pointAt(node(row.children[1].id),.9));assert.equal(result.valid,'true');
     row=(await project(c07Project)).pages[0].frames[0].root.children[0];assert.equal(row.children[1].id,c08Node);
     await click(q('[aria-label="Undo project edit"]'));assert.deepEqual(await project(c07Project),result.before);await click(q('[aria-label="Redo project edit"]'));
@@ -701,20 +793,20 @@ try {
     const invalid=await nodeDrag(c08Other,pointAt(node(c08Node)));assert.equal(invalid.valid,'false');assert.deepEqual(await project(c07Project),before);assert.equal(await c07Revision(),rev);
   });
   await check('C08 cross-frame canvas move is atomic, retains ID and one Undo restores both frames',async()=>{
-    await click(named('button','Add Mobile frame'));c08Second=(await project(c07Project)).pages[0].frames[1].id;await click(named('button','Fit page'));
+    await addFrame('Mobile');c08Second=(await project(c07Project)).pages[0].frames[1].id;await fit();
     const surface=q(`[data-frame-id="${c08Second}"] [data-frame-surface]`);
     const result=await nodeDrag(c08Node,pointAt(surface,.3,.2));assert.equal(result.valid,'true');
     const doc=await project(c07Project);assert.equal(doc.pages[0].frames[0].root.children[1].children.length,0);assert.equal(doc.pages[0].frames[1].root.children[0].id,c08Node);
-    assert.equal(await evaluate(`${q('[aria-label="Instance settings"]')}.textContent.includes('Badge instance')`),true);
+    assert.equal(await evaluate(`${q('[aria-label="Instance settings"]')}.textContent.includes('BadgeLocal instance')`),true);
     await click(q('[aria-label="Undo project edit"]'));assert.deepEqual(await project(c07Project),result.before);await click(q('[aria-label="Redo project edit"]'));assert.deepEqual(await project(c07Project),doc);
     await click(q('[aria-label="Undo project edit"]'));
   });
   await check('C08 zoom 50/100/150 reparent geometry uses painted/clipped client targets after pan',async()=>{
     for(const zoom of [.5,1,1.5]) {
       await evaluate(`${q('[aria-label="Interactive frame canvas"]')}.focus({preventScroll:true})`);
-      let cam=await cameraState();const p=await evaluate(`(()=>{const r=${q('[aria-label="Interactive frame canvas"]')}.getBoundingClientRect();return {x:r.x+30,y:r.y+40}})()`);
+      let cam=await cameraState();const p=await evaluate(`(()=>{const r=${q('[aria-label="Interactive frame canvas"]')}.getBoundingClientRect();return {x:r.x+r.width*.7,y:r.y+r.height*.5}})()`);
       await send('Input.dispatchMouseEvent',{type:'mouseWheel',...p,deltaX:0,deltaY:-Math.log(zoom/cam.zoom)/.002,modifiers:2});await wait(`Math.abs(Number(${q('[aria-label="Interactive frame canvas"]')}.dataset.cameraZoom)-${zoom})<.001`);
-      cam=await cameraState();await send('Input.dispatchMouseEvent',{type:'mouseWheel',...p,deltaX:cam.x-20,deltaY:cam.y-40});await wait(`Math.abs(Number(${q('[aria-label="Interactive frame canvas"]')}.dataset.cameraX)-20)<.01`);
+      cam=await cameraState();await send('Input.dispatchMouseEvent',{type:'mouseWheel',...p,deltaX:cam.x-20,deltaY:cam.y-140});await wait(`Math.abs(Number(${q('[aria-label="Interactive frame canvas"]')}.dataset.cameraX)-20)<.01`);
       const result=await nodeDrag(c08Node,pointAt(node(c08Row),.8,.5));assert.equal(result.valid,'true');
       assert.equal((await project(c07Project)).pages[0].frames[0].root.children[0].children.some(n=>n.id===c08Node),true);
       await click(q('[aria-label="Undo project edit"]'));assert.deepEqual(await project(c07Project),result.before);
@@ -729,20 +821,20 @@ try {
     assert.equal(await evaluate(`(()=>{const overlay=document.querySelector('[data-node-move-valid]'),highlight=overlay?.querySelector('[data-move-target]'),surface=document.querySelector('[data-frame-id="${c08Second}"] [data-frame-surface]'),v=${q('[aria-label="Interactive frame canvas"]')};if(!highlight||!surface)return false;return Math.abs(highlight.getBoundingClientRect().x-Math.max(surface.getBoundingClientRect().x,v.getBoundingClientRect().x))<10})()`),true);
     await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'});await send('Input.dispatchMouseEvent',{type:'mouseReleased',...end,button:'left',clickCount:1});
     await wait(`!document.querySelector('[data-node-move-valid]')`);const stopped=await cameraState();await delay(80);assert.deepEqual(await cameraState(),stopped);
-    await click(named('button','Fit page'));
+    await fit();
   });
   await check('C08 visible keyboard Move target/position uses same command; Preview disables drag',async()=>{
-    await click(q(`[data-frame-id="${c07Frame}"] [data-node-move-handle="${c08Node}"]`));await evaluate(`(()=>{const d=[...document.querySelectorAll('#project-inspector details')].find(d=>d.querySelector('summary')?.textContent==='Move instance');d.open=true})()`);
+    await click(q(`[data-frame-id="${c07Frame}"] [data-node-move-handle="${c08Node}"]`));await reveal(q('[aria-label="Move target slot"]'));
     await select('[aria-label="Move target slot"]',JSON.stringify([c07Frame,c08Row]));await select('[aria-label="Move position"]','1');
     const before=await project(c07Project),rev=await c07Revision();await evaluate(`${named('#project-inspector button','Move here')}.scrollIntoView({block:'nearest'});${named('#project-inspector button','Move here')}.focus()`);await enter();
     await wait(`JSON.parse(localStorage.getItem(${JSON.stringify(documentPrefix+c07Project)})).revision===${rev+1}`);assert.equal((await project(c07Project)).pages[0].frames[0].root.children[0].children[1].id,c08Node);
     await click(q('[aria-label="Undo project edit"]'));assert.deepEqual(await project(c07Project),before);
-    await click(named('button','Preview'));const start=await evaluate(pointAt(node(c08Node))),end=await evaluate(pointAt(node(c08Row)));
+    await click(modeButton('Preview'));const start=await evaluate(pointAt(node(c08Node))),end=await evaluate(pointAt(node(c08Row)));
     await send('Input.dispatchMouseEvent',{type:'mousePressed',...start,button:'left',clickCount:1});await send('Input.dispatchMouseEvent',{type:'mouseMoved',...end,button:'left',buttons:1});await send('Input.dispatchMouseEvent',{type:'mouseReleased',...end,button:'left',clickCount:1});assert.equal(await evaluate(`!!document.querySelector('[data-node-move-valid]')`),false);assert.deepEqual(await project(c07Project),before);
-    await click(named('button','Design'));
+    await click(modeButton('Design'));
   });
   await check('C08 Grid and Card body moves expose wrappers/existing body and undo as single edits',async()=>{
-    await click(frameTitle(c07Frame));await click(palette('grid'));await click(frameTitle(c07Frame));await click(palette('card'));await click(named('button','Fit page'));
+    await click(frameTitle(c07Frame));await click(palette('grid'));await click(frameTitle(c07Frame));await click(palette('card'));await fit();
     const root=(await project(c07Project)).pages[0].frames[0].root,grid=root.children.find(n=>n.kind==='grid'),card=root.children.find(n=>n.kind==='card');
     const intoGrid=await nodeDrag(c08Node,pointAt(node(grid.id),.8,.7));assert.equal(intoGrid.valid,'true');
     const cell=(await project(c07Project)).pages[0].frames[0].root.children.find(n=>n.id===grid.id).children[0];assert.equal(cell.kind,'gridItem');assert.equal(cell.children[0].id,c08Node);
@@ -753,7 +845,7 @@ try {
   });
   await check('C08 page away/back aborts a captured node drag without storage or history mutation',async()=>{
     await click(q('[aria-label="Add page"]'));await click(named('[aria-label="Pages"] a','Page 1'));
-    await click(named('button','Fit page'));
+    await fit();
     await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
     const before=await project(c07Project),rev=await c07Revision(),start=await evaluate(pointAt(node(c08Node))),end=await evaluate(pointAt(node(c08Row),.8,.5));
     assert.equal(await evaluate(`(()=>{const e=document.elementFromPoint(${start.x},${start.y});return e?.closest('[data-node-move-handle]')?.dataset.nodeMoveHandle??e?.closest('[data-page-node]')?.dataset.pageNode})()`),c08Node,`Node drag start not on source: ${JSON.stringify(start)}`);
@@ -778,14 +870,14 @@ try {
     await wait(`document.querySelector('[role="menu"]')`);
   }
   await check('C09 right-click acts on target not previous selection; duplicate keeps props with fresh IDs and one Undo',async()=>{
-    c09Project=await createProject('Context actions');await click(q('[aria-label="Add page"]'));await click(named('button','Add Mobile frame'));
+    c09Project=await createProject('Context actions');await click(q('[aria-label="Add page"]'));await addFrame('Mobile');
     c09Frame=(await project(c09Project)).pages[0].frames[0].id;c07Frame=c09Frame;
     await click(palette('badge'));c09Badge=(await project(c09Project)).pages[0].frames[0].root.children[0].id;
     await select('[aria-label="Instance tone"]','danger');
     await click(frameTitle(c09Frame));await click(palette('text'));c09Text=(await project(c09Project)).pages[0].frames[0].root.children[1].id;
-    await click(named('button','Fit selection'));
+    await fit(true);
     const before=await project(c09Project),tokens=await catalog();
-    await context(node(c09Badge));assert.match(await evaluate(`${q('[aria-label="Instance settings"]')}.textContent`),/Badge instance/);
+    await context(node(c09Badge));assert.match(await evaluate(`${q('[aria-label="Instance settings"]')}.textContent`),/BadgeLocal instance/);
     await click(menuItem('Duplicate instance'));
     let doc=await project(c09Project),children=doc.pages[0].frames[0].root.children;
     assert.equal(children[0].id,c09Badge);assert.notEqual(children[1].id,c09Badge);assert.equal(children[2].id,c09Text);
@@ -795,9 +887,9 @@ try {
   });
   await check('C09 portal stays outside zoom transform, clamps, roves with arrows and Escape returns canvas focus',async()=>{
     for(const zoom of [.5,1.5]) {
-      await evaluate(`${canvas}.focus()`);let cam=await cameraState();const point=await evaluate(pointAt(canvas,.1,.1));
+      await evaluate(`${canvas}.focus()`);let cam=await cameraState();const point=await evaluate(pointAt(canvas,.7,.5));
       await send('Input.dispatchMouseEvent',{type:'mouseWheel',...point,deltaX:0,deltaY:-Math.log(zoom/cam.zoom)/.002,modifiers:2});await wait(`Math.abs(Number(${canvas}.dataset.cameraZoom)-${zoom})<.001`);
-      cam=await cameraState();await send('Input.dispatchMouseEvent',{type:'mouseWheel',...point,deltaX:cam.x-20,deltaY:cam.y-40});await wait(`Math.abs(Number(${canvas}.dataset.cameraX)-20)<.01`);
+      cam=await cameraState();await send('Input.dispatchMouseEvent',{type:'mouseWheel',...point,deltaX:cam.x-20,deltaY:cam.y-140});await wait(`Math.abs(Number(${canvas}.dataset.cameraX)-20)<.01`);
       await context(node(c09Badge));
       assert.equal(await evaluate(`(()=>{const e=document.querySelector('[role="menu"]'),r=e.getBoundingClientRect();return !e.closest('[data-camera-zoom]')&&r.x>=0&&r.y>=0&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1&&Math.abs(r.width-260)<2})()`),true);
       await key('ArrowDown','ArrowDown');await key('ArrowDown','ArrowDown');assert.equal(await evaluate(`document.activeElement?.getAttribute('role')==='menuitem'`),true);
@@ -805,10 +897,10 @@ try {
     }
   });
   await check('C09 visible Actions uses identical wrap commands and DOM has Stack / Grid.Item structure',async()=>{
-    await click(named('button','Fit selection'));await context(node(c09Badge));await key('Escape','Escape');
+    await fit(true);await context(node(c09Badge));await key('Escape','Escape');
     const before=await project(c09Project);
     for(const label of ['Wrap in Stack','Wrap in Grid']) {
-      await click(named('[aria-label="Canvas camera"] button','… Actions'));await click(menuItem(label));
+      await click(named('[aria-label="Canvas tools"] button','… Actions'));await click(menuItem(label));
       const doc=await project(c09Project),wrapper=doc.pages[0].frames[0].root.children[0];
       assert.equal(wrapper.kind,label==='Wrap in Stack'?'stack':'grid');
       const ids=flatten(wrapper).map(n=>n.id);for(const id of ids)assert.equal(await evaluate(`!!(${node(id)})`),true);
@@ -816,18 +908,18 @@ try {
       await click(q('[aria-label="Undo project edit"]'));assert.deepEqual(await project(c09Project),before);
       await context(node(c09Badge));await key('Escape','Escape');
     }
-    await click(named('[aria-label="Canvas camera"] button','… Actions'));await key('Escape','Escape');
-    assert.equal(await evaluate(`document.activeElement===${named('[aria-label="Canvas camera"] button','… Actions')}`),true);
+    await click(named('[aria-label="Canvas tools"] button','… Actions'));await key('Escape','Escape');
+    assert.equal(await evaluate(`document.activeElement===${named('[aria-label="Canvas tools"] button','… Actions')}`),true);
   });
   await check('C09 Delete/Backspace and Cmd D/Z/Shift Z work only on focused canvas, selection falls back after delete',async()=>{
     await context(node(c09Badge));await key('Escape','Escape');const before=await project(c09Project);
     assert.equal(await evaluate(`document.activeElement===${canvas}`),true,'Shortcut canvas focus');
-    assert.match(await evaluate(`${q('[aria-label="Instance settings"]')}.textContent`),/Badge instance/,'Shortcut selection survives menu Escape');
+    assert.match(await evaluate(`${q('[aria-label="Instance settings"]')}.textContent`),/BadgeLocal instance/,'Shortcut selection survives menu Escape');
     await key('d','KeyD',4);let doc=await project(c09Project);assert.equal(doc.pages[0].frames[0].root.children.length,3);
     await key('z','KeyZ',4);assert.deepEqual(await project(c09Project),before);await key('z','KeyZ',12);assert.deepEqual(await project(c09Project),doc);
     await context(node(c09Badge));await key('Escape','Escape');const duplicate=await project(c09Project);
     await key('Delete','Delete');assert.equal((await project(c09Project)).pages[0].frames[0].root.children.some(n=>n.id===c09Badge),false);
-    assert.match(await evaluate(`${q('[aria-label="Instance settings"]')}.textContent`),/Container instance/);
+    assert.match(await evaluate(`${q('[aria-label="Instance settings"]')}.textContent`),/ContainerLocal instance/);
     await key('z','KeyZ',4);assert.deepEqual(await project(c09Project),duplicate);
     await context(node(c09Badge));await click(menuItem('Delete instance'));assert.equal(await evaluate(`document.activeElement===${canvas}`),true);
     await key('z','KeyZ',4);assert.deepEqual(await project(c09Project),duplicate);
@@ -841,7 +933,7 @@ try {
     assert.equal(await evaluate(`[...document.querySelectorAll('[role="menuitem"]')].find(e=>e.textContent.startsWith('Wrap in Stack')).getAttribute('aria-disabled')`),'true');
     await key('Escape','Escape');
     const rootId=doc.pages[0].frames[0].root.id;
-    await click(named('[aria-label="Selection path"] button','Container'));await click(named('[aria-label="Canvas camera"] button','… Actions'));
+    await click(named('[aria-label="Selection path"] button','Container'));await click(named('[aria-label="Canvas tools"] button','… Actions'));
     assert.equal(await evaluate(`[...document.querySelectorAll('[role="menuitem"]')].every(e=>e.getAttribute('aria-disabled')==='true')`),true);await key('Escape','Escape');
     assert.ok(rootId);
     // A blank point far from the fitted mobile frame clears both node and frame selection.
@@ -854,15 +946,15 @@ try {
     await click(q('[aria-label="Instance text"]'));await send('Input.insertText',{text:' draft'});
     await send('Input.dispatchKeyEvent',{type:'keyDown',key:'z',code:'KeyZ',modifiers:4,commands:['undo']});await key('Delete','Delete');assert.deepEqual(await project(c09Project),before);
     await fill('[aria-label="Instance text"]',flatten(before.pages[0].frames[0].root).find(n=>n.id===c09Text).text); // Restore draft before leaving the native field.
-    await click(named('button','Preview'));await wait(`document.querySelector('[data-editor-mode="preview"]')`);const preview=await project(c09Project),point=await evaluate(pointAt(node(c09Badge)));
+    await click(modeButton('Preview'));await wait(`document.querySelector('[data-editor-mode="preview"]')`);const preview=await project(c09Project),point=await evaluate(pointAt(node(c09Badge)));
     await send('Input.dispatchMouseEvent',{type:'mousePressed',...point,button:'right',clickCount:1});await send('Input.dispatchMouseEvent',{type:'mouseReleased',...point,button:'right',clickCount:1});
     assert.equal(await evaluate(`!!document.querySelector('[role="menu"]')`),false);
     await evaluate(`${canvas}.focus()`);await key('Delete','Delete');await key('d','KeyD',4);await key('z','KeyZ',4);assert.deepEqual(await project(c09Project),preview);
-    assert.equal(await evaluate(`${named('[aria-label="Canvas camera"] button','… Actions')}.disabled`),true);await click(named('button','Design'));
+    assert.equal(await evaluate(`${named('[aria-label="Canvas tools"] button','… Actions')}.disabled`),true);await click(modeButton('Design'));
   });
   await check('C09 frame right-click duplicates that frame and context capture cancels node gesture',async()=>{
-    await click(named('button','Add Mobile frame'));const second=(await project(c09Project)).pages[0].frames[1].id;
-    await click(named('button','Fit page'));await context(frameTitle(c09Frame));await click(menuItem('Duplicate frame'));
+    await addFrame('Mobile');const second=(await project(c09Project)).pages[0].frames[1].id;
+    await fit();await context(frameTitle(c09Frame));await click(menuItem('Duplicate frame'));
     let doc=await project(c09Project);assert.equal(doc.pages[0].frames.length,3);assert.deepEqual(flatten(doc.pages[0].frames[2].root).map(n=>n.kind),flatten(doc.pages[0].frames[0].root).map(n=>n.kind));
     await click(q('[aria-label="Undo project edit"]'));doc=await project(c09Project);assert.equal(doc.pages[0].frames[1].id,second);
     const start=await evaluate(pointAt(node(c09Badge))),end={x:start.x+20,y:start.y+10};
@@ -895,7 +987,7 @@ try {
   await check('no observed runtime or hydration errors', async () => { assert.deepEqual(errors, []); });
   }
   assert.deepEqual(errors, []);
-} catch (error) { console.error(error.stack || error); process.exitCode = 1; }
+} catch (error) { console.error(`FAILED during ${stage}:`, error.stack || error); process.exitCode = 1; }
 finally {
   try { await cleanup(); } catch (error) { console.error(`Cleanup failed: ${error}`); process.exitCode = 1; }
   clearTimeout(watchdog); console.log(`RESULT: ${checks} composer smoke groups passed${process.exitCode ? ', FAILED' : ''}`);

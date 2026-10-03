@@ -1,0 +1,17 @@
+.panel { display: grid; gap: 8px; min-width: 0; margin-top: 16px; padding: 12px 0; border-top: 1px solid var(--studio-color-border); color: var(--studio-color-text); }
+.heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.heading h2 { margin: 0; font-size: 12px; font-weight: 600; }
+.hint, .status { margin: 0; color: var(--studio-color-text-subtle); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.form { display: grid; gap: 5px; min-width: 0; }
+.form label { font-size: 11px; }
+.saveRow { display: flex; flex-wrap: wrap; gap: 5px; }
+.saveRow input { flex: 1 1 100px; box-sizing: border-box; width: 100%; min-width: 0; min-height: 30px; padding: 5px 7px; border: 1px solid var(--studio-color-border); border-radius: 4px; background: var(--studio-color-surface); color: var(--studio-color-text); font: inherit; font-size: 12px; }
+.panel button { min-height: 30px; padding: 4px 7px; border: 1px solid var(--studio-color-border); border-radius: 4px; background: var(--studio-color-surface); color: var(--studio-color-text); font: inherit; font-size: 11px; cursor: pointer; }
+.panel button:hover:not(:disabled) { background: var(--studio-color-surface-hover); }
+.panel button:disabled, .panel input:disabled { opacity: .5; cursor: not-allowed; }
+.panel button:focus-visible, .panel input:focus-visible, .heading h2:focus-visible { outline: var(--studio-focus-ring); outline-offset: 2px; }
+.list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.item { display: grid; gap: 5px; min-width: 0; padding: 8px; border: 1px solid var(--studio-color-border); border-radius: 5px; }
+.name { font-size: 12px; font-weight: 500; overflow-wrap: anywhere; }
+.actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.status:empty { display: none; }

@@ -70,6 +70,33 @@ const minimal = (children) => ({
 const textNode = (id) => ({ id, kind: "text", text: "Text" });
 const formNode = (id) => ({ id, kind: "form", props: { action: "/example" }, children: [textNode(`${id}-text`)] });
 
+test("Container auto-layout props use the Stack allowlist without changing omitted defaults", () => {
+  const unchanged = minimal([textNode("first"), textNode("second")]);
+  assert.deepEqual(parsePageDocument(unchanged), unchanged);
+  assert.equal(Object.hasOwn(parsePageDocument(unchanged).root, "props"), false);
+  assert.equal(Object.hasOwn(parsePageDocument(unchanged).root, "appearance"), false);
+  for (const key of ["direction", "gap", "align", "justify", "wrap"]) {
+    assert.deepEqual(nodeRegistry.container.props[key], nodeRegistry.stack.props[key]);
+    for (const value of nodeRegistry.container.props[key]) {
+      const input = minimal([textNode("first"), textNode("second")]);
+      input.root.props = { [key]: value };
+      const parsed = parsePageDocument(input);
+      assert.deepEqual(parsed, input, `${key}: no auto-layout defaults are serialized`);
+      assert.deepEqual(parsePageDocument(JSON.parse(JSON.stringify(parsed))), parsed);
+      assert.match(exportPageTSX(input), new RegExp(` ${key}=\\{${JSON.stringify(value)}\\}`));
+    }
+  }
+  for (const props of [
+    { direction: "block" }, { direction: "row-reverse" }, { direction: null },
+    { gap: 8 }, { gap: "xl" }, { align: "flex-start" }, { justify: "space-between" },
+    { wrap: "true" }, { display: "flex" }, { flexDirection: "row" },
+  ]) {
+    const input = minimal([]); input.root.props = props;
+    assert.throws(() => parsePageDocument(input), /invalid|unknown/);
+    assert.throws(() => exportPageTSX(input), /invalid|unknown/);
+  }
+});
+
 test("rejects nested forms through layout ancestors, but permits sibling forms", () => {
   const nested = minimal([{ ...formNode("outer-form"), children: [
     { id: "wrapper", kind: "stack", children: [formNode("inner-form")] },
@@ -195,6 +222,8 @@ test("generated TSX compiles with the actual component and layout APIs", () => {
   const file = resolve(root, "app/studio/page-document/__generated.tsx");
   const second = resolve(root, "app/studio/page-document/__design_safe.tsx");
   const sources = new Map([[file, exportPageTSX(fixture, "../components", "../layout")], [second, exportPageTSX(designSafe, "../components", "../layout")]]);
+  const appearance = JSON.parse(readFileSync(resolve(import.meta.dirname, "appearance-specimen.json"), "utf8"));
+  sources.set(resolve(root, "app/studio/page-document/__appearance.tsx"), exportPageTSX(appearance, "../components", "../layout"));
   for (const sample of designSafe.root.children[0].children) {
     for (const [key, rule] of Object.entries(nodeRegistry[sample.kind].props)) {
       for (const value of Array.isArray(rule) ? rule : [rule === "string" ? "" : "Sample"]) {
@@ -208,6 +237,12 @@ test("generated TSX compiles with the actual component and layout APIs", () => {
         sources.set(resolve(root, `app/studio/page-document/__axis_${sources.size}.tsx`), exportPageTSX(input, "../components", "../layout"));
       }
     }
+  }
+  for (const [key, rule] of Object.entries(nodeRegistry.container.props)) for (const value of rule) {
+    const input = minimal([textNode("first"), textNode("second")]);
+    input.root.props = { direction: "column", [key]: value };
+    input.root.appearance = { gap: 12.25 };
+    sources.set(resolve(root, `app/studio/page-document/__container_${sources.size}.tsx`), exportPageTSX(input, "../components", "../layout"));
   }
   const host = ts.createCompilerHost({ ...parsed.options, incremental: false });
   const read = host.readFile.bind(host);

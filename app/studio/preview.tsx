@@ -135,6 +135,10 @@ function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; c
             <SaveButtonDemo copy={copy} />
             <DemoButton copy={copy} disabled>{copy.button.disabled}</DemoButton>
           </div>
+          <div className={styles.states} data-instance-specimen="button">
+            <Button appearance={{ paddingTop: 12, paddingRight: 24, paddingBottom: 8, paddingLeft: 16, borderTopLeftRadius: 20 }}>Local spacing</Button>
+            <span>Instance values; shared tokens unchanged.</span>
+          </div>
         </div>
       );
     case "input":
@@ -180,6 +184,16 @@ function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; c
                 <Input label="Radius md" radius="md" defaultValue="radius=md" />
                 <Input label="Radius lg" radius="lg" defaultValue="radius=lg" />
               </div>
+              <Input
+                data-instance-specimen="input"
+                label="Locally styled email"
+                description="Instance values; shared tokens unchanged."
+                error="Enter a valid email."
+                errorPosition="above"
+                errorIcon="warning"
+                appearance={{ paddingTop: 12, paddingRight: 18, paddingBottom: 8, paddingLeft: 14, borderTopLeftRadius: 16 }}
+                parts={{ root: { gap: 8 }, label: { fontWeight: 700 }, description: { fontSize: 12 }, error: { fontSize: 13, gap: 6 } }}
+              />
               <details className={styles.formDemoDisclosure}>
                 <summary>Controlled form example</summary>
                 <FormDemo />
@@ -232,6 +246,14 @@ function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; c
                 </Card.Header>
                 <Card.Content><span>Start with a foundation.</span><span>Make it your own.</span></Card.Content>
               </Card>
+              <Card data-instance-specimen="card" appearance={{ paddingTop: 20, paddingRight: 24, paddingBottom: 16, paddingLeft: 12, borderTopLeftRadius: 24, shadow: "md" }}>
+                <Card.Header appearance={{ gap: 12, paddingBottom: 4 }}>
+                  <Card.Title appearance={{ fontSize: 22, fontWeight: 650 }}>Independent slots</Card.Title>
+                  <Card.Description appearance={{ lineHeight: 1.8 }}>Instance values; shared tokens unchanged.</Card.Description>
+                </Card.Header>
+                <Card.Content appearance={{ gap: 20, paddingTop: 8 }}><span>Local content spacing.</span><span>Each slot remains independent.</span></Card.Content>
+                <Card.Footer appearance={{ gap: 16, marginTop: 4 }}><Button>Continue</Button><Button variant="ghost">Later</Button></Card.Footer>
+              </Card>
             </>
           )}
         </div>
@@ -273,6 +295,10 @@ function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; c
               {copy.button.large}
             </Badge>
           </div>
+          <div className={styles.states} data-instance-specimen="badge">
+            <Badge appearance={{ paddingTop: 6, paddingBottom: 8, borderTopLeftRadius: 12, borderBottomRightRadius: 4 }}>Local draft</Badge>
+            <span>Instance geometry; shared colors unchanged.</span>
+          </div>
         </div>
       ) : (
         <div className={styles.states}>
@@ -301,6 +327,16 @@ function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; c
               <Switch label="Needs attention" error="Turn this setting on to continue." />
               <Switch label="Needs attention · enabled" error="This enabled setting needs review." defaultChecked />
               <Switch label={copy.input.unavailable} disabled defaultChecked />
+              <Switch
+                data-instance-specimen="switch"
+                label="Local notification setting"
+                description="Instance values; shared tokens unchanged."
+                error="Review this setting."
+                errorPosition="below"
+                errorIcon="info"
+                appearance={{ width: 64, height: 30 }}
+                parts={{ root: { gap: 8 }, row: { gap: 16 }, label: { fontSize: 15, fontWeight: 600 }, error: { fontSize: 13, gap: 6 } }}
+              />
             </>
           )}
         </div>
@@ -328,6 +364,16 @@ function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; c
               </div>
               <Checkbox label="Read-only selection" readOnly defaultChecked />
               <Checkbox label={copy.input.unavailable} disabled defaultChecked />
+              <Checkbox
+                data-instance-specimen="checkbox"
+                label="Local terms acceptance"
+                description="Instance values; shared tokens unchanged."
+                error="Review the terms."
+                errorPosition="above"
+                errorIcon="info"
+                appearance={{ width: 26, height: 26, borderTopLeftRadius: 8 }}
+                parts={{ row: { gap: 14 }, control: { borderBottomRightRadius: 4 }, label: { fontWeight: 600 }, description: { fontSize: 12 }, error: { fontSize: 13 } }}
+              />
             </>
           )}
         </div>
@@ -765,6 +811,10 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
                 <div>
                   <span className={styles.foundationTextLabel}>Danger · large</span>
                   <Text variant="caption" as="span" size="lg" tone="danger">Something needs attention.</Text>
+                </div>
+                <div data-instance-specimen="text">
+                  <span className={styles.foundationTextLabel}>Local instance typography · shared tokens unchanged</span>
+                  <Text appearance={{ width: "fill", fontSize: 18, fontWeight: 500, lineHeight: 1.8, letterSpacing: 0.3, textAlign: "right" }}>Locally aligned text.</Text>
                 </div>
               </div>
             </section>
