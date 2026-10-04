@@ -4,6 +4,7 @@ import { auditSystemColors, colorCheckTargets } from "./color-audit.ts";
 import { contrastRatio, deriveRoleColors, generatePalette } from "./color-engine.ts";
 import { componentIds, componentVariantKeys, defaultSystem, parseDesignSystem, resolveComponent, toCSSVariables } from "./tokens.ts";
 import { appearanceToStyle, parseNodeAppearance, parseNodeParts } from "./page-document/appearance.ts";
+import { componentStyleFields, componentStyleParts, parseComponentStyles, shareComponentStyles } from "./component-styles.ts";
 
 const modes = ["light", "dark"];
 const fresh = (mode = "light") => structuredClone(defaultSystem.themes[mode]);
@@ -328,6 +329,269 @@ test("transparent variant surfaces are audited against the global canvas surface
     assert.ok(Number.isFinite(checks.get(id).ratio), id);
   }
   allPass(theme, "light");
+});
+
+test("omitted, empty and geometry-only shared styles preserve the original check set", () => {
+  for (const mode of modes) {
+    const theme = fresh(mode);
+    const original = auditSystemColors(theme, mode);
+    for (const styles of [{}, {
+      button: { root: { width: 120, fontSize: 24 } }, input: { control: { height: 40 } },
+      card: { title: { fontSize: 24 }, content: { gap: 16 } }, text: { root: { fontWeight: 600 } },
+    }]) {
+      theme.componentStyles = parseComponentStyles(styles);
+      assert.deepEqual(auditSystemColors(theme, mode), original);
+    }
+    // These are uncomposited color diagnostics, not opacity or shadow certification.
+    theme.componentStyles = parseComponentStyles({
+      input: { root: { opacity: 0.1 }, label: { shadow: "lg" } },
+      card: { title: { opacity: 0.25 } }, text: { root: { opacity: 0.5, shadow: "md" } },
+    });
+    assert.deepEqual(auditSystemColors(theme, mode), original);
+    assert.equal(original.length, 150);
+  }
+});
+
+test("shared field ink, surfaces and borders use authored part targets in both themes", () => {
+  for (const mode of modes) for (const component of ["input", "switch", "checkbox"]) {
+    const theme = fresh(mode);
+    const before = structuredClone(theme);
+    theme.componentStyles = parseComponentStyles({ [component]: {
+      label: { color: "#111111", background: "#111111", borderColor: "#111111", borderWidth: 2 },
+      description: { color: "#222222", background: "#222222" },
+      error: { color: "#333333", background: "#333333" },
+      ...(component === "input" ? {} : { row: { background: "#444444", color: "#abcdef" } }),
+    } });
+    const saved = structuredClone(theme);
+    const checks = byId(theme, mode);
+    for (const [part, color] of [["label", "#111111"], ["description", "#222222"], ["error", "#333333"]]) {
+      const check = checks.get(`${component}.${part}`);
+      pair(check, color, color);
+      assert.equal(check.passes, false);
+      assert.deepEqual(colorCheckTargets(check), {
+        ink: { selection: component, part, key: "color" }, surface: { selection: component, part, key: "background" },
+      });
+    }
+    pair(checks.get(`${component}.label.boundary`), "#111111", component === "input" ? theme.global.background : "#444444", 3);
+    pair(checks.get(`${component}.label.boundary.inside`), "#111111", "#111111", 3);
+    assert.deepEqual(colorCheckTargets(checks.get(`${component}.label.boundary`)).ink,
+      { selection: component, part: "label", key: "borderColor" });
+    assert.deepEqual(theme, saved, "audit is pure");
+    assert.deepEqual(auditSystemColors(theme, mode).filter((check) => !check.component),
+      auditSystemColors(before, mode).filter((check) => !check.component));
+    delete theme.componentStyles[component].label.color;
+    theme.componentStyles[component].label.background = "transparent";
+    pair(byId(theme, mode).get(`${component}.label`), component === "input" ? theme.global.foreground : "#abcdef",
+      component === "input" ? theme.global.background : "#444444");
+  }
+});
+
+test("choice row inheritance reaches labels, transparent controls, boundaries and focus but not helper text", () => {
+  for (const mode of modes) for (const component of ["switch", "checkbox"]) {
+    const theme = fresh(mode);
+    theme.componentStyles = parseComponentStyles({ [component]: {
+      row: { color: "#abcdef", background: "#123456", borderWidth: 1 },
+      label: { background: "transparent" }, description: { background: "transparent" }, error: { background: "transparent" },
+    } });
+    theme.variantColors = { [component]: {
+      unchecked: { foreground: "#ffffff", background: "transparent", border: "#ffffff" },
+      invalidChecked: { foreground: "#eeeeee", background: "transparent" },
+    } };
+    const checks = byId(theme, mode);
+    pair(checks.get(`${component}.label`), "#abcdef", "#123456");
+    assert.deepEqual(colorCheckTargets(checks.get(`${component}.label`)), {
+      ink: { selection: component, part: "row", key: "color" }, surface: { selection: component, part: "row", key: "background" },
+    });
+    pair(checks.get(`${component}.description`), theme.global.mutedForeground, theme.global.background);
+    pair(checks.get(`${component}.error`), theme.global.danger, theme.global.background);
+    pair(checks.get(`${component}.row.boundary`), "#abcdef", theme.global.background, 3);
+    pair(checks.get(`${component}.row.boundary.inside`), "#abcdef", "#123456", 3);
+    for (const suffix of ["text", "boundary", "boundary.inside"]) {
+      pair(checks.get(`${component}.unchecked.${suffix}`), "#ffffff", "#123456", 3);
+      assert.deepEqual(colorCheckTargets(checks.get(`${component}.unchecked.${suffix}`)).surface,
+        { selection: component, part: "row", key: "background" });
+    }
+    pair(checks.get(`${component}.invalid-checked.text`), "#eeeeee", "#123456", 3);
+    assert.deepEqual(colorCheckTargets(checks.get(`${component}.invalid-checked.text`)).ink,
+      { selection: component, variant: "invalidChecked", key: "foreground" });
+    pair(checks.get(`${component}.focus.row`), toCSSVariables(theme, mode)["--ds-primary-focus"], "#123456", 3);
+    assert.deepEqual(colorCheckTargets(checks.get(`${component}.focus.row`)), {
+      ink: { selection: "colors", key: "primary", derived: true }, surface: { selection: component, part: "row", key: "background" },
+    });
+    if (component === "switch") pair(checks.get("switch.unchecked.thumb"), "#ffffff", "#123456", 3);
+    delete theme.componentStyles[component].row;
+    const reset = byId(theme, mode);
+    pair(reset.get(`${component}.label`), theme.global.foreground, theme.global.background);
+    pair(reset.get(`${component}.unchecked.text`), "#ffffff", theme.global.background, 3);
+    assert.equal(reset.has(`${component}.focus.row`), false);
+  }
+});
+
+test("Card slots follow each variant and Header inheritance without recoloring description or nested Text", () => {
+  for (const mode of modes) {
+    const theme = fresh(mode);
+    theme.variantColors = { card: {
+      outlined: { background: "#101010", foreground: "#fafafa" },
+      elevated: { background: "#202020", foreground: "#eeeeee" },
+      filled: { background: "transparent", foreground: "#123456" },
+    } };
+    theme.componentStyles = parseComponentStyles({ card: {
+      header: { color: "#dddddd", background: "#222222" }, title: { background: "transparent" },
+      description: { background: "transparent" }, content: { color: "#eeeeee", background: "#333333" },
+      footer: { color: "#f1f1f1", background: "#444444" }, icon: { color: "#121212", background: "#555555", borderWidth: 2 },
+    } });
+    const variables = toCSSVariables(theme, mode);
+    const checks = byId(theme, mode);
+    for (const variant of ["outlined", "elevated", "filled"]) {
+      const prefix = `--card-variant-${variant}`;
+      const surface = variables[`${prefix}-background`] === "transparent" ? theme.global.background : variables[`${prefix}-background`];
+      pair(checks.get(`card.${variant}.text`), variables[`${prefix}-foreground`], surface);
+      pair(checks.get(`card.${variant}.header.text`), "#dddddd", "#222222");
+      pair(checks.get(`card.${variant}.title.text`), "#dddddd", "#222222");
+      pair(checks.get(`card.${variant}.description`), variables[`${prefix}-description`], "#222222");
+      assert.deepEqual(colorCheckTargets(checks.get(`card.${variant}.title.text`)), {
+        ink: { selection: "card", part: "header", key: "color" }, surface: { selection: "card", part: "header", key: "background" },
+      });
+      assert.deepEqual(colorCheckTargets(checks.get(`card.${variant}.description`)).ink,
+        { selection: "card", variant, key: "foreground", derived: true });
+      pair(checks.get(`card.${variant}.content.text`), "#eeeeee", "#333333");
+      pair(checks.get(`card.${variant}.footer.text`), "#f1f1f1", "#444444");
+      pair(checks.get(`card.${variant}.icon.text`), "#121212", "#555555", 3);
+      pair(checks.get(`card.${variant}.icon.boundary`), "#121212", surface, 3);
+      pair(checks.get(`card.${variant}.icon.boundary.inside`), "#121212", "#555555", 3);
+      for (const tone of ["foreground", "primary", "success", "warning", "danger", "info"]) {
+        pair(checks.get(`card.${variant}.content.text.${tone}`), tone === "foreground" ? resolveComponent(theme, "text").foreground : variables[`--ds-${tone}-on-subtle`], "#333333");
+      }
+    }
+    pair(checks.get("card.description"), variables["--card-variant-outlined-description"], "#222222");
+    pair(checks.get("card.foreground"), variables["--card-variant-outlined-foreground"], "#101010");
+    delete theme.componentStyles.card.header;
+    theme.componentStyles.card.content = { background: "transparent" };
+    const reset = byId(theme, mode);
+    for (const variant of ["outlined", "elevated", "filled"]) {
+      const prefix = `--card-variant-${variant}`;
+      const surface = variables[`${prefix}-background`] === "transparent" ? theme.global.background : variables[`${prefix}-background`];
+      pair(reset.get(`card.${variant}.title.text`), variables[`${prefix}-foreground`], surface);
+      pair(reset.get(`card.${variant}.description`), variables[`${prefix}-description`], surface);
+      pair(reset.get(`card.${variant}.content.text.foreground`), resolveComponent(theme, "text").foreground, surface);
+    }
+    theme.componentStyles.card.title = { color: "#777777", background: "#777777" };
+    theme.componentStyles.card.description = { color: "#888888", background: "#888888" };
+    for (const variant of ["outlined", "elevated", "filled"]) {
+      pair(byId(theme, mode).get(`card.${variant}.title.text`), "#777777", "#777777");
+      pair(byId(theme, mode).get(`card.${variant}.description`), "#888888", "#888888");
+      assert.deepEqual(colorCheckTargets(byId(theme, mode).get(`card.${variant}.description`)), {
+        ink: { selection: "card", part: "description", key: "color" }, surface: { selection: "card", part: "description", key: "background" },
+      });
+    }
+  }
+});
+
+test("shared Text colors override all tones; transparent surfaces and resets retain each tone's fallback", () => {
+  for (const mode of modes) {
+    const theme = fresh(mode);
+    theme.componentStyles = parseComponentStyles({ text: { root: { background: "#555555", borderWidth: 2 } } });
+    const variables = toCSSVariables(theme, mode);
+    for (const tone of ["foreground", "primary", "success", "warning", "danger", "info"]) {
+      const ink = tone === "foreground" ? resolveComponent(theme, "text").foreground : variables[`--ds-${tone}-on-subtle`];
+      const checks = byId(theme, mode);
+      pair(checks.get(`text.${tone}`), ink, "#555555");
+      pair(checks.get(`text.${tone}.boundary`), ink, theme.global.background, 3);
+      pair(checks.get(`text.${tone}.boundary.inside`), ink, "#555555", 3);
+      assert.deepEqual(colorCheckTargets(checks.get(`text.${tone}.boundary`)).ink, colorCheckTargets(checks.get(`text.${tone}`)).ink);
+    }
+    theme.componentStyles.text.root.color = "#555555";
+    const checks = byId(theme, mode);
+    for (const tone of ["foreground", "primary", "success", "warning", "danger", "info"]) {
+      pair(checks.get(`text.${tone}`), "#555555", "#555555");
+      assert.deepEqual(colorCheckTargets(checks.get(`text.${tone}`)), {
+        ink: { selection: "text", part: "root", key: "color" }, surface: { selection: "text", part: "root", key: "background" },
+      });
+      for (const variant of ["outlined", "elevated", "filled"]) pair(checks.get(`card.${variant}.content.text.${tone}`), "#555555", "#555555");
+    }
+    theme.componentStyles.text.root = { background: "transparent" };
+    for (const tone of ["foreground", "primary", "success", "warning", "danger", "info"]) {
+      pair(byId(theme, mode).get(`text.${tone}`), tone === "foreground" ? resolveComponent(theme, "text").foreground : variables[`--ds-${tone}-on-subtle`], theme.global.background);
+    }
+    delete theme.componentStyles;
+    assert.deepEqual(auditSystemColors(theme, mode), auditSystemColors(fresh(mode), mode));
+  }
+});
+
+test("all authored part borders are checked only when painted, with real metadata navigation", () => {
+  for (const component of componentIds) for (const { key: part } of componentStyleParts(component)) {
+    if (!componentStyleFields(component, part).some(({ key }) => key === "borderWidth")) continue;
+    const theme = fresh();
+    const prefix = component === "card" ? `card.outlined.${part}` : component === "text" ? "text.foreground" : `${component}.${part}`;
+    theme.componentStyles = parseComponentStyles({ [component]: { [part]: { borderWidth: 2, borderColor: "#777777" } } });
+    let checks = byId(theme);
+    pair(checks.get(`${prefix}.boundary`), "#777777", component === "card" ? toCSSVariables(theme)["--card-variant-outlined-background"] : theme.global.background, 3);
+    assert.deepEqual(colorCheckTargets(checks.get(`${prefix}.boundary`)).ink, { selection: component, part, key: "borderColor" });
+    for (const check of checks.values()) for (const target of Object.values(colorCheckTargets(check))) {
+      if (target?.part) assert.ok(componentStyleFields(target.selection, target.part).some(({ key, type }) => key === target.key && type === "color"), `${check.id}: ${JSON.stringify(target)}`);
+    }
+    for (const style of [{ borderWidth: 0, borderColor: "#777777" }, { borderWidth: 2, borderColor: "transparent" }]) {
+      theme.componentStyles[component][part] = style;
+      checks = byId(theme);
+      assert.equal(checks.has(`${prefix}.boundary`), false, `${component}.${part}`);
+      assert.equal(checks.has(`${prefix}.boundary.inside`), false, `${component}.${part}`);
+    }
+    // A color alone cannot create a border on an otherwise borderless part.
+    theme.componentStyles[component][part] = { borderColor: "#777777" };
+    assert.equal(byId(theme).has(`${prefix}.boundary`), component === "card" && part === "icon");
+    assert.deepEqual(byId(theme).get("input.focus.background"), byId().get("input.focus.background"));
+  }
+});
+
+test("shared non-color normalization does not leak Light part colors into the Dark audit", () => {
+  const light = fresh("light"), dark = fresh("dark");
+  light.componentStyles = parseComponentStyles({ input: { label: { color: "#777777", background: "#777777", borderWidth: 2 } }, text: { root: { color: "#888888" } } });
+  dark.componentStyles = shareComponentStyles(light.componentStyles, { input: { label: { color: "#ffffff", background: "#000000" } } });
+  pair(byId(light).get("input.label"), "#777777", "#777777");
+  const checks = byId(dark, "dark");
+  pair(checks.get("input.label"), "#ffffff", "#000000");
+  pair(checks.get("input.label.boundary.inside"), "#ffffff", "#000000", 3);
+  pair(checks.get("text.foreground"), resolveComponent(dark, "text").foreground, dark.global.background);
+  assert.deepEqual(colorCheckTargets(checks.get("text.foreground")).ink, { selection: "text", key: "foreground" });
+});
+
+test("Develop separates metadata-backed shared part styles, insertion parameters and local appearance", async () => {
+  const { installParityLoader } = await import("./page-document/parity-loader.mjs");
+  const { registerHooks } = await import("node:module");
+  // Next's bundler resolves this extensionless package path; plain Node ESM does not.
+  const nextPaths = registerHooks({ resolve: (specifier, context, nextResolve) => nextResolve(specifier === "next/link" ? "next/link.js" : specifier, context) });
+  const loader = installParityLoader();
+  try {
+    const { createElement } = await import("react");
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { DeveloperView } = await import("./developer.tsx");
+    const system = structuredClone(defaultSystem);
+    system.componentDefaults = { card: { slots: { title: "Authored insertion title" } } };
+    const render = (selected, mode = "light") => renderToStaticMarkup(createElement(DeveloperView, { selected, system, mode, cssOutput: "" }));
+    for (const selected of componentIds) {
+      const html = render(selected);
+      const section = html.match(/<details[^>]*data-component-styles-reference[^>]*>([\s\S]*?)<\/details>/)?.[1];
+      assert.ok(section, selected);
+      assert.deepEqual([...section.matchAll(/data-style-field="([^"]+)"/g)].map((match) => match[1]),
+        componentStyleParts(selected).flatMap(({ key: part }) => componentStyleFields(selected, part).map(({ key }) => `${selected}.${part}.${key}`)));
+      assert.match(section, /Inherited CSS default/);
+      assert.match(section, /Not declared — component CSS fallback/);
+      assert.match(section, /Shared dimension \/ effect/);
+      assert.doesNotMatch(section, /--[a-z]+-part-[a-z]+-(?:box-sizing|box-display|border-style|content-display|inner-padding|thumb-transform|thumb-margin)/);
+      assert.match(html, /data-insertion-parameters-reference/);
+      assert.match(html, /data-instance-appearance-reference/);
+    }
+    assert.match(render("card"), /Authored insertion title/);
+    for (const mode of modes) {
+      system.themes[mode].componentStyles = parseComponentStyles({ card: { title: { color: "#123456", fontSize: 23.5 } } });
+      const section = render("card", mode).match(/<details[^>]*data-component-styles-reference[^>]*>([\s\S]*?)<\/details>/)[1];
+      assert.match(section, new RegExp(`${mode} theme color`));
+      for (const key of ["color", "fontSize"]) {
+        const row = section.match(new RegExp(`<tr[^>]*data-style-field="card.title.${key}"[^>]*>([\\s\\S]*?)<\\/tr>`))?.[1];
+        assert.match(row, /Authored System style/);
+      }
+    }
+  } finally { loader.cleanup(); nextPaths.deregister(); }
 });
 
 test("legacy v1 and v2 migration preserves invalid manual pairs in both modes", () => {

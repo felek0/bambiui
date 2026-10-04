@@ -12,6 +12,8 @@ import type { ColorScaleRole, ColorScaleStop, PaletteMode, PaletteRole } from ".
 export { colorScaleRoles, colorScaleStops } from "./color-engine.ts";
 export type { ColorScaleRole, ColorScaleStop } from "./color-engine.ts";
 import { brandColor } from "./brand.ts";
+import { componentStyleVariables, parseComponentStyles, shareComponentStyles, type ComponentStyles } from "./component-styles.ts";
+import { parseComponentDefaults, type ComponentDefaults } from "./component-defaults.ts";
 
 export const componentIds = [
   "button",
@@ -199,6 +201,8 @@ export type ThemeTokens = {
   typography?: Partial<Record<TypographyVariant, Partial<TypographyTokens>>>;
   /** Optional Light/Dark-specific colors for real component variant/tone combinations. */
   variantColors?: ComponentVariantColors;
+  /** Part colors are theme-specific; part geometry and effects are shared. */
+  componentStyles?: ComponentStyles;
 };
 
 export function resolveColorScale(
@@ -218,6 +222,8 @@ export type DesignSystem = {
   version: 3;
   name: string;
   themes: Record<PaletteMode, ThemeTokens>;
+  /** Starting content and parameters for new instances; never rewrites authored pages. */
+  componentDefaults?: ComponentDefaults;
 };
 
 /** Schema v3 retains both theme records; only color values may differ. */
@@ -257,7 +263,9 @@ export function shareNonColorTokens(system: DesignSystem, from: PaletteMode = "l
   }
   return {
     ...system,
-    themes: { ...system.themes, [other]: { ...target, global, components, fontFamily: source.fontFamily, typography: structuredClone(source.typography), variantColors } },
+    themes: { ...system.themes, [other]: { ...target, global, components, fontFamily: source.fontFamily, typography: structuredClone(source.typography), variantColors,
+      ...(source.componentStyles || target.componentStyles ? { componentStyles: shareComponentStyles(source.componentStyles, target.componentStyles) } : {}),
+    } },
   };
 }
 
@@ -656,6 +664,7 @@ export function toCSSVariables(
   }
   variables["--card-description"] = descriptionColor(card.foreground, card.background);
   variables["--card-filled-description"] = variables["--card-variant-filled-description"];
+  Object.assign(variables, componentStyleVariables(theme.componentStyles));
   return variables;
 }
 
@@ -664,11 +673,14 @@ export function exportCSS(workspace: Pick<DesignSystem, "themes">): string {
     .map((mode) => googleFontUrl(workspace.themes[mode].fontFamily))
     .filter((url): url is string => url !== null))];
   const prelude = imports.map((url) => `@import url("${url}");`).join("\n");
+  // Sparse colors and their helpers must not inherit from an enclosing other theme.
+  const partKeys = new Set((["light", "dark"] as const).flatMap(mode => Object.keys(componentStyleVariables(workspace.themes[mode].componentStyles))));
+  const partResets = Object.fromEntries([...partKeys].map(key => [key, "initial"]));
   return (prelude ? `${prelude}\n\n` : "") + (["light", "dark"] as const).map((mode) => {
     const selector = mode === "light"
       ? ':root, [data-ds-theme="light"]'
       : '[data-ds-theme="dark"]';
-    const declarations = Object.entries(toCSSVariables(workspace.themes[mode], mode))
+    const declarations = Object.entries({ ...partResets, ...toCSSVariables(workspace.themes[mode], mode) })
       .map(([key, value]) => `  ${key}: ${value};`)
       .join("\n");
     return `${selector} {\n  color-scheme: ${mode};\n${declarations}\n}\n`;
@@ -732,19 +744,21 @@ export function parseDesignSystem(text: string): DesignSystem {
     throw new Error("system.version must be 1, 2 or 3");
   }
   requireKnownKeys(value, value.version === 3
-    ? ["version", "name", "themes"]
+    ? ["version", "name", "themes", "componentDefaults"]
     : ["version", "name", "global", "components"], "system");
   if (typeof value.name !== "string" || value.name.length > 80) {
     throw new Error("system.name must be a string of at most 80 characters");
   }
   if (value.version === 3) {
+    if (Object.hasOwn(value, "componentDefaults")) value.componentDefaults = parseComponentDefaults(value.componentDefaults);
     requireObject(value.themes, "themes");
     requireKnownKeys(value.themes, ["light", "dark"], "themes");
     for (const mode of ["light", "dark"] as const) {
       const theme = value.themes[mode];
       const path = `themes.${mode}`;
       requireObject(theme, path);
-      requireKnownKeys(theme, ["source", "fontFamily", "global", "components", "colorScales", "typography", "variantColors"], path);
+      requireKnownKeys(theme, ["source", "fontFamily", "global", "components", "colorScales", "typography", "variantColors", "componentStyles"], path);
+      if (Object.hasOwn(theme, "componentStyles")) theme.componentStyles = parseComponentStyles(theme.componentStyles);
       if (theme.fontFamily === undefined && !Object.hasOwn(theme, "fontFamily")) theme.fontFamily = "system";
       if (!fontFamilyPresets.includes(theme.fontFamily as FontFamilyPreset)) {
         throw new Error(`${path}.fontFamily must be one of: ${fontFamilyPresets.join(", ")}`);

@@ -56,6 +56,8 @@ import { LayersPanel } from "./composer/layers-panel";
 import { isComposerRoute } from "./composer/workspace-route";
 import { ProjectManager, PageCanvas, ProjectInspector } from "./composer/project-ui";
 import shell from "./composer/workspace-shell.module.css";
+import { SystemComponentEditor, type ComponentEditorTab } from "./system-component-editor";
+import { componentStyleParts, type ComponentStylePart } from "./component-styles";
 
 const compactQuery = "(max-width: 800px)";
 function subscribeCompact(listener: () => void) {
@@ -363,14 +365,22 @@ export default function Studio() {
   const [scaleRole, setScaleRole] = useState<ColorScaleRole>("primary");
   const [selectedTypography, setSelectedTypography] = useState<TypographyVariant>("heading");
   const [selectedVariantColor, setSelectedVariantColor] = useState<string>(componentVariantKeys.button[0]);
+  const [componentEditorTab, setComponentEditorTab] = useState<ComponentEditorTab>("styles");
+  const [selectedPart, setSelectedPart] = useState<ComponentStylePart>("root");
+  function editComponentPart(component: ComponentId, part: ComponentStylePart) {
+    setComponentEditorTab("styles"); setSelectedPart(part); showInspector();
+    if (selection !== component) router.push(`/${component}`, { scroll: false });
+  }
   const [editTarget, setEditTarget] = useState<{ selection: Selection; inputId: string } | null>(null);
   const [highlightedTarget, setHighlightedTarget] = useState<{ selection: Selection; inputId: string } | null>(null);
   function navigateToColorToken(target: ColorCheckTarget) {
     const variant = target.variant;
     const variantSlug = variant?.replaceAll(".", "-").replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
-    const inputId = variant
+    const inputId = target.part ? `system-style-${target.selection}-${target.part}-${target.key}` : variant
       ? `variant-color-${target.selection}-${variantSlug}-${target.key}`
       : `token-${target.key}`;
+    setComponentEditorTab("styles");
+    if (target.part) setSelectedPart(target.part);
     const next = { selection: target.selection, inputId };
     if (variant) setSelectedVariantColor(variant);
     setHighlightedTarget(next);
@@ -384,6 +394,7 @@ export default function Studio() {
     const frame = requestAnimationFrame(() => {
       const input = document.getElementById(editTarget.inputId);
       if (input instanceof HTMLElement) {
+        for (let ancestor = input.parentElement; ancestor; ancestor = ancestor.parentElement) if (ancestor instanceof HTMLDetailsElement) ancestor.open = true;
         input.focus({ preventScroll: true });
         input.scrollIntoView({ block: "center" });
       }
@@ -1018,7 +1029,9 @@ export default function Studio() {
                     <SegmentedControl.Item value="dark" aria-label={t.dark} title={t.dark}><Icon name="moon" size={16} /></SegmentedControl.Item>
                   </SegmentedControl>
                 </div>
-                <Preview key={collection.activeId} selected={selection} system={system} mode={activeTheme} active={!pagesActive && view === "design"} onSelectColorRole={setScaleRole} onEditToken={(nextSelection, inputId) => { showInspector(); setEditTarget({ selection: nextSelection, inputId }); }} />
+                <Preview key={collection.activeId} selected={selection} system={system} mode={activeTheme} active={!pagesActive && view === "design"} onSelectColorRole={setScaleRole} onEditToken={(nextSelection, inputId) => { showInspector(); setEditTarget({ selection: nextSelection, inputId }); }}
+                  selectedPart={componentEditorTab === "styles" ? componentStyleParts(component).some(part => part.key === selectedPart) ? selectedPart : "root" : undefined}
+                  onSelectPart={editComponentPart} onEditParameters={component => { setComponentEditorTab("parameters"); showInspector(); router.push(`/${component}`, { scroll: false }); }} />
               </div>
             </section>
             <section hidden={view !== "develop"} aria-label={t.develop} className="workspace-panel workspace-panel--develop">
@@ -1032,6 +1045,7 @@ export default function Studio() {
       <div className={shell.inspector} id="workspace-inspector" hidden={!rightVisible} onKeyDown={event => { if (compact && event.key === "Escape" && !event.defaultPrevented) { setMobilePanel(null); document.querySelector<HTMLButtonElement>('[aria-controls="workspace-inspector"]')?.focus(); } }}>
       {pagesActive && <ProjectInspector key={composer.document?.id ?? "empty"} composer={composer} systems={composerSystems} tab={inspectorView.context === inspectorContext ? inspectorView.tab : "design"} onTabChange={tab => setInspectorView({ context: inspectorContext, tab })} onEditSystem={(id, kind) => {
         const component = ["button", "input", "switch", "checkbox", "badge", "card", "text"].includes(kind ?? "") ? kind : "colors";
+        setComponentEditorTab("styles"); setSelectedPart("root");
         if (collectionRef.current.activeId === id || activate({ ...collectionRef.current, activeId: id })) router.push(`/${component}`);
       }} />}
       <aside
@@ -1043,7 +1057,7 @@ export default function Studio() {
       >
         <div className="editor-title">
           <Icon name={selection === "colors" ? "colors" : isGlobal ? "sliders" : component} />
-          <h2>{selection === "spacing" ? "Shape & spacing" : `${selection === "colors" ? "Global colors" : isGlobal ? t.inspector : t.componentTokens(t.componentNames[component])} · ${activeTheme === "light" ? t.light : t.dark}`}</h2>
+          <h2>{selection === "spacing" ? "Shape & spacing" : `${selection === "colors" ? "Global colors" : isGlobal ? t.inspector : t.componentNames[component]} · ${activeTheme === "light" ? t.light : t.dark}`}</h2>
           {ready && (selection === "colors" || !isGlobal) && <div className="editor-title-actions">
             <ColorPairDialog key={`${collection.activeId}-${activeTheme}-${selection}`} checks={auditChecks} mode={activeTheme} component={isGlobal ? undefined : component} onNavigate={navigateToColorToken} />
             {selection === "colors" && <ColorBuilderDialog key={`${collection.activeId}-${workspaceRevision}`} system={system} onFinish={finishEdit} onApply={applyPalette} />}
@@ -1058,6 +1072,10 @@ export default function Studio() {
             <div className="section-heading"><h3>{group.label}</h3>{group.label === "Shape" && <span>{t.sharedThemes}</span>}</div>
             <div className="number-fields">{numberFields.filter((field) => group.keys.includes(field.key)).map(renderTokenField)}</div>
           </section>)}
+          <SystemComponentEditor key={`${collection.activeId}-${workspaceRevision}-${component}-${activeTheme}`} component={isGlobal ? null : component} theme={theme} mode={activeTheme} defaults={system.componentDefaults}
+            tab={componentEditorTab} part={selectedPart} onTabChange={setComponentEditorTab} onPartChange={setSelectedPart}
+            onDefaultsChange={componentDefaults => update({ ...system, componentDefaults })}
+            onStylesChange={componentStyles => updateTheme({ ...theme, componentStyles })}>
           {!isGlobal && variantComponent && <section className="token-section component-variant-editor" id="variant-colors">
             <div className="section-heading"><h3>Variant styles</h3><span>{t.themeOnly(activeTheme)} colors</span></div>
             <label htmlFor="component-variant-style">Variant / tone</label>
@@ -1180,7 +1198,7 @@ export default function Studio() {
                     ? selection === "colors" ? `Reset ${activeTheme} global colors? Color scale and component overrides will be kept; shared dimensions and font family will not change.`
                       : selection === "spacing" ? "Reset shared shape, spacing and sizing in both themes? Colors and component overrides will be kept."
                       : t.confirmGlobal(activeTheme === "light" ? t.light : t.dark)
-                    : t.confirmComponent(activeTheme === "light" ? t.light : t.dark, t.componentNames[component]),
+                    : `Reset ${t.componentNames[component]} styles? ${activeTheme} colors and shared geometry in both themes will reset. Starting parameters and project-local overrides will be kept.`,
                 )
               )
                 return;
@@ -1195,12 +1213,15 @@ export default function Studio() {
                   : {
                       ...theme,
                       components: { ...theme.components, [component]: {} },
+                      variantColors: { ...theme.variantColors, ...(variantComponent ? { [variantComponent]: {} } : {}) },
+                      componentStyles: { ...theme.componentStyles, [component]: {} },
                     },
               );
             }}
           >
-            {selection === "spacing" ? "Reset shared dimensions" : isGlobal ? t.resetGlobal : t.resetComponent}
+            {selection === "spacing" ? "Reset shared dimensions" : isGlobal ? t.resetGlobal : "Reset component styles"}
           </Button>
+          </SystemComponentEditor>
         </fieldset>
 
       </aside>

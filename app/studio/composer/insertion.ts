@@ -1,5 +1,5 @@
 import { applyPageCommands, type PageCommand } from "../page-document/commands.ts";
-import { createPageNode } from "../page-document/defaults.ts";
+import { createComponentNode, parseComponentDefaults, type ComponentDefaults } from "../component-defaults.ts";
 import { parsePageDocument, type PageDocument, type PageKind, type PageNode } from "../page-document/model.ts";
 import { nodeRegistry } from "../page-document/registry.ts";
 
@@ -10,15 +10,15 @@ export type InsertionResult =
   | { ok: true; commands: InsertCommand[]; page: PageDocument; nodeId: string; wrappers: { id: string; kind: PageKind }[]; hint: string }
   | { ok: false; hint: string };
 
-/** Cards start with an explicit body slot, not a header that cannot accept controls. */
-export function createInsertionNode(kind: InsertKind, nextId: () => string): PageNode {
+/** A palette insertion snapshots the linked System's parameters, never local styles. */
+export function createInsertionNode(kind: InsertKind, nextId: () => string, defaults?: ComponentDefaults): PageNode {
   if (!INSERT_KINDS.includes(kind)) throw new Error("Unsupported insertion kind.");
-  if (kind === "card") return { id: nextId(), kind, children: [createPageNode("cardContent", nextId)] };
-  return createPageNode(kind, nextId);
+  return createComponentNode(kind, nextId, defaults);
 }
 
 /** Per-gesture/per-frame validation cache. Temporary IDs never consume the controller allocator. */
-export function insertionProposalCache(page: PageDocument, kind: InsertKind) {
+export function insertionProposalCache(page: PageDocument, kind: InsertKind, defaults?: ComponentDefaults) {
+  const snapshot = defaults === undefined ? undefined : parseComponentDefaults(defaults);
   const used = new Set<string>();
   const visit = (node: PageNode) => { used.add(node.id); node.children?.forEach(visit); };
   visit(page.root);
@@ -29,7 +29,7 @@ export function insertionProposalCache(page: PageDocument, kind: InsertKind) {
     if (previous) return previous;
     let serial = 0;
     const nextId = () => { let id: string; do { id = `insert${++serial}`; } while (used.has(id)); return id; };
-    const proposal = proposeInsertion(page, target, kind, nextId);
+    const proposal = proposeInsertion(page, target, kind, nextId, snapshot);
     cache.set(key, proposal);
     return proposal;
   };
@@ -41,13 +41,13 @@ function find(node: PageNode, id: string): PageNode | undefined {
 }
 
 /** Exact target only. Wrapper subtree is one insert/one history step; no ancestor fallback. */
-export function proposeInsertion(input: unknown, target: { parentId: string; index: number }, kind: InsertKind, nextId: () => string): InsertionResult {
+export function proposeInsertion(input: unknown, target: { parentId: string; index: number }, kind: InsertKind, nextId: () => string, defaults?: ComponentDefaults): InsertionResult {
   try {
     const page = parsePageDocument(input);
     const parent = find(page.root, target.parentId);
     if (!parent?.children) throw new Error("Target has no insertion slot.");
     if (!Number.isInteger(target.index) || target.index < 0 || target.index > parent.children.length) throw new Error("Insertion index out of range.");
-    const node = createInsertionNode(kind, nextId);
+    const node = createInsertionNode(kind, nextId, defaults);
     const { commands, wrappers, hint } = placement(page.root, target, node, nextId);
     const result = applyPageCommands(page, commands);
     return { ok: true, commands, page: result, nodeId: node.id, wrappers, hint };

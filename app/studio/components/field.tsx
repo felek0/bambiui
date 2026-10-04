@@ -39,6 +39,7 @@ export type FieldProps = AppearanceProps & {
  */
 export function FieldRoot({
   kind,
+  component,
   size = "md",
   radius,
   disabled,
@@ -52,6 +53,7 @@ export function FieldRoot({
   children,
 }: Pick<FieldProps, "size" | "radius" | "description" | "error" | "errorPosition" | "errorIcon" | "parts" | "className"> & {
   kind: "text" | "choice";
+  component: "input" | "switch" | "checkbox";
   pageOwner?: string;
   disabled?: boolean;
   children: ReactNode;
@@ -73,6 +75,7 @@ export function FieldRoot({
       data-appearance-part="root"
       data-page-owner={pageOwner}
       data-kind={kind}
+      data-component={component}
       data-size={size}
       data-radius={radius}
       disabled={disabled}

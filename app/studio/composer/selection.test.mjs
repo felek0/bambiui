@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { clipRect, draftCommand, nodePath, resolveSelection, flattenNodes } from "./selection.ts";
+import { clipRect, draftCommand, resetLocalStylesCommand, nodePath, resolveSelection, flattenNodes } from "./selection.ts";
+import { createComposerHistory, executeComposerCommands, undoComposer, redoComposer } from "./history.ts";
 import { createComposerDocument, createComposerFrame, createComposerPage } from "./model.ts";
 import { applyComposerCommands } from "./commands.ts";
 const fixture = () => {
@@ -40,6 +41,24 @@ test("binding choices replace counterpart, optional clear differs from valid bla
   doc.pages[0].frames[1].root.children[0].children.push({ id: "choice", kind: "switch", props: { label: "Choice", name: "choice", defaultChecked: true } });
   assert.deepEqual(draftCommand(doc, { ...selection, nodeId: "choice" }, "checked", "false").props, { checked: false, defaultChecked: null });
 });
+test("legacy style reset clears appearance and every part atomically while keeping parameters and other layers", () => {
+  const doc = fixture(), scope = { ...selection, nodeId: "field" }, field = resolveSelection(doc, scope).node;
+  field.appearance = { paddingTop: 12.375, color: "#112233" };
+  field.parts = { root: { gap: 17.25 }, control: { borderWidth: 2 }, label: { fontSize: 15 }, description: { color: "#445566" }, error: { fontWeight: 700 } };
+  const before = structuredClone(doc), command = resetLocalStylesCommand(doc, scope);
+  assert.deepEqual(command, { type: "update", nodeId: "field", appearance: null, parts: null });
+  const history = executeComposerCommands(createComposerHistory(doc), [{ type: "nodeCommands", pageId: scope.pageId, frameId: scope.frameId, commands: [command] }]);
+  assert.equal(history.past.length, 1);
+  const reset = resolveSelection(history.present, scope).node;
+  assert.deepEqual(reset.props, field.props); assert.equal(Object.hasOwn(reset, "appearance"), false); assert.equal(Object.hasOwn(reset, "parts"), false);
+  assert.deepEqual(history.present.pages[0].frames[0], before.pages[0].frames[0]);
+  assert.deepEqual(resolveSelection(history.present, selection).node, resolveSelection(before, selection).node);
+  assert.deepEqual(undoComposer(history).present, before); assert.deepEqual(redoComposer(undoComposer(history)).present, history.present);
+  assert.deepEqual(doc, before);
+  assert.deepEqual(resetLocalStylesCommand(doc, selection), { type: "update", nodeId: "same", appearance: null });
+  assert.throws(() => resetLocalStylesCommand(doc, { ...scope, frameId: "missing" }), /no longer available/);
+});
+
 test("measured outlines intersect frame bounds without implying fully visible overflow", () => {
   assert.deepEqual(clipRect({ x: -20, y: 80, width: 120, height: 80 }, 90, 100), { x: 0, y: 80, width: 90, height: 20 });
   assert.equal(clipRect({ x: 0, y: 100, width: 20, height: 20 }, 100, 100), null);

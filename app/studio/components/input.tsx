@@ -42,11 +42,13 @@ export function Input({
     ...(control?.paddingTop !== undefined ? { paddingTop: 0 } : {}),
     ...(control?.paddingBottom !== undefined ? { paddingBottom: 0 } : {}),
     ...(control?.lineHeight !== undefined ? { lineHeight: control.lineHeight } : {}),
+    ...(control?.letterSpacing !== undefined ? { letterSpacing: control.letterSpacing } : {}),
     ...(control?.textAlign !== undefined ? { textAlign: control.textAlign } : {}),
   } : undefined;
   return (
     <FieldRoot
       kind="text"
+      component="input"
       pageOwner={props["data-page-node"]}
       size={size}
       radius={radius}
@@ -58,7 +60,7 @@ export function Input({
       parts={parts}
       className={className}
     >
-      <Field.Label data-appearance-part="label" className={cx(styles.label, labelClassName(hideLabel))} style={hideLabel ? undefined : appearanceToStyle(parts?.label)}>
+      <Field.Label data-appearance-part="label" data-hide-label={hideLabel || undefined} className={cx(styles.label, labelClassName(hideLabel))} style={hideLabel ? undefined : appearanceToStyle(parts?.label)}>
         {hideLabel && parts?.label ? <span style={appearanceToStyle(parts.label)}>{label}</span> : label}
       </Field.Label>
       <div data-appearance-part="control" className={styles.inputControl} style={controlStyle}>

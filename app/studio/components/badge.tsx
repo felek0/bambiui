@@ -46,7 +46,7 @@ export function Badge({
       {startIcon && (
         <span className={styles.decorativeIcon} aria-hidden="true">{startIcon}</span>
       )}
-      {appearance?.textAlign ? <span className={styles.alignedContent}>{children}</span> : children}
+      {appearance?.textAlign ? <span className={styles.alignedContent}>{children}</span> : <span className={styles.badgeContent}>{children}</span>}
     </span>
   );
 }

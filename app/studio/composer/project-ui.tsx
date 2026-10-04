@@ -130,7 +130,7 @@ export function ProjectInspector({ composer, systems, onEditSystem, tab, onTabCh
   const blocked = state.indexBlocked || !!state.partial;
   return <aside className={styles.inspector} id="project-inspector" aria-label="Project and page inspector" tabIndex={-1}>
     <Tabs.Root value={tab} onValueChange={value => onTabChange(value as "design" | "project")} className={styles.inspectorTabs}>
-      <Tabs.List className={styles.panelTabs} aria-label="Inspector view"><Tabs.Tab value="design" className={styles.panelTab}>Design</Tabs.Tab><Tabs.Tab value="project" className={styles.panelTab}>Project</Tabs.Tab></Tabs.List>
+      <Tabs.List className={styles.panelTabs} aria-label="Inspector view"><Tabs.Tab value="design" className={styles.panelTab}>Parameters</Tabs.Tab><Tabs.Tab value="project" className={styles.panelTab}>Project</Tabs.Tab></Tabs.List>
       <Tabs.Panel value="design" className={styles.inspectorPanel}>
         {!document ? <div className={styles.inspectorEmpty}><Icon name="sliders" size={20} /><h2>Make it yours</h2><p className={styles.hint}>Select a frame or layer to edit its properties.</p></div>
           : selectedNode ? <NodeInspector composer={composer} disabled={blocked || state.mode === "preview"} onEditSystem={onEditSystem} />

@@ -36,6 +36,7 @@ export function Checkbox({
   return (
     <FieldRoot
       kind="choice"
+      component="checkbox"
       pageOwner={props["data-page-node"]}
       size={size}
       radius={radius}
@@ -69,7 +70,7 @@ export function Checkbox({
             )}
           />
         </BaseCheckbox.Root>
-        <span data-appearance-part="label" className={labelClassName(hideLabel)} style={hideLabel ? undefined : appearanceToStyle(parts?.label)}>
+        <span data-appearance-part="label" data-hide-label={hideLabel || undefined} className={labelClassName(hideLabel)} style={hideLabel ? undefined : appearanceToStyle(parts?.label)}>
           {hideLabel && parts?.label ? <span style={appearanceToStyle(parts.label)}>{label}</span> : label}
         </span>
       </Field.Label>

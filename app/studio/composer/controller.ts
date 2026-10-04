@@ -7,6 +7,7 @@ import { readComposerIndex, readComposerProject, createStoredComposerProject, sa
 import { flattenNodes, resolveSelection, type NodeSelection } from "./selection.ts";
 import { prepareMove, type MoveTarget } from "./movement.ts";
 import { proposeInsertion, type InsertKind } from "./insertion.ts";
+import { parseComponentDefaults, type ComponentDefaults } from "../component-defaults.ts";
 import { composerFrameToPageDocument } from "./model.ts";
 import { prepareNodeAction, type NodeAction } from "./component-actions.ts";
 import { assetSelectionReason, assetIdAllocator, createSelectionAsset, prepareAssetInsertion, type AssetInsertionTarget } from "./assets.ts";
@@ -167,7 +168,14 @@ export class ComposerController {
     if (this.state.mode !== "design" || !active || active.pageId !== selection.pageId || !resolveSelection(active.history.present, selection)) return false;
     this.put(active.history.present.id, { ...active, frameId: selection.frameId, selection }); return true;
   };
-  insert = (scope: { projectId: string; pageId: string; frameId: string; parentId: string; index: number }, kind: InsertKind, expected?: ComposerDocument, session?: number) => {
+  /** Always read the current linked System, not the independently browsed System or a captured catalog. */
+  insertionDefaults = (): ComponentDefaults => {
+    const systemId = this.active()?.history.present.systemId;
+    const entry = this.catalog().find(entry => (typeof entry === "string" ? entry : entry.id) === systemId);
+    const defaults = typeof entry === "object" ? entry.system?.componentDefaults : undefined;
+    return defaults === undefined ? {} : parseComponentDefaults(defaults);
+  };
+  insert = (scope: { projectId: string; pageId: string; frameId: string; parentId: string; index: number }, kind: InsertKind, expected?: ComposerDocument, session?: number, expectedDefaults?: ComponentDefaults) => {
     const active = this.active();
     if (!this.writable() || this.state.mode !== "design" || !active || active.history.present.id !== scope.projectId || active.pageId !== scope.pageId || (expected && active.history.present !== expected) || (session !== undefined && session !== this.insertionEpoch)) return false;
     const frame = active.history.present.pages.find(page => page.id === scope.pageId)?.frames.find(frame => frame.id === scope.frameId);
@@ -178,9 +186,11 @@ export class ComposerController {
       while (used.has(candidate)) candidate = `${base}-${++suffix}`;
       used.add(candidate); return candidate;
     };
-    const proposal = proposeInsertion(composerFrameToPageDocument(frame), scope, kind, nextId);
-    if (!proposal.ok) { this.report(proposal.hint); return false; }
     try {
+      const defaults = this.insertionDefaults();
+      if (expectedDefaults !== undefined && JSON.stringify(defaults) !== JSON.stringify(parseComponentDefaults(expectedDefaults))) throw new Error("System insertion defaults changed. Start a new drag to use the current defaults.");
+      const proposal = proposeInsertion(composerFrameToPageDocument(frame), scope, kind, nextId, defaults);
+      if (!proposal.ok) { this.report(proposal.hint); return false; }
       const history = executeComposerCommands(active.history, [{ type: "nodeCommands", pageId: scope.pageId, frameId: scope.frameId, commands: proposal.commands }], this.catalog());
       this.commit(history, { projectId: scope.projectId, pageId: scope.pageId, frameId: scope.frameId, nodeId: proposal.nodeId });
       this.report(proposal.hint); return true;

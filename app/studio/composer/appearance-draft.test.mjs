@@ -4,6 +4,8 @@ import { registerHooks } from "node:module";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { appearanceFields } from "../page-document/appearance.ts";
+import { createComponentNode } from "../component-defaults.ts";
+import { nodeAttributes } from "../page-document/registry.ts";
 import { appearanceDraft, linkedAppearancePatch } from "./appearance-draft.ts";
 import { createComposerDocument, createComposerFrame, createComposerPage } from "./model.ts";
 import { applyComposerCommand } from "./commands.ts";
@@ -49,7 +51,7 @@ function composerFor(node) {
 }
 const inspector = node => renderToStaticMarkup(createElement(NodeInspector, { composer: composerFor(node), disabled: false, onEditSystem() {} }));
 
-test("every component and Card slot exposes local four-edge/corner controls and typography", () => {
+test("built-in components and Card slots expose Parameters, not ordinary local appearance", () => {
   const nodes = [
     { id: "button", kind: "button", text: "Action" },
     { id: "badge", kind: "badge", text: "Status" },
@@ -59,15 +61,58 @@ test("every component and Card slot exposes local four-edge/corner controls and 
     { id: "card", kind: "card", children: [{ id: "body", kind: "cardContent", children: [] }] },
     { id: "text", kind: "text", text: "Text" },
     { id: "title", kind: "cardTitle", text: "Title" },
+    { id: "description", kind: "cardDescription", text: "Description" },
+    { id: "header", kind: "cardHeader", children: [{ id: "nested-title", kind: "cardTitle", text: "Title" }] },
+    { id: "content", kind: "cardContent", children: [] },
+    { id: "footer", kind: "cardFooter", children: [] },
   ];
   for (const node of nodes) {
     const html = inspector(node);
-    for (const field of ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius", "fontSize"]) assert.ok(html.includes(`data-appearance-key="${field}"`), `${node.kind}: ${field}`);
-    assert.match(html, /Link corners/); assert.match(html, /Inherited unless overridden/);
+    assert.match(html, /<h3>Parameters/);
+    assert.match(html, /Edit styles in System/);
+    assert.doesNotMatch(html, /data-appearance-key|Local appearance|Edit component part|Legacy local styles|Reset local styles/);
   }
   const html = inspector(nodes[2]);
-  assert.match(html, /Edit component part/); assert.match(html, /value="error"/);
   assert.match(html, /Instance errorPosition/); assert.match(html, /Instance errorIcon/);
+  for (const key of ["label", "name", "size", "placeholder", "description", "disabled", "readOnly", "required", "value", "defaultValue"]) assert.ok(html.includes(`aria-label="Instance ${key}"`));
+  for (const key of ["text", "variant", "size", "disabled", "loading"]) assert.ok(inspector(nodes[0]).includes(`aria-label="Instance ${key}"`));
+});
+
+test("existing component overrides remain honored with an explicit legacy notice/reset, not a full style editor", () => {
+  const node = { id: "email", kind: "input", props: { label: "Email", name: "email" }, appearance: { paddingLeft: 12.375, color: "#112233" }, parts: { label: { fontSize: 17.25 }, control: { borderWidth: 2 } } };
+  const before = structuredClone(node), html = inspector(node);
+  assert.match(html, /aria-label="Legacy local styles"/); assert.match(html, /Saved local styles still override System styles/);
+  assert.match(html, /Reset local styles/); assert.match(html, /parameters, content and child layers unchanged/);
+  assert.doesNotMatch(html, /data-appearance-key|Edit component part|Local appearance/);
+  assert.deepEqual(node, before); assert.deepEqual(nodeAttributes(node).appearance, before.appearance); assert.deepEqual(nodeAttributes(node).parts, before.parts);
+  const partsOnly = { ...node }; delete partsOnly.appearance;
+  assert.match(inspector(partsOnly), /Legacy local styles/);
+  const cardSlot = { id: "title", kind: "cardTitle", text: "Saved title", appearance: { fontSize: 24.25 } };
+  assert.match(inspector(cardSlot), /Legacy local styles/); assert.doesNotMatch(inspector(cardSlot), /data-appearance-key/);
+  const disabled = renderToStaticMarkup(createElement(NodeInspector, { composer: composerFor(node), disabled: true, onEditSystem() {} }));
+  assert.match(disabled, /<button[^>]*disabled=""[^>]*><span data-slot="label">Reset local styles<\/span><\/button>/);
+  assert.doesNotMatch(inspector({ ...node, appearance: {}, parts: { label: {} } }), /Legacy local styles/);
+});
+
+test("Card parameters provide direct navigation to slots and populated copy/action layers", () => {
+  let serial = 0;
+  const card = createComponentNode("card", () => `card-node-${++serial}`), html = inspector(card);
+  for (const name of ["Card.Header", "Card.Title", "Card.Description", "Card.Content", "Text", "Card.Footer", "Button"]) assert.ok(html.includes(`aria-label="Select ${name} layer"`), name);
+  assert.doesNotMatch(html, /\+ Add/);
+  assert.match(inspector(card.children[1]), /aria-label="Select Text layer"/);
+  assert.match(inspector(card.children[2]), /aria-label="Select Button layer"/);
+  const oldCard = { id: "old-card", kind: "card", children: [{ id: "body", kind: "cardContent", children: [] }] }, before = structuredClone(oldCard);
+  const oldHtml = inspector(oldCard);
+  assert.match(oldHtml, /aria-label="Add Card.Header layer"/); assert.match(oldHtml, /aria-label="Add Card.Footer layer"/);
+  assert.deepEqual(oldCard, before);
+});
+
+test("layout containers retain the appearance editor separately from component Parameters", () => {
+  for (const kind of ["stack", "grid", "gridItem", "container", "form"]) {
+    const html = inspector({ id: "layout", kind, children: [], ...(kind === "form" ? { props: { action: "/" } } : {}) });
+    assert.match(html, /aria-label="Local appearance"/); assert.match(html, /data-appearance-key="paddingLeft"/);
+    assert.match(html, /Link corners/); assert.doesNotMatch(html, /<h3>Parameters/);
+  }
 });
 
 test("frame inspector exposes geometry once, shared appearance, and opt-in auto layout", () => {

@@ -1,7 +1,11 @@
 # bambiui · Studio canvas composer uygulama planı
 
 Tarih: 2026-10-03
-Durum: **uygulama talimatı; aşağıdaki görevler henüz tamamlanmadı.**
+Durum: **tarihsel uygulama planı; güncel teslimat özeti `roadmap.md` ve README içindedir.**
+
+## Son revizyon — canvas odaklı çalışma alanı
+
+2026-10-03 tarihli yeni kullanıcı isteği doğrultusunda önceki eşzamanlı Components/Pages düzeni yerine Project/System ayrımı, solda Layers/Assets ve sağda yalnız seçimi düzenleyen Design/Project panelleri uygulandı. Frame ölçüleri ve isteğe bağlı auto layout; tüm düğümlerde dört kenar/köşe, boyut, tipografi ve yüzey override'ları; Card alt katmanları; form alanı parçaları ve hata mesajı konumu/ikonu; proje içi kaydedilebilir bileşen şablonları teslim edildi. Mevcut kayıtlar ve token şeması korunur. Kaydedilen şablonlar bağımsız kopyalardır; linked master-instance yayılımı, cross-project kütüphane ve responsive runtime export bu teslimata dahil değildir. Aşağıdaki C00–C12 maddeleri tarihsel kapsamı anlatır; güncel özellik durumunda roadmap özeti önceliklidir.
 
 Ürün kapsamının kanonik özeti [roadmap.md](roadmap.md), teknik geçmiş [interface-composer-plan.md](interface-composer-plan.md). Bu dosya üçüncü bir ürün roadmap'i değil; onaylanan Studio/Figma benzeri yönün düşük bağlam maliyetli görev defteridir. Çelişkide son açık kullanıcı kararı esas alınır, ilgili belgeler birlikte düzeltilir.
 
@@ -58,7 +62,7 @@ Kullanıcı mevcut Studio'dan ayrılmadan:
 | Kod teslimatı | Önce seçili frame için mevcut kaynak + CSS/theme çıktısı | K2 onayı, C11 |
 | Responsive runtime | Bağımsız frame'lerin ekran aralıklarına açık eşlenmesi; otomatik ağaç birleştirme yok | Ayrı karar/görev; ilk canvas dilimini engellemez |
 
-K4'ün **ayrı proje/sistem yönetimi ve sonradan değiştirilebilir referans** kısmı onaylandı; silme/import/recovery ayrıntıları hâlâ karar gerektirebilir. K1–K5'in diğer kısımları bu planla onaylanmış sayılmaz. Özellikle K3 reusable kullanıcı komponentleri ilk canvas kapsamına eklenmez. Gerçekten gerekli onayı ilgili göreve geldiğinde **tek, kısa soruyla** al; bütün projeyi tekrar tartışmaya açma.
+K4'ün **ayrı proje/sistem yönetimi ve sonradan değiştirilebilir referans** kısmı onaylandı; silme/import/recovery ayrıntıları hâlâ karar gerektirebilir. K1–K5'in diğer kısımları bu planla onaylanmış sayılmaz. Bu tarihsel planda K3 kapsam dışıydı; son kullanıcı isteğiyle proje içi reusable snapshot şablonları eklendi, linked master-instance modeli eklenmedi. Gerçekten gerekli onayı ilgili göreve geldiğinde **tek, kısa soruyla** al; bütün projeyi tekrar tartışmaya açma.
 
 ## 3. Mevcut kod haritası ve tuzaklar
 

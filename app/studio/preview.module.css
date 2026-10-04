@@ -674,7 +674,7 @@
 
 @media (max-width: 760px) {
   .preview {
-    height: auto;
+    height: 100%;
   }
 
   .canvasControls,
@@ -684,10 +684,11 @@
   }
 
   .viewport {
-    flex: none;
-    height: auto;
-    overflow: visible;
-    overscroll-behavior: auto;
+    flex: 1;
+    height: 100%;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
     cursor: auto;
   }
 

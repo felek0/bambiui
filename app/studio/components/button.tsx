@@ -66,7 +66,7 @@ export function Button({
       {loading ? <Spinner /> : startIcon && (
               <span className={styles.decorativeIcon} aria-hidden="true">{startIcon}</span>
             )}
-      {iconOnly && loading ? null : appearance?.textAlign ? <span className={styles.alignedContent}>{children}</span> : children}
+      {iconOnly && loading ? null : appearance?.textAlign ? <span className={styles.alignedContent}>{children}</span> : iconOnly ? children : <span className={styles.buttonContent}>{children}</span>}
       {!iconOnly && endIcon && (
               <span className={styles.decorativeIcon} aria-hidden="true">{endIcon}</span>
             )}

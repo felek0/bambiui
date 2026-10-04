@@ -85,8 +85,8 @@
 .shell :global(.workspace-panel--design), .shell :global(.preview-canvas), .shell :global(.preview-frame), .shell :global(.preview-frame .theme-pane) { flex: 1; height: 100%; min-height: 0; }
 .shell :global(.preview-frame) { padding: 0; }
 .shell :global(.preview-frame .theme-pane) { border: 0; }
-.shell :global(.canvas-history) { top: auto; bottom: 16px; left: 16px; }
-.shell :global(.canvas-theme) { top: auto; bottom: 16px; right: 16px; }
+.shell :global(.canvas-history) { top: 12px; bottom: auto; left: 16px; }
+.shell :global(.canvas-theme) { top: 12px; bottom: auto; right: 16px; }
 .shell :global(.mobile-editor-link), .shell :global(.mobile-preview-link) { display: none; }
 .inspector { grid-area: 2 / 3 / 3 / 4; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; border-left: 1px solid var(--studio-color-border-subtle); background: var(--studio-color-surface); }
 .shell :global(.token-editor) { flex: 1; min-width: 0; min-height: 0; overflow: auto; border: 0; }
@@ -97,6 +97,7 @@
 .shell :global(.editor-scope) { padding-inline: 12px; }
 .shell :global(.color-fields) { grid-template-columns: minmax(0, 1fr); }
 .shell :global(.number-fields) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.shell :global(.editor-fields--component .number-fields), .shell :global(.editor-fields--spacing .number-fields) { grid-template-columns: minmax(0, 1fr); }
 .shell :global(.token-input) { min-height: 30px; }
 .shell :global(.workspace-heading) { padding: 20px 24px; }
 .shell :global(.studio-main--develop) { grid-column: 2 / -1; }
@@ -130,6 +131,10 @@
   .panelControls { gap: 0; padding-left: 3px; }
   .shell .panelControls :global(.studio-button) { width: 26px; }
   .shell :global(.studio-header) { gap: 4px; }
-  .shell :global(.system-switcher summary) { max-width: 84px; font-size: 10px; }
+  .shell :global(.system-switcher) { flex: 0 0 24px; }
+  .shell :global(.system-switcher summary) { width: 24px; max-width: 24px; padding: 4px; gap: 0; justify-content: center; }
+  .shell :global(.system-switcher .system-switcher-name) { display: none; }
+  .shell :global(.view-switch) { flex: none; gap: 6px; }
+  .shell :global(.view-switch a) { padding-inline: 0; font-size: 10px; }
   .shell :global(.header-actions) { gap: 2px; }
 }

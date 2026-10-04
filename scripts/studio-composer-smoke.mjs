@@ -27,7 +27,13 @@ const named = (selector, name, includeHidden = false) => `[...document.querySele
 const visible = expression => `(()=>{const e=(${expression});return !!e && e.getClientRects().length>0 && !e.closest('[hidden]') && getComputedStyle(e).visibility!=='hidden'})()`;
 const modeButton = name => named('[aria-label="Canvas mode"] button', name);
 const layer = (frameId, nodeId) => q(`[role="treeitem"][data-layer-id="${frameId}${nodeId ? '/' + nodeId : ''}"]`);
-const instanceKind = () => `document.querySelector('[aria-label="Instance settings"] h3')?.firstChild?.textContent`;
+const instanceKind = () => `(()=>{const h=document.querySelector('[aria-label="Instance settings"] h3');return h?.firstChild?.textContent==='Parameters'?h.querySelector('small')?.textContent:h?.firstChild?.textContent})()`;
+async function assertParameters(kind) {
+  await wait(`${instanceKind()}===${JSON.stringify(kind)}`);
+  assert.equal(await evaluate(`${q('[aria-label="Instance settings"] h3')}.firstChild.textContent`),'Parameters');
+  assert.equal(await evaluate(`!!${q('[aria-label="Instance settings"] [aria-label="Local appearance"]')} || !!${q('[aria-label="Instance settings"] [data-appearance-key]')}`),false,'component parameters must not expose local style editing');
+  assert.equal(await evaluate(`!!(${named('#project-inspector button','Edit styles in System')})`),true);
+}
 function send(method, params = {}, moveBeforePress = true) {
   // Move the real mouse to the target before pressing, not just on mouse-down.
   if (moveBeforePress && method === 'Input.dispatchMouseEvent' && params.type === 'mousePressed')
@@ -82,7 +88,7 @@ async function fit(selection = false) {
   for (let i = 0; i < 4 && await evaluate(`[...document.querySelectorAll(${JSON.stringify(titles)})].some(e=>{const r=e.getBoundingClientRect();return !e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))})`); i++) await click(q('[aria-label="Zoom out"]'));
 }
 async function addFrame(preset) {
-  await inspector('Design');
+  await inspector('Parameters');
   await click(q('[aria-label="Canvas tools"] [aria-label="Add frame"]'));
   await click(q(`[role="menuitem"][aria-label="Add ${preset} frame"]`));
   await wait(`!${q('[role="menu"]')}`);
@@ -101,7 +107,7 @@ async function canvasPoint(expression) {
   throw new Error(`Floating canvas chrome still covers ${expression}`);
 }
 async function chooseLayer(frameId, nodeId) {
-  await sidebar('Layers'); await inspector('Design');
+  await sidebar('Layers'); await inspector('Parameters');
   const item = layer(frameId, nodeId);
   await reveal(item); await evaluate(`(${item}).scrollIntoView({block:'nearest',behavior:'instant'});(${item}).focus()`);
   await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
@@ -134,7 +140,7 @@ async function click(expression) {
 }
 async function fill(selector, text) {
   if (selector === '[aria-label="Project name"]') await inspector('Project');
-  if (selector === '[aria-label="Page name"]' || selector.startsWith('[aria-label="Frame ') && selector !== '[aria-label="Frame theme"]') await inspector('Design');
+  if (selector === '[aria-label="Page name"]' || selector.startsWith('[aria-label="Frame ') && selector !== '[aria-label="Frame theme"]') await inspector('Parameters');
   await click(q(selector));
   await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'a', code: 'KeyA', modifiers: 4, commands: ['selectAll'] });
   await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'a', code: 'KeyA', modifiers: 4 });
@@ -177,6 +183,8 @@ async function cleanup() {
     await Promise.race([done, delay(2000)]);
     if (chrome.exitCode === null && chrome.signalCode === null) { chrome.kill('SIGKILL'); await Promise.race([done, delay(2000)]); }
   }
+  // Chrome helpers can retain the stderr pipe after the browser process exits.
+  chrome?.stderr?.destroy();
   if (server) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
   if (profile) await rm(profile, { recursive: true, force: true, maxRetries: 4, retryDelay: 200 });
 }
@@ -494,12 +502,12 @@ try {
   await check('C06 Design selects real Input/Button/Switch without activation, typing or layout shift', async () => {
     const frame=c06Frames[1], before=await project(first);
     const bounds=await evaluate(`(()=>{const r=${scoped(frame,'[data-page-node="fixtureInput"]')}.getBoundingClientRect();return [r.x,r.y,r.width,r.height]})()`);
-    await click(scoped(frame,'input[data-page-node="fixtureInput"]')); await wait(`${instance()}.textContent.includes('InputLocal instance')`);
+    await click(scoped(frame,'input[data-page-node="fixtureInput"]')); await assertParameters('Input');
     assert.notEqual(await evaluate('document.activeElement.tagName'),'INPUT');
     await send('Input.insertText',{text:'blocked'}); assert.equal(await evaluate(`${scoped(frame,'input[data-page-node="fixtureInput"]')}.value`),'initial');
-    await click(scoped(frame,'[data-page-node="fixtureSwitch"][role="switch"]')); await wait(`${instance()}.textContent.includes('SwitchLocal instance')`);
+    await click(scoped(frame,'[data-page-node="fixtureSwitch"][role="switch"]')); await assertParameters('Switch');
     assert.equal(await evaluate(`${scoped(frame,'[role="switch"]')}.getAttribute('aria-checked')`),'false');
-    await click(scoped(frame,'[data-page-node="fixtureButton"]')); await wait(`${instance()}.textContent.includes('ButtonLocal instance')`);
+    await click(scoped(frame,'[data-page-node="fixtureButton"]')); await assertParameters('Button');
     assert.equal(await evaluate('location.pathname'),'/pages'); assert.deepEqual(await project(first),before);
     assert.deepEqual(await evaluate(`(()=>{const r=${scoped(frame,'[data-page-node="fixtureInput"]')}.getBoundingClientRect();return [r.x,r.y,r.width,r.height]})()`),bounds);
     await evaluate(`${scoped(frame,'[data-page-node="fixtureButton"]')}.focus()`);
@@ -544,8 +552,9 @@ try {
   });
   await check('C06 keyboard layers, parent/breadcrumb, Escape and undo fallback remain frame scoped', async () => {
     const frame=c06Frames[1];
-    await click(named('#project-inspector button','Select parent')); assert.match(await evaluate(`${instance()}.textContent`),/StackLocal instance/);
-    await click(named('[aria-label="Selection path"] button','Container')); assert.match(await evaluate(`${instance()}.textContent`),/ContainerLocal instance/);
+    await click(named('#project-inspector button','Select parent')); assert.equal(await evaluate(`${q('[aria-label="Instance settings"] h3')}.textContent`),'StackLayout settings');
+    assert.equal(await evaluate(`!!${q('[aria-label="Instance settings"] [aria-label="Local appearance"]')}`),true,'layouts retain appearance controls');
+    await click(named('[aria-label="Selection path"] button','Container')); assert.equal(await evaluate(`${q('[aria-label="Instance settings"] h3')}.textContent`),'ContainerLayout settings');
     await chooseLayer(frame, 'fixtureInput'); await wait(`${instanceKind()}==='Input'`);
     await fill('[aria-label="Instance label"]',''); await enter(); assert.ok(await evaluate(`!!${instance()}.querySelector('[role="alert"]')`));
     await fill('[aria-label="Instance label"]','Mobile email'); await enter();
@@ -556,7 +565,7 @@ try {
     await fit(true); await click(scoped(frame,'[data-frame-title]')); await click(named('#project-inspector button','Duplicate frame'));
     const duplicate=(await project(first)).pages[0].frames.at(-1);
     await chooseLayer(duplicate.id, duplicate.root.id);
-    assert.match(await evaluate(`${instance()}.textContent`),/ContainerLocal instance/);
+    assert.equal(await evaluate(`${q('[aria-label="Instance settings"] h3')}.textContent`),'ContainerLayout settings');
     await click(q('[aria-label="Undo project edit"]')); await wait(`${instanceKind()}!=='Container'`);
     assert.equal((await project(first)).pages[0].frames.length,2);
     await click(scoped(frame,'[data-frame-title]')); await fit(true);
@@ -598,7 +607,7 @@ try {
   await check('C06 instance system link activates the linked kind; shared color edit repaints both frames without project changes', async () => {
     const before=await project(first);
     await chooseLayer(c06Frames[1], 'fixtureButton');
-    await click(named('#project-inspector button','Edit shared system styles')); await wait(`location.pathname==='/button' && !${q('#token-editor')}.hidden`);
+    await click(named('#project-inspector button','Edit styles in System')); await wait(`location.pathname==='/button' && !${q('#token-editor')}.hidden`);
     assert.equal((JSON.parse(await catalog())).activeId,originalSystem);
     await click(q('.studio-sidebar a[href="/colors"]')); await wait(`location.pathname==='/colors' && ${q('#token-background')}`);
     await fill('#token-background','#e4edf2');
@@ -639,7 +648,7 @@ try {
     const camera=await cameraState(); const result=await paletteDrag('button',surface);
     let root=(await project(c07Project)).pages[0].frames[0].root;
     assert.equal(root.children[0].kind,'stack'); assert.equal(root.children[0].children[0].kind,'button');
-    assert.equal(await evaluate(`${q('[aria-label="Instance settings"]')}.textContent.includes('Button')`),true);
+    await assertParameters('Button');
     assert.deepEqual(await cameraState(),camera);
     await click(q('[aria-label="Undo project edit"]')); assert.deepEqual(await project(c07Project),result.before); await click(q('[aria-label="Redo project edit"]'));
     // Blank root space remains a visible exact root slot, not a layer command.
@@ -648,8 +657,26 @@ try {
     const grid=root.children[1]; assert.equal(grid.kind,'grid');
     await paletteDrag('card',node(grid.id)); root=(await project(c07Project)).pages[0].frames[0].root;
     assert.equal(root.children[1].children[0].kind,'gridItem'); assert.equal(root.children[1].children[0].children[0].kind,'card');
-    const card=root.children[1].children[0].children[0]; await paletteDrag('text',node(card.children[0].id));
-    assert.equal((await project(c07Project)).pages[0].frames[0].root.children[1].children[0].children[0].children[0].children[0].kind,'text');
+    const card=root.children[1].children[0].children[0];
+    assert.deepEqual(card.children.map(child=>child.kind),['cardHeader','cardContent','cardFooter']);
+    const [header,content,footer]=card.children;
+    assert.deepEqual(header.children.map(child=>child.kind),['cardTitle','cardDescription']);
+    assert.equal(content.children[0].kind,'text'); assert.equal(footer.children[0].kind,'button');
+    for(const child of [...header.children,...content.children,...footer.children]) assert.ok(child.text?.trim(),'starter copy is populated');
+    await assertParameters('Card');
+    for(const name of ['Card.Title','Card.Description','Text','Button']) assert.ok(await evaluate(`!!${q(`[aria-label="Select ${name} layer"]`)}`),`direct ${name} layer navigation`);
+    await click(q('[aria-label="Select Card.Content layer"]'));await assertParameters('Card.Content');await click(palette('text'));
+    const bodyBefore=(await project(c07Project)).pages[0].frames[0].root.children[1].children[0].children[0].children.find(child=>child.kind==='cardContent');
+    assert.equal(bodyBefore.children.length,2);assert.deepEqual(bodyBefore.children[0],content.children[0]);
+    // Drop on the actual Content gap, not either populated Text leaf.
+    const bodyGap=`({getBoundingClientRect(){const a=${node(bodyBefore.children[0].id)}.getBoundingClientRect(),b=${node(bodyBefore.children[1].id)}.getBoundingClientRect();return {x:a.x+4,y:(a.bottom+b.top)/2,width:0,height:0}}})`;
+    const bodyDrop=await paletteDrag('text',bodyGap); assert.equal(bodyDrop.valid,'true');
+    const updated=(await project(c07Project)).pages[0].frames[0].root.children[1].children[0].children[0];
+    const updatedContent=updated.children.find(child=>child.kind==='cardContent');
+    assert.equal(updatedContent.children.length,3);
+    assert.deepEqual(updatedContent.children[0],bodyBefore.children[0]);assert.deepEqual(updatedContent.children[2],bodyBefore.children[1]);assert.equal(updatedContent.children[1].kind,'text');
+    assert.deepEqual(updated.children.find(child=>child.kind==='cardHeader'),header);
+    assert.deepEqual(updated.children.find(child=>child.kind==='cardFooter'),footer);
   });
   await check('C07 invalid leaf, Escape/pointercancel/blur, foreign native drag and Preview preserve bytes',async()=>{
     const root=(await project(c07Project)).pages[0].frames[0].root, button=root.children[0].children[0];
@@ -683,7 +710,9 @@ try {
     await openProject('Alpha',first);
   });
   await check('C07 all nine palette entries insert by real mouse into full empty-root geometry and select the inserted node',async()=>{
-    c07Project=await createProject('All palette entries'); await click(q('[aria-label="Add page"]')); await addFrame('Mobile'); await fit(true);
+    c07Project=await createProject('All palette entries'); await click(q('[aria-label="Add page"]')); await addFrame('Mobile');
+    // All populated starters fit with a real blank root drop area below the content.
+    await fill('[aria-label="Frame height"]','1600'); await enter(); await fit(true);
     c07Frame=(await project(c07Project)).pages[0].frames[0].id;
     const surface=q(`[data-frame-id="${c07Frame}"] [data-frame-surface]`);
     const blank=`({getBoundingClientRect(){const r=${surface}.getBoundingClientRect();return {x:r.x+20,y:r.bottom-50,width:40,height:20}}})`;
@@ -694,6 +723,14 @@ try {
       const root=(await project(c07Project)).pages[0].frames[0].root;
       const last=root.children.at(-1), inserted=['button','input','switch','checkbox'].includes(kind)?last.children[0]:last;
       assert.equal(inserted.kind,kind);
+      assert.equal(inserted.appearance,undefined); assert.equal(inserted.parts,undefined);
+      if(['stack','grid'].includes(kind)) assert.deepEqual(inserted.children,[]);
+      else {
+        assert.equal(inserted.props.size,'md');
+        if(['input','switch','checkbox'].includes(kind)) { assert.ok(inserted.props.label.trim()); assert.ok(inserted.props.description.trim()); assert.equal(inserted.props.name,inserted.id); }
+        else if(kind==='card') assert.deepEqual(inserted.children.map(child=>child.kind),['cardHeader','cardContent','cardFooter']);
+        else assert.ok(inserted.text.trim());
+      }
       assert.equal(await evaluate(`${layer(c07Frame, inserted.id)}?.getAttribute('aria-selected')`),'true');
             assert.equal(await evaluate(`${layer(c07Frame, inserted.id)}?.tagName`),'LI');
       assert.equal(await catalog(),tokenBytes);
@@ -705,7 +742,9 @@ try {
     const edge=`({getBoundingClientRect(){const r=${node(card.id)}.getBoundingClientRect();return {x:r.x+2,y:r.y+2,width:0,height:0}}})`;
     await paletteDrag('text',edge);
     assert.match(await evaluate(`${q('[aria-label="Page canvas"]')}.textContent`),/existing Card.Content/);
-    const content=(await project(c07Project)).pages[0].frames[0].root.children.find(n=>n.id===card.id).children[0];assert.equal(content.children.at(-1).kind,'text');
+    const content=(await project(c07Project)).pages[0].frames[0].root.children.find(n=>n.id===card.id).children.find(n=>n.kind==='cardContent');
+    const originalContent=card.children.find(n=>n.kind==='cardContent');
+    assert.deepEqual(content.children.slice(0,-1),originalContent.children); assert.equal(content.children.length,originalContent.children.length+1); assert.equal(content.children.at(-1).kind,'text');
     await click(node(stack.children[0].id));await click(named('#project-inspector button','Select parent'));
     const invalid=await paletteDrag('badge',node(stack.children[0].id));assert.equal(invalid.valid,'false');
     const before=await project(c07Project),rev=await c07Revision();
@@ -771,7 +810,7 @@ try {
     assert.equal(await evaluate(`!!document.querySelector('[data-node-move-valid]')`),false);
     await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:start.x+2,y:start.y,button:'left',clickCount:1});
     assert.deepEqual(await project(c07Project),before);assert.equal(await c07Revision(),rev);
-    assert.equal(await evaluate(`${q('[aria-label="Instance settings"]')}.textContent.includes('BadgeLocal instance')`),true);
+    await assertParameters('Badge');
     const result=await nodeDrag(c08Node,pointAt(node(row.children[1].id),.9));assert.equal(result.valid,'true');
     row=(await project(c07Project)).pages[0].frames[0].root.children[0];assert.equal(row.children[1].id,c08Node);
     await click(q('[aria-label="Undo project edit"]'));assert.deepEqual(await project(c07Project),result.before);await click(q('[aria-label="Redo project edit"]'));
@@ -797,7 +836,7 @@ try {
     const surface=q(`[data-frame-id="${c08Second}"] [data-frame-surface]`);
     const result=await nodeDrag(c08Node,pointAt(surface,.3,.2));assert.equal(result.valid,'true');
     const doc=await project(c07Project);assert.equal(doc.pages[0].frames[0].root.children[1].children.length,0);assert.equal(doc.pages[0].frames[1].root.children[0].id,c08Node);
-    assert.equal(await evaluate(`${q('[aria-label="Instance settings"]')}.textContent.includes('BadgeLocal instance')`),true);
+    await assertParameters('Badge');
     await click(q('[aria-label="Undo project edit"]'));assert.deepEqual(await project(c07Project),result.before);await click(q('[aria-label="Redo project edit"]'));assert.deepEqual(await project(c07Project),doc);
     await click(q('[aria-label="Undo project edit"]'));
   });
@@ -840,7 +879,11 @@ try {
     const cell=(await project(c07Project)).pages[0].frames[0].root.children.find(n=>n.id===grid.id).children[0];assert.equal(cell.kind,'gridItem');assert.equal(cell.children[0].id,c08Node);
     await click(q('[aria-label="Undo project edit"]'));assert.deepEqual(await project(c07Project),intoGrid.before);
     const edge=`(()=>{const r=${node(card.id)}.getBoundingClientRect();return {x:r.right-2,y:r.bottom-2}})()`;
-    const intoCard=await nodeDrag(c08Node,edge);assert.equal(intoCard.valid,'true');assert.equal((await project(c07Project)).pages[0].frames[0].root.children.find(n=>n.id===card.id).children[0].children[0].id,c08Node);
+    const intoCard=await nodeDrag(c08Node,edge);assert.equal(intoCard.valid,'true');
+    const movedCard=(await project(c07Project)).pages[0].frames[0].root.children.find(n=>n.id===card.id);
+    const movedContent=movedCard.children.find(n=>n.kind==='cardContent'),originalContent=card.children.find(n=>n.kind==='cardContent');
+    assert.equal(movedContent.children.at(-1).id,c08Node);assert.deepEqual(movedContent.children.slice(0,-1),originalContent.children);
+    assert.deepEqual(movedCard.children.filter(n=>n.kind!=='cardContent'),card.children.filter(n=>n.kind!=='cardContent'));
     await click(q('[aria-label="Undo project edit"]'));assert.deepEqual(await project(c07Project),intoCard.before);
   });
   await check('C08 page away/back aborts a captured node drag without storage or history mutation',async()=>{
@@ -877,7 +920,7 @@ try {
     await click(frameTitle(c09Frame));await click(palette('text'));c09Text=(await project(c09Project)).pages[0].frames[0].root.children[1].id;
     await fit(true);
     const before=await project(c09Project),tokens=await catalog();
-    await context(node(c09Badge));assert.match(await evaluate(`${q('[aria-label="Instance settings"]')}.textContent`),/BadgeLocal instance/);
+    await context(node(c09Badge));await assertParameters('Badge');
     await click(menuItem('Duplicate instance'));
     let doc=await project(c09Project),children=doc.pages[0].frames[0].root.children;
     assert.equal(children[0].id,c09Badge);assert.notEqual(children[1].id,c09Badge);assert.equal(children[2].id,c09Text);
@@ -914,12 +957,12 @@ try {
   await check('C09 Delete/Backspace and Cmd D/Z/Shift Z work only on focused canvas, selection falls back after delete',async()=>{
     await context(node(c09Badge));await key('Escape','Escape');const before=await project(c09Project);
     assert.equal(await evaluate(`document.activeElement===${canvas}`),true,'Shortcut canvas focus');
-    assert.match(await evaluate(`${q('[aria-label="Instance settings"]')}.textContent`),/BadgeLocal instance/,'Shortcut selection survives menu Escape');
+    await assertParameters('Badge'); // Shortcut selection survives menu Escape.
     await key('d','KeyD',4);let doc=await project(c09Project);assert.equal(doc.pages[0].frames[0].root.children.length,3);
     await key('z','KeyZ',4);assert.deepEqual(await project(c09Project),before);await key('z','KeyZ',12);assert.deepEqual(await project(c09Project),doc);
     await context(node(c09Badge));await key('Escape','Escape');const duplicate=await project(c09Project);
     await key('Delete','Delete');assert.equal((await project(c09Project)).pages[0].frames[0].root.children.some(n=>n.id===c09Badge),false);
-    assert.match(await evaluate(`${q('[aria-label="Instance settings"]')}.textContent`),/ContainerLocal instance/);
+    assert.equal(await evaluate(`${q('[aria-label="Instance settings"] h3')}.textContent`),'ContainerLayout settings');
     await key('z','KeyZ',4);assert.deepEqual(await project(c09Project),duplicate);
     await context(node(c09Badge));await click(menuItem('Delete instance'));assert.equal(await evaluate(`document.activeElement===${canvas}`),true);
     await key('z','KeyZ',4);assert.deepEqual(await project(c09Project),duplicate);
@@ -928,10 +971,18 @@ try {
   await check('C09 root and required compound slots show disabled actions; blank canvas never targets previous selection',async()=>{
     await click(frameTitle(c09Frame));await click(palette('card'));
     const doc=await project(c09Project),card=doc.pages[0].frames[0].root.children.find(n=>n.kind==='card');
-    await context(node(card.children[0].id));
-    assert.equal(await evaluate(`${q('[role="menuitem"][title]:last-child')}?.getAttribute('aria-disabled')`),'true');
-    assert.equal(await evaluate(`[...document.querySelectorAll('[role="menuitem"]')].find(e=>e.textContent.startsWith('Wrap in Stack')).getAttribute('aria-disabled')`),'true');
+    const header=card.children.find(n=>n.kind==='cardHeader'),title=header.children.find(n=>n.kind==='cardTitle'),description=header.children.find(n=>n.kind==='cardDescription');
+    // Populated Cards can lose optional slots. Make Title the Header's sole child
+    // through the UI to keep testing the non-empty compound-slot invariant.
+    await chooseLayer(c09Frame,description.id);await click(named('[aria-label="Canvas tools"] button','… Actions'));await click(menuItem('Delete instance'));
+    await wait(`!document.querySelector('[role="menu"]')`);
+    await click(frameTitle(c09Frame));await fit(true);
+    const titlePoint=await canvasPoint(pointAt(node(title.id)));
+    assert.equal(await evaluate(`document.elementFromPoint(${titlePoint.x},${titlePoint.y})?.closest('[data-page-node]')?.dataset.pageNode`),title.id,'required slot context click must hit the real Title');
+    await context(node(title.id));await assertParameters('Card.Title');
+    for(const action of ['Delete instance','Duplicate instance','Wrap in Stack']) assert.equal(await evaluate(`[...document.querySelectorAll('[role="menuitem"]')].find(e=>e.textContent.startsWith(${JSON.stringify(action)}))?.getAttribute('aria-disabled')`),'true',`${action} respects required/unique Header slots`);
     await key('Escape','Escape');
+    await click(q('[aria-label="Undo project edit"]'));assert.deepEqual(await project(c09Project),doc);
     const rootId=doc.pages[0].frames[0].root.id;
     await click(named('[aria-label="Selection path"] button','Container'));await click(named('[aria-label="Canvas tools"] button','… Actions'));
     assert.equal(await evaluate(`[...document.querySelectorAll('[role="menuitem"]')].every(e=>e.getAttribute('aria-disabled')==='true')`),true);await key('Escape','Escape');

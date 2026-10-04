@@ -1,0 +1,19 @@
+.editor { min-width: 0; }
+.tabs { position: sticky; top: 0; z-index: 2; display: flex; gap: 4px; padding: 6px 0 10px; border-bottom: 1px solid var(--studio-color-border-subtle); background: var(--studio-color-surface); }
+.tab { flex: 1; min-width: 0; min-height: 32px; border-radius: 5px; color: var(--studio-color-text-subtle); font: 600 11px/1.4 var(--studio-font-family); }
+.tab:hover { background: var(--studio-color-surface-hover); }
+.tab[data-active] { background: var(--studio-color-selection); color: var(--studio-color-on-selection); }
+.tab:focus-visible, .panel:focus-visible { outline: var(--studio-focus-ring); outline-offset: 2px; }
+.panel[hidden] { display: none; }
+.section { padding: 12px 0; }
+.section h3 { margin: 0 0 10px; font-size: 11px; font-weight: 600; }
+.textarea { width: 100%; min-width: 0; padding: 7px 24px 7px 7px; resize: vertical; border: 1px solid transparent; border-radius: 4px; background: var(--studio-color-surface-hover); color: var(--studio-color-text); font: 11px/1.6 var(--studio-font-family); }
+.textarea:focus-visible { outline: var(--studio-focus-ring); outline-offset: -1px; }
+.textarea[aria-invalid="true"] { border-color: var(--studio-color-warning); }
+.baseTokens > section { margin-block: 14px; }
+.starter { position: relative; min-width: 0; padding: 18px; border: 1px solid var(--studio-color-border-subtle); border-radius: 6px; background: var(--ds-background); }
+.starterHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; color: var(--studio-color-text-subtle); font: 11px/1.5 var(--studio-font-family); }
+.starterHeader button { padding: 4px 8px; border: 1px solid var(--studio-color-border); border-radius: 4px; background: var(--studio-color-surface); color: var(--studio-color-text); font: inherit; }
+.starterHeader button:focus-visible { outline: var(--studio-focus-ring); outline-offset: 2px; }
+.starterBody { min-width: 0; }
+.starterBody [data-system-selected-part]:not(:focus-visible):not(:has(:focus-visible)) { outline: 1px solid var(--studio-color-selection-border); outline-offset: 3px; }

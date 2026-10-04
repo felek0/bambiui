@@ -12,13 +12,15 @@ const page = children => ({ version: 1, id: "page", name: "Page", root: { id: "r
 const target = (parentId, index = 0) => ({ parentId, index });
 const stack = (id, children = []) => ({ id, kind: "stack", children });
 
-test("all seven component and layout factories have valid required defaults and independent trees", () => {
+test("all component and layout factories have populated parameters and independent valid trees", () => {
   for (const kind of ["button", "input", "switch", "checkbox", "badge", "card", "text", "stack", "grid"]) {
     const node = createInsertionNode(kind, ids());
     assert.doesNotThrow(() => parsePageDocument(page([stack("slot", [node])])));
-    assert.equal(node.props?.variant, undefined);
-    if (["input", "switch", "checkbox"].includes(kind)) assert.deepEqual(node.props, { label: "New field", name: node.id });
-    if (kind === "card") assert.deepEqual(node.children.map(child => child.kind), ["cardContent"]);
+    assert.equal(node.appearance, undefined); assert.equal(node.parts, undefined);
+    if (!["stack", "grid"].includes(kind)) assert.equal(node.props.size, "md");
+    else assert.deepEqual(node.children, []);
+    if (["input", "switch", "checkbox"].includes(kind)) { assert.ok(node.props.label); assert.ok(node.props.description); assert.equal(node.props.name, node.id); }
+    if (kind === "card") assert.deepEqual(node.children.map(child => child.kind), ["cardHeader", "cardContent", "cardFooter"]);
     const other = createInsertionNode(kind, ids());
     node.text = "Changed"; node.children?.push(stack("extra"));
     assert.notEqual(other.text, "Changed"); assert.notEqual(other.children?.at(-1)?.id, "extra");
@@ -42,11 +44,15 @@ test("root control wrappers are explicit, deterministic and one undoable atomic 
   }
 });
 
-test("Grid Card uses Grid.Item and its factory's body slot; Card insertion never targets header", () => {
+test("Grid Card uses Grid.Item with populated slots; further Card insertion still targets content, never header", () => {
   const grid = page([{ id: "grid", kind: "grid", children: [] }]);
   const result = proposeInsertion(grid, target("grid"), "card", ids());
   assert.equal(result.ok, true); assert.deepEqual(result.wrappers.map(w => w.kind), ["gridItem"]);
-  assert.equal(result.page.root.children[0].children[0].children[0].children[0].kind, "cardContent");
+  const insertedCard = result.page.root.children[0].children[0].children[0];
+  assert.deepEqual(insertedCard.children.map(child => child.kind), ["cardHeader", "cardContent", "cardFooter"]);
+  assert.equal(insertedCard.children[1].children[0].kind, "text");
+  const extra = proposeInsertion(result.page, target(insertedCard.id, 0), "input", () => "extra-input");
+  assert.equal(extra.ok, true); assert.equal(extra.commands[0].parentId, insertedCard.children[1].id); assert.equal(extra.commands[0].index, 1);
   const card = page([{ id: "card", kind: "card", children: [{ id: "header", kind: "cardHeader", children: [{ id: "title", kind: "cardTitle", text: "Title" }] }] }]);
   const body = proposeInsertion(card, target("card", 1), "checkbox", ids());
   assert.equal(body.ok, true); assert.deepEqual(body.wrappers.map(w => w.kind), ["cardContent"]);
@@ -117,6 +123,30 @@ test("cached validity includes node/depth limits, not just registry slot compati
   let deep = stack('depth12');
   for (let i = 11; i >= 1; i--) deep = stack(`depth${i}`, [deep]);
   assert.equal(insertionProposalCache(page([deep]), 'button')(target('depth12')).ok, false);
+});
+
+test("defaults are captured by candidate caches and applied only to newly inserted content", () => {
+  const input = page([stack("slot", [{ id: "existing", kind: "button", text: "Keep my content", props: { variant: "link" }, appearance: { fontSize: 17.5 } }])]);
+  const before = structuredClone(input), defaults = { button: { text: "System action", props: { variant: "secondary", size: "lg" } } };
+  const cache = insertionProposalCache(input, "button", defaults);
+  defaults.button.text = "Changed outside gesture";
+  const proposal = cache(target("slot", 1));
+  assert.equal(proposal.ok, true); assert.equal(proposal.commands[0].node.text, "System action");
+  assert.equal(proposal.commands[0].node.props.variant, "secondary"); assert.equal(proposal.commands[0].node.props.size, "lg");
+  assert.deepEqual(proposal.page.root.children[0].children[0], before.root.children[0].children[0]);
+  assert.deepEqual(input, before);
+  assert.equal(proposeInsertion(input, target("slot", 1), "button", ids(), defaults).commands[0].node.text, "Changed outside gesture");
+  assert.equal(proposeInsertion(input, target("slot", 1), "button", ids(), { button: { props: { name: "no" } } }).ok, false);
+});
+
+test("populated Card proposals account for every descendant in node and depth quotas", () => {
+  const nearLimit = count => page(Array.from({ length: count }, (_, i) => ({ id: `existing-${i}`, kind: "text", text: "Existing" })));
+  assert.equal(insertionProposalCache(nearLimit(91), "card")(target("root", 91)).ok, true);
+  assert.equal(insertionProposalCache(nearLimit(92), "card")(target("root", 92)).ok, false);
+  let deep = stack("depth-10");
+  for (let i = 9; i >= 1; i--) deep = stack(`depth-${i}`, [deep]);
+  assert.equal(insertionProposalCache(page([deep]), "card")(target("depth-10")).ok, false);
+  assert.equal(insertionProposalCache(page([deep]), "text")(target("depth-10")).ok, true);
 });
 
 test("new frame full-width root survives adapter/export; legacy root geometry stays unchanged", () => {

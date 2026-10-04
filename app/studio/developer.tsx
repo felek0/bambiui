@@ -26,6 +26,8 @@ import styles from "./developer.module.css";
 import { developerCopy, type NoteKey } from "./developer-copy";
 import type { PaletteMode } from "./color-engine";
 import { appearanceFieldsFor, appearanceParts } from "./page-document/appearance";
+import { componentStyleFields, componentStyleParts, componentStyleVariable } from "./component-styles";
+import { componentDefaultFields, resolveComponentDefaults, type ComponentDefaultSlot } from "./component-defaults";
 
 
 export type DeveloperViewProps = {
@@ -37,7 +39,7 @@ export type DeveloperViewProps = {
 };
 
 const instanceNotes = {
-  appearance: "Theme-independent instance values on the painted element. Omitted values inherit the shared component tokens; these are not new CSS tokens.",
+  appearance: "Theme-independent instance values on the painted element. Supplied values win over shared System Styles; omitted values inherit. These are not new CSS tokens.",
   parts: "Independent root, label, control, description and error appearance; choices also support row. Control part values take precedence over appearance.",
   errorPosition: "Place the error before the label/control group or after the description. DOM order matches visual order.",
   errorIcon: "Fixed decorative, aria-hidden glyph; never a replacement for the textual error.",
@@ -364,6 +366,62 @@ function FoundationTokens({ theme, mode, variables, kind }: {
   </>;
 }
 
+function InsertionParameters({ selected, system }: { selected: ComponentId; system: DesignSystem }) {
+  const resolved = resolveComponentDefaults(selected, system.componentDefaults);
+  const authored = system.componentDefaults?.[selected];
+  return <details className={styles.reference} data-insertion-parameters-reference>
+    <summary>System Parameters — new insertions only</summary>
+    <p>These are the current insertion parameters, not React API defaults or shared styles. They seed new built-in components only. Existing instances and saved component snapshots keep their content and props; Project Parameters edits the selected instance.</p>
+    {selected === "card" && <p>A new Card includes Header with Title and Description, Content with Text, and Footer with Button. Slot copy comes from Card parameters; the Text and Button use their own insertion parameters. Layout primitives remain empty.</p>}
+    <ScrollRegion label={`${reference[selected].name} insertion parameters`}>
+      <table className={styles.table}>
+        <caption>{reference[selected].name} new-instance parameters</caption>
+        <thead><tr><th scope="col">Parameter</th><th scope="col">Source</th><th scope="col">Value</th></tr></thead>
+        <tbody>{componentDefaultFields(selected).map(({ source, key, label }) => {
+          const value = source === "text" ? resolved.text : source === "props" ? resolved.props[key] : resolved.slots?.[key as ComponentDefaultSlot];
+          const override = source === "text" ? authored?.text : source === "props" ? authored?.props?.[key] : authored?.slots?.[key as ComponentDefaultSlot];
+          return <tr key={`${source}.${key}`}><th scope="row">{label} <code>{source === "text" ? key : `${source}.${key}`}</code></th><td>{override === undefined ? "Built-in starter" : "Authored System parameter"}</td><td><code>{value === undefined ? "omitted" : JSON.stringify(value)}</code></td></tr>;
+        })}</tbody>
+      </table>
+    </ScrollRegion>
+    <p>Field names are generated per insertion, never shared parameters. Optional omitted props retain their component behavior. Changing a parameter does not synchronize existing copies.</p>
+  </details>;
+}
+
+function SharedPartStyles({ selected, theme, mode, variables }: {
+  selected: ComponentId; theme: ThemeTokens; mode: PaletteMode; variables: Record<string, string>;
+}) {
+  return <details className={styles.reference} data-component-styles-reference>
+    <summary>Shared component part styles</summary>
+    <p>System Styles applies these sparse overrides to linked existing components as well as new insertions. Colors belong to the {mode} theme; dimensions, typography, spacing, border widths, opacity and shadow presets are shared across Light and Dark. Local <code>appearance</code> and field <code>parts</code> still win for the properties they supply.</p>
+    <p>Only consumed, editable metadata fields are listed. An unset variable uses the component CSS default, which can depend on variant, state, size, tone and parent inheritance; it is not a materialized token value. Generated box/alignment helpers are implementation details, not editable styles. Root/control variant paint stays in the separate variant and state reference.</p>
+    {componentStyleParts(selected).map(({ key: part, label }) => <div key={part}>
+      <h3>{label} <code>{part}</code></h3>
+      <ScrollRegion label={`${reference[selected].name} ${label} shared styles`}>
+        <table className={styles.table}>
+          <caption>{reference[selected].name} · {label}</caption>
+          <thead><tr><th scope="col">Field / CSS variable</th><th scope="col">Scope</th><th scope="col">Source</th><th scope="col">CSS declaration</th></tr></thead>
+          <tbody>{componentStyleFields(selected, part).map(({ key, label: fieldLabel, type }) => {
+            const name = componentStyleVariable(selected, part, key);
+            const authored = theme.componentStyles?.[selected]?.[part]?.[key] !== undefined;
+            const declaration = variables[name];
+            // minHeight is editable, but may also be generated by an explicit height.
+            const source = authored ? "Authored System style" : declaration !== undefined ? "Generated from authored height" : "Inherited CSS default";
+            return <tr key={key} data-style-field={`${selected}.${part}.${key}`}>
+              <th scope="row">{fieldLabel}<br /><code>{name}</code><CopyToken value={name} /></th>
+              <td>{type === "color" ? `${mode} theme color` : "Shared dimension / effect"}</td>
+              <td>{source}</td>
+              <td>{declaration === undefined ? "Not declared — component CSS fallback" : <><code>{declaration}</code><CopyToken value={declaration} /></>}</td>
+            </tr>;
+          })}</tbody>
+        </table>
+      </ScrollRegion>
+    </div>)}
+    <p>Reset removes an authored key to restore its CSS fallback, not a fixed copy of today’s value. Lengths use px; fontWeight, lineHeight and opacity are unitless. CSS export resets omitted Dark variables to <code>initial</code> where necessary, so Light’s sparse overrides cannot leak into Dark.</p>
+    <p>The contrast audit models opaque field-part, Card-slot and Text colors, including Text in Card.Content when shared paint changes. It does not certify local appearance, opacity compositing, arbitrary nested/external surfaces, shadows or focus geometry. Review the rendered composition in both themes.</p>
+  </details>;
+}
+
 export function DeveloperView({ selected, system, mode, cssOutput }: DeveloperViewProps) {
   const copy = developerCopy;
   const component = selected === "colors" || selected === "spacing" ? null : reference[selected];
@@ -385,6 +443,7 @@ export function DeveloperView({ selected, system, mode, cssOutput }: DeveloperVi
       })))
     : [];
   const derived = Object.entries(variables).filter(([name]) => name.startsWith(prefix) && !editableNames.has(name)
+    && !name.startsWith(`${prefix}part-`)
     && !(selected === "text" && name.startsWith("--text-"))
     && !(variantComponent && name.startsWith(variantPrefix)));
 
@@ -399,7 +458,7 @@ export function DeveloperView({ selected, system, mode, cssOutput }: DeveloperVi
           <ReactUsage key={selected} selected={selected} />
           <details className={styles.reference}>
             <summary>{copy.propsAndDefaults}</summary>
-            <p>{copy.propsDescription}</p>
+            <p>{copy.propsDescription} These are React API defaults, separate from System Parameters for new insertions.</p>
             <ScrollRegion label={copy.propsRegion(component.name)}>
               <table className={styles.table}>
                 <caption>{component.name} {copy.propReference}</caption>
@@ -418,9 +477,11 @@ export function DeveloperView({ selected, system, mode, cssOutput }: DeveloperVi
             </ScrollRegion>
             <p>{copy.componentNotes[selected]}</p>
           </details>
+          <InsertionParameters selected={selected} system={system} />
+          <SharedPartStyles selected={selected} theme={theme} mode={mode} variables={variables} />
           <details className={styles.reference} data-instance-appearance-reference>
             <summary>Local instance appearance (not tokens)</summary>
-            <p><code>appearance</code> overrides only this instance. It targets the Input shell, Switch track, Checkbox box, or the component root. Unset values keep their existing theme, variant and state inheritance. Lengths are pixels; lineHeight is unitless. Colors are six-digit hex (background and borderColor also accept transparent); shadow uses the existing none/sm/md/lg presets.</p>
+            <p><code>appearance</code> overrides only this instance, taking precedence over System Styles. It targets the Input shell, Switch track, Checkbox box, or the component root. Unset values keep their shared part, theme, variant and state inheritance. Lengths are pixels; lineHeight is unitless. Colors are six-digit hex (background and borderColor also accept transparent); shadow uses the existing none/sm/md/lg presets.</p>
             <p>Consumed primary fields: {appearanceFieldsFor(selected).map(({ key }, index) => <span key={key}>{index > 0 && ", "}<code>{key}</code></span>)}.</p>
             {appearanceParts(selected).length > 0 && <>
               <p><code>parts</code> independently styles these field elements. <code>parts.control</code> merges over primary appearance; error gap separates its optional icon. The label and description relationships remain managed by Base UI.</p>
@@ -444,7 +505,7 @@ export function DeveloperView({ selected, system, mode, cssOutput }: DeveloperVi
             : copy.globalTokensDescription}
         </p>
         {selected === "badge" && <p>Neutral outline uses <code>--badge-neutral-outline</code>, derived from Badge colors unless the border is overridden. <code>--badge-border</code> is exported for compatibility but not painted by the current Badge variants.</p>}
-        {selected === "text" && <p>Only <code>--text-foreground</code> affects Text. Typography comes from shared <code>--ds-typography-*</code> tokens; unused legacy aliases remain in CSS/JSON backups.</p>}
+        {selected === "text" && <p>Among legacy aliases, only <code>--text-foreground</code> affects Text (neutral tone). Other tones use <code>--ds-*-on-subtle</code>; <code>--text-part-root-color</code>, when authored, overrides every tone. Typography inherits shared <code>--ds-typography-*</code> defaults unless a shared part or local appearance value overrides it. Unused legacy aliases remain in CSS/JSON backups.</p>}
         <ScrollRegion label={component ? copy.tokensRegion(component.name) : copy.globalTokenReference}>
           <table className={styles.table}>
             <caption>{component ? `${component.name} ${copy.baseTokenAliases}` : copy.globalCSSVariables}</caption>

@@ -46,6 +46,61 @@ function deepFreeze(value) {
   return Object.freeze(value);
 }
 
+test("shared part styles and insertion parameters round-trip without rewriting historical values", () => {
+  const original = fresh();
+  original.componentDefaults = { card: { slots: { title: "Account", action: "Save" } }, input: { props: { label: "Work email", errorPosition: "above", errorIcon: "warning" } } };
+  original.themes.light.componentStyles = { card: { root: { paddingLeft: 17.25, borderTopLeftRadius: 19 }, title: { fontSize: 31, color: "#123456" } } };
+  original.themes.dark.componentStyles = { card: { root: { paddingLeft: 99 }, title: { fontSize: 45, color: "#abcdef" } } };
+  const before = structuredClone(original), imported = parse(original);
+  assert.deepEqual(original, before);
+  assert.deepEqual(imported.componentDefaults, original.componentDefaults);
+  assert.deepEqual(imported.themes.light.global, original.themes.light.global);
+  assert.deepEqual(imported.themes.dark.global, original.themes.dark.global);
+  assert.deepEqual(imported.themes.dark.componentStyles.card, { root: { paddingLeft: 17.25, borderTopLeftRadius: 19 }, title: { fontSize: 31, color: "#abcdef" } });
+  assert.equal(toCSSVariables(imported.themes.light)["--card-part-title-font-size"], "31px");
+  assert.equal(toCSSVariables(imported.themes.dark, "dark")["--card-part-title-color"], "#abcdef");
+  const edited = structuredClone(imported);
+  edited.themes.dark.componentStyles.card.title = { color: "#fedcba", fontSize: 27.5, shadow: "lg" };
+  delete edited.themes.dark.componentStyles.card.root.paddingLeft;
+  const shared = shareNonColorTokens(edited, "dark");
+  assert.deepEqual(shared.themes.light.componentStyles.card.title, { color: "#123456", fontSize: 27.5, shadow: "lg" });
+  assert.equal(shared.themes.light.componentStyles.card.root.paddingLeft, undefined);
+  assert.deepEqual(parse(shared), shared);
+  assert.deepEqual(shared.componentDefaults, original.componentDefaults);
+});
+
+test("CSS export resets sparse part overrides in both theme scopes, including implementation helpers", () => {
+  const system = fresh();
+  system.themes.light.componentStyles = { card: { title: { color: "#123456" } } };
+  system.themes.dark.componentStyles = { input: { error: { background: "#456789" } } };
+  const output = exportCSS(system);
+  const [light, dark] = output.split('[data-ds-theme="dark"]');
+  assert.match(light, /--card-part-title-color: #123456;/);
+  assert.match(light, /--input-part-error-background: initial;/);
+  assert.match(light, /--input-part-error-box-sizing: initial;/);
+  assert.match(dark, /--card-part-title-color: initial;/);
+  assert.match(dark, /--card-part-title-box-sizing: initial;/);
+  assert.match(dark, /--input-part-error-background: #456789;/);
+  assert.ok(!exportCSS(defaultSystem).includes("-part-"), "legacy systems keep their original variable maps");
+});
+
+test("new v3 extensions reject unsafe, misplaced and unsupported data", () => {
+  for (const invalid of [null, [], { unknown: {} }, { card: { title: { fontSize: -1 } } }, { button: { root: { background: "#123456" } } }, { input: { error: { color: "red" } } }]) {
+    const system = fresh(); system.themes.light.componentStyles = invalid;
+    assert.throws(() => parse(system));
+  }
+  for (const invalid of [null, [], { unknown: {} }, { card: { appearance: { fontSize: 30 } } }, { input: { props: { name: "not-shared" } } }]) {
+    const system = fresh(); system.componentDefaults = invalid;
+    assert.throws(() => parse(system));
+  }
+  const misplaced = fresh(); misplaced.themes.light.componentDefaults = {};
+  assert.throws(() => parse(misplaced), /Unknown field/);
+  const old = parse(fresh());
+  assert.equal(Object.hasOwn(old, "componentDefaults"), false);
+  assert.equal(Object.hasOwn(old.themes.light, "componentStyles"), false);
+  assert.equal(Object.hasOwn(old.themes.dark, "componentStyles"), false);
+});
+
 test("Text exposes only the alias its CSS consumes while retaining legacy export aliases", () => {
   assert.deepEqual(componentEditableTokenKeys("text"), ["foreground"]);
   assert.deepEqual(componentEditableTokenKeys("badge"), componentTokenKeys);

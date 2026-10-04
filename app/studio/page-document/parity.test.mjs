@@ -203,27 +203,37 @@ test("seven-component sample stays in SSR/export parity with booleans and full r
 
 test("every allowlisted enum/state matches direct real component SSR, including omitted defaults", async () => {
   const components = { badge: Badge, button: Button, card: Card, checkbox: Checkbox, input: Input, switch: Switch, text: Text };
-  for (const [kind, Component] of Object.entries(components)) {
+  const parts = { ...components, cardHeader: Card.Header, cardTitle: Card.Title, cardDescription: Card.Description, cardContent: Card.Content, cardFooter: Card.Footer };
+  const directNode = node => createElement(parts[node.kind], { ...node.props, "data-page-node": node.id, key: node.id }, node.text ?? node.children?.map(directNode));
+  for (const kind of Object.keys(components)) {
     let sequence = 0;
     const base = createInsertionNode(kind, () => `component-${++sequence}`);
-    const samples = [base];
+    const omitted = { ...base, props: Object.fromEntries((nodeRegistry[kind].requiredProps ?? []).map(key => [key, base.props[key]])) };
+    const samples = [base, omitted];
+    const sample = props => {
+      const node = { ...base, props: { ...base.props, ...props } };
+      for (const [controlled, initial] of [["checked", "defaultChecked"], ["value", "defaultValue"]]) {
+        if (Object.hasOwn(props, controlled)) delete node.props[initial];
+        if (Object.hasOwn(props, initial)) delete node.props[controlled];
+      }
+      return node;
+    };
     for (const [key, rule] of Object.entries(nodeRegistry[kind].props)) {
       for (const value of Array.isArray(rule) ? rule : rule === "string" ? ["", "Sample"] : rule === "text" && !["label"].includes(key) ? ["Supporting text"] : []) {
-        samples.push({ ...base, props: { ...base.props, [key]: value } });
+        samples.push(sample({ [key]: value }));
       }
     }
     if (kind === "badge") {
       for (const variant of nodeRegistry.badge.props.variant) for (const tone of nodeRegistry.badge.props.tone) samples.push({ ...base, props: { variant, tone } });
     }
     if (["switch", "checkbox"].includes(kind)) {
-      for (const checked of [true, false]) samples.push({ ...base, props: { ...base.props, checked, error: "Invalid choice" } });
+      for (const checked of [true, false]) samples.push(sample({ checked, error: "Invalid choice" }));
     }
     for (const node of samples) {
       const input = document([{ id: "stack", kind: "stack", children: [node] }]);
       const { preview } = await parity(input);
-      const children = kind === "card" ? createElement(Card.Content, { "data-page-node": node.children[0].id }) : node.text;
       const direct = renderToStaticMarkup(createElement(Container, { "data-page-node": "root" },
-        createElement(Stack, { "data-page-node": "stack" }, createElement(Component, { ...node.props, "data-page-node": node.id }, children))));
+        createElement(Stack, { "data-page-node": "stack" }, directNode(node))));
       assert.equal(canonicalMarkup(preview), canonicalMarkup(direct), `${kind}: ${JSON.stringify(node.props)}`);
       if (kind === "button" && !node.props?.type) assert.match(preview, /type="button"/);
       if (["switch", "checkbox"].includes(kind) && !node.props?.checked && !node.props?.defaultChecked && !node.props?.indeterminate) assert.match(preview, /aria-checked="false"/);

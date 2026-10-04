@@ -2,7 +2,9 @@
 
 Saved components in bambiui composer are **snapshots/templates**, not linked master definitions. **Copies stay independently editable.** Saving captures the selected subtree's content, props, layout, appearance and parts. Inserting makes a detached copy with fresh node IDs; editing or deleting the source, template or another copy never synchronizes existing copies.
 
-Tokens are not baked into a snapshot. Each inserted component still inherits the project's linked design system, except for its explicit local overrides. Switching the project's `systemId` preserves assets, node content and overrides; browsing another system does not rebind the project. There is no separate asset system reference, library synchronization or automatic recoloring.
+Tokens are not baked into a snapshot. Each inserted component still inherits the project's linked design system, including shared `componentStyles` and variant/state styles, except for its explicit local `appearance`/`parts` overrides. System **Styles** can therefore affect linked copies where they inherit; captured local values continue to win. Colors may differ by theme; shared dimensions, typography and effects remain common to Light and Dark. Switching the project's `systemId` preserves assets, node content and overrides; browsing another system does not rebind the project. There is no separate asset system reference, library synchronization or automatic recoloring.
+
+System **Parameters** (`DesignSystem.componentDefaults`) only seeds new built-in insertions. Saved snapshot insertion does **not** reapply those defaults or repopulate Card slots: it preserves the captured content, props, structure and local overrides. Project **Parameters** edits only the selected instance. Resetting a local appearance key restores shared style inheritance, not a link to a master snapshot. Passing shared-token contrast checks does not certify the snapshot's local colors, opacity or nested surfaces; review actual copies in both themes.
 
 ## Integration API
 

@@ -114,6 +114,26 @@ async function hideMobilePanels() {
   if (!await evaluate('innerWidth<=800')) return;
   await panel('workspace-sidebar', false); await panel('workspace-inspector', false);
 }
+async function reveal(expression) {
+  // Open every closed ancestor through its real summary, outermost first.
+  for (let i = 0; i < 6; i++) {
+    const summary = `(()=>{const e=(${expression});let closed=null;for(let p=e?.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS'&&!p.open&&!p.querySelector(':scope > summary')?.contains(e))closed=p;return closed?.querySelector(':scope > summary')})()`;
+    if (!await evaluate(`!!(${summary})`)) return;
+    await click(summary);
+  }
+  throw new Error(`Cannot reveal details for ${expression}`);
+}
+async function select(selector, value) {
+  await reveal(q(selector));
+  assert.equal(await evaluate(`(()=>{const e=${q(selector)};return !!e && e.checkVisibility() && !e.disabled && [...e.options].some(option=>option.value===${JSON.stringify(value)})})()`),true,`Visible enabled select with option: ${selector} = ${value}`);
+  await evaluate(`(()=>{const e=${q(selector)};e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+  await wait(`${q(selector)}.value===${JSON.stringify(value)}`);
+}
+async function componentTab(tab) {
+  const target=named('[aria-label="Component editor"] [role="tab"]',tab);
+  if (!await evaluate(`(${target})?.getAttribute('aria-selected')==='true'`)) await click(target);
+  await wait(`(${target})?.getAttribute('aria-selected')==='true'`);
+}
 async function click(expression, preparePanel = true) {
   assert.ok(await evaluate(`!!(${expression})`), `Missing control: ${expression}`);
   if (preparePanel && await evaluate('innerWidth<=800')) {
@@ -121,6 +141,7 @@ async function click(expression, preparePanel = true) {
     if (target === 'workspace-sidebar' || target === 'workspace-inspector') await panel(target, true);
     else if (target === 'workspace') await hideMobilePanels();
   }
+  await reveal(expression);
   const destination = await evaluate(`(${expression}).closest('a')?.getAttribute('href') || null`);
   await evaluate(`(${expression}).scrollIntoView({block:'center',inline:'center',behavior:'instant'})`);
   await evaluate('new Promise(resolve => requestAnimationFrame(resolve))');
@@ -179,6 +200,8 @@ async function cleanup() {
     await Promise.race([done,delay(2000)]);
     if(chrome.exitCode === null && chrome.signalCode === null) { chrome.kill('SIGKILL'); await Promise.race([done,delay(2000)]); }
   }
+  // Chrome helpers can retain the stderr pipe after the browser process exits.
+  chrome?.stderr?.destroy();
   if(server) {server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
   if(profile) await rm(profile,{recursive:true,force:true,maxRetries:4,retryDelay:200});
 }
@@ -314,6 +337,26 @@ try {
       } else assert.equal(computed,value,`${selector} uses ${constant}`);
     }
   });
+  await check('System separates Styles from Parameters and reveals base tokens only through their disclosure',async()=>{
+    await navigate('design','button');
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('[aria-label="Component editor"] [role="tab"]')].map(e=>e.textContent.trim())`),['Parameters','Styles']);
+    assert.equal(await evaluate(`${named('[aria-label="Component editor"] [role="tab"]','Styles')}.getAttribute('aria-selected')`),'true');
+    assert.equal(await evaluate(`${q('[data-system-base-tokens]')}.open`),false);
+    assert.equal(await evaluate(`${q('#token-paddingX')}.checkVisibility()`),false,'base token controls start collapsed');
+    await click(q('[data-system-base-tokens] > summary'));
+    assert.equal(await evaluate(`${q('[data-system-base-tokens]')}.open && ${q('#token-paddingX')}.checkVisibility()`),true);
+    await click(q('[data-system-base-tokens] > summary'));
+    await componentTab('Parameters');
+    assert.equal(await evaluate(`${q('[aria-label="Default Text"]')}.value`),'Continue');
+    assert.equal(await evaluate(`${q('[aria-label="Default Variant"]')}.value`),'primary');
+    assert.equal(await evaluate(`${q('[aria-label="Default Size"]')}.value`),'md');
+    assert.equal(await evaluate(`!!${q('#token-editor [aria-label="System component part"]')} || !!${q('#token-editor [data-system-base-tokens]')} || !!${q('#token-editor [id^="system-style-"]')}`),false,'Parameters does not expose style controls');
+    await componentTab('Styles');
+    assert.equal(await evaluate(`${q('[data-system-base-tokens]')}.open`),false);
+    assert.equal(await evaluate(`${q('[aria-label="System component part"]')}.value`),'root');
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('[data-system-starter]')].map(e=>e.dataset.systemStarter).sort()`),[...ids].sort());
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('[data-system-starter="card"] [data-page-node]')].map(e=>e.tagName)`),['DIV','DIV','ARTICLE','DIV','STRONG','P','DIV','P','DIV','BUTTON']);
+  });
   await check('expanded specimens expose states and read-only choices resist pointer and keyboard input',async()=>{
     try {
       for(const [id,label] of [['switch','Read-only setting'],['checkbox','Read-only selection']]) {
@@ -340,7 +383,7 @@ try {
       assert.equal(await evaluate(`${q('[data-specimen="checkbox"] [role="checkbox"][aria-invalid="true"]')}?.getAttribute('aria-required')`),'true','required checkbox error');
       await navigate('design','input');
       await stableCamera();
-      const email='[data-specimen="input"] input[type="email"]';
+      const email='[data-specimen="input"] input[type="email"]:not([data-page-node])';
       assert.equal(await evaluate(`${q(email)}.required && !${q(email)}.checkValidity()`),true,'empty required email');
       await fill(email,'not-an-email');
       assert.equal(await evaluate(`${q(email)}.validity.typeMismatch && !${q(email)}.checkValidity()`),true,'invalid email');
@@ -352,14 +395,14 @@ try {
       for(const [tone,size] of [['primary','lg'],['info','sm'],['danger','lg']])
         assert.ok(await evaluate(`!!${q(`[data-specimen="text"] [data-tone="${tone}"][data-size="${size}"]`)}`),`Text ${tone}/${size}`);
     } finally {
-      if(await evaluate(`${q('[data-specimen="input"] input[type="email"]')}?.value`)) {
+      if(await evaluate(`${q('[data-specimen="input"] input[type="email"]:not([data-page-node])')}?.value`)) {
         await stableCamera();
-        await click(q('[data-specimen="input"] input[type="email"]'));
+        await click(q('[data-specimen="input"] input[type="email"]:not([data-page-node])'));
         await send('Input.dispatchKeyEvent',{type:'keyDown',key:'a',code:'KeyA',modifiers:4,commands:['selectAll']});
         await send('Input.dispatchKeyEvent',{type:'keyUp',key:'a',code:'KeyA',modifiers:4});
         await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8});
         await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8});
-        await wait(`${q('[data-specimen="input"] input[type="email"]')}.value === ''`);
+        await wait(`${q('[data-specimen="input"] input[type="email"]:not([data-page-node])')}.value === ''`);
       }
       await navigate('design','button');
     }
@@ -481,7 +524,7 @@ try {
     assert.equal(await evaluate(`document.querySelectorAll('link[href^="https://fonts.googleapis.com/css2"]').length`),0,'local defaults must not fetch Google fonts');
     assert.equal(await evaluate(`${q('#font-family-preset')}.querySelectorAll('optgroup[label^="Google Fonts"] option').length`),12);
     await click(named(themeControl + ' button','Light'));
-    await evaluate(`(()=>{const input=${q('#font-family-preset')};input.value='mono';input.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+    await select('#font-family-preset','mono');
     await wait(`${q('[data-ds-theme="light"]')}.style.getPropertyValue('--ds-font-family').includes('Menlo')`);
     for(const mode of ['light','dark']) assert.equal((await stored()).themes[mode].fontFamily,'mono');
     assert.ok((await evaluate(`getComputedStyle(${q('[data-specimen="text"] [data-variant="paragraph"]')}).fontFamily`)).includes('Menlo'));
@@ -493,14 +536,14 @@ try {
     assert.ok(await evaluate(`${q('.workspace-panel--develop')}.textContent.includes('--ds-font-family')`));
     await navigate('design','text');
     for(const [preset,firstFont] of [['sans','Arial'],['humanist','Trebuchet MS'],['editorial','Palatino'],['typewriter','Courier New']]) {
-      await evaluate(`(()=>{const input=${q('#font-family-preset')};input.value=${JSON.stringify(preset)};input.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+      await select('#font-family-preset',preset);
       await wait(`${q('[data-ds-theme="light"]')}.style.getPropertyValue('--ds-font-family').includes(${JSON.stringify(firstFont)})`);
       for(const mode of ['light','dark']) assert.equal((await stored()).themes[mode].fontFamily,preset);
       assert.ok((await evaluate(`getComputedStyle(${q('[data-specimen="text"] [data-variant="paragraph"]')}).fontFamily`)).includes(firstFont));
       assert.ok((await evaluate(`getComputedStyle(${q('#font-family-tokens p[style]')}).fontFamily`)).includes(firstFont));
     }
     await send('Fetch.enable',{patterns:[{urlPattern:'https://fonts.googleapis.com/*',requestStage:'Request'}]});
-    await evaluate(`(()=>{const input=${q('#font-family-preset')};input.value='google-inter';input.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+    await select('#font-family-preset','google-inter');
     await wait(`!!document.querySelector('link[href^="https://fonts.googleapis.com/css2?family=Inter"]')`);
     assert.equal((await stored()).themes.dark.fontFamily,'google-inter');
     await click(q('[aria-label="Export tokens"]'));
@@ -539,7 +582,7 @@ try {
     await navigate('design','text');
     assert.equal(await evaluate(`${q('#typography-variant')}.options.length`),10,'all typography styles remain selectable');
     for(const [variant,size] of [['h1',54],['h2',45],['h3',36],['h4',30],['h5',25],['h6',22]]) {
-      await evaluate(`(()=>{const select=${q('#typography-variant')};select.value=${JSON.stringify(variant)};select.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+      await select('#typography-variant',variant);
       await wait(`!!${q(`#typography-${variant}-fontSize`)}`);
       assert.equal(await evaluate(`document.querySelectorAll('.typography-control').length`),4,'only the selected style is editable at once');
       await fill(`#typography-${variant}-fontSize`,String(size));
@@ -631,7 +674,7 @@ try {
     }
     assert.equal((await stored()).themes.light.global.gap,18,'legacy gap must remain independent');
     for(const [size,token,value] of [['sm','spacingSm',6],['md','spacingMd',12],['lg','spacingLg',24]]) {
-      const content=`[data-specimen="card"] [data-size="${size}"] [class*="cardContent"]`;
+      const content=`[data-specimen="card"] [data-size="${size}"]:not([data-page-node]) [class*="cardContent"]`;
       assert.equal(await evaluate(`getComputedStyle(${q(content)}).gap`),`${value}px`,`${token} must reach Card.Content`);
       assert.equal(await evaluate(`${q(content)}.children.length`),2,'Card.Content must display multiple items');
     }
@@ -662,7 +705,7 @@ try {
     const fillColor = await evaluate(`${q('#token-background')}.value`);
     await fill('#token-foreground',fillColor);
     const trigger='.editor-title-actions button[aria-label*="color pairs"]';
-    assert.ok(await evaluate(`${q('.editor-title h2')}.textContent.startsWith('Button tokens · ')`));
+    assert.ok(await evaluate(`${q('.editor-title h2')}.textContent.startsWith('Button · ')`));
     assert.equal(await evaluate(`!!${q('.editor-intro')}`),false,'component inspector must not repeat its title or description');
     assert.equal(await evaluate(`${q('.editor-title > svg path')}.getAttribute('d') === ${q('.studio-sidebar a[href="/button"] svg path')}.getAttribute('d')`),true,'inspector title uses the component icon');
     assert.ok(await evaluate(`(()=>{const button=${q(trigger)}.getBoundingClientRect(),header=${q('.editor-title')}.getBoundingClientRect();return Math.abs(header.right-button.right-parseFloat(getComputedStyle(${q('.editor-title')}).paddingRight))<3})()`),'component color pair action aligns to the inspector right edge');
@@ -727,10 +770,10 @@ try {
     const mode=await evaluate(`document.documentElement.dataset.studioTheme`);
     const other=mode==='light'?'dark':'light';
     const before=await stored();
-    await evaluate(`(()=>{const select=${q('#component-variant-style')};select.value='invalid';select.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+    await select('#component-variant-style','invalid');
     await fill('#variant-color-input-invalid-border','#010101');
     await fill('#variant-style-input-invalid-borderWidth','2.5');
-    await evaluate(`(()=>{const select=${q('#variant-style-input-invalid-shadow')};select.value='lg';select.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+    await select('#variant-style-input-invalid-shadow','lg');
     await wait(`${q('[data-ds-theme="light"]')}.style.getPropertyValue('--input-variant-invalid-border-width').trim()==='2.5px'`);
     const customized=await stored();
     assert.equal(customized.themes[mode].variantColors.input.invalid.border,'#010101');
@@ -761,16 +804,17 @@ try {
     await click(named('[data-specimen="button"] button','Get started'));
     await navigate('design','input');
     await delay(500);
-    await fill('[data-specimen="input"] input[type="email"]','retained@example.com');
+    await fill('[data-specimen="input"] input[type="email"]:not([data-page-node])','retained@example.com');
     await route('design','input');
     await navigate('design','button');
     await evaluate(`window.__specimens=[...document.querySelectorAll('[data-specimen]')];window.__pane=${q('.theme-pane')};window.__layout=${q('.studio-sidebar')};window.__origin=performance.timeOrigin`);
     const retained = async () => {
       assert.equal(await evaluate(`window.__origin===performance.timeOrigin && window.__layout===${q('.studio-sidebar')} && window.__pane===${q('.theme-pane')} && window.__specimens.every(e=>e.isConnected && e===document.querySelector('[data-specimen="'+e.dataset.specimen+'"]'))`),true);
-      assert.equal(await evaluate(`${q('[data-specimen="input"] input[type="email"]')}.value`),'retained@example.com');
+      assert.equal(await evaluate(`${q('[data-specimen="input"] input[type="email"]:not([data-page-node])')}.value`),'retained@example.com');
       assert.ok(await evaluate(`${q('[data-specimen="button"]')}.textContent.includes('successfully (1)')`));
       assert.equal(await evaluate(`document.querySelectorAll('.theme-pane').length`),1);
-      assert.equal(await evaluate(`document.querySelectorAll('[data-specimen="card"] article:not([data-instance-specimen])').length`),3,'all three system Card variants remain mounted');
+      assert.equal(await evaluate(`document.querySelectorAll('[data-specimen="card"] article:not([data-instance-specimen]):not([data-page-node])').length`),3,'all three interactive system Card variants remain mounted');
+      assert.equal(await evaluate(`document.querySelectorAll('[data-system-starter="card"] article[data-page-node]').length`),1,'the populated starting Card remains separate from the interactive specimens');
       assert.equal(await evaluate(`document.querySelectorAll('[data-specimen="card"] article[data-instance-specimen="card"]').length`),1,'the added local-appearance specimen remains mounted too');
       assert.ok(await evaluate(`${q('[data-specimen="text"]')}.isConnected`));
       assert.ok(await evaluate(`!!${q('[data-specimen="input"] input[readonly]')} && !!${q('[data-specimen="button"] [aria-busy="true"]')} && !!${q('[data-specimen="checkbox"] [aria-checked="mixed"]')}`));
@@ -892,16 +936,16 @@ try {
     await wait(`${q('[data-specimen="button"]')}.textContent.includes('successfully (2)')`);
     await navigate('design','input');
     await delay(500);
-    // The tall input specimen can place its first field just above the viewport after centering.
-    const inputTop = await evaluate(`${q('[data-specimen="input"] input[type="email"]')}.getBoundingClientRect().top`);
-    const viewportTop = await evaluate(`${q(canvas)}.getBoundingClientRect().top`);
-    if (inputTop < viewportTop) await wheel(await canvasBackground(),0,-240);
-    await wait(`(()=>{const e=${q('[data-specimen="input"] input[type="email"]')},r=e.getBoundingClientRect();return e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))})()`);
-    await click(q('[data-specimen="input"] input[type="email"]'));
-    await fill('[data-specimen="input"] input[type="email"]','camera-input@example.com');
-    assert.equal(await evaluate(`${q('[data-specimen="input"] input[type="email"]')}.value`),'camera-input@example.com');
+    // The populated starter changes specimen height. Pan by measured geometry,
+    // keeping the real demo input interactive rather than clicking the starter.
+    const inputOffset = await evaluate(`(()=>{const r=${q('[data-specimen="input"] input[type="email"]:not([data-page-node])')}.getBoundingClientRect(),v=${q(canvas)}.getBoundingClientRect();return {x:r.x+r.width/2-v.x-v.width/2,y:r.y+r.height/2-v.y-v.height/2}})()`);
+    await wheel(await canvasBackground(),inputOffset.x,inputOffset.y);
+    await wait(`(()=>{const e=${q('[data-specimen="input"] input[type="email"]:not([data-page-node])')},r=e.getBoundingClientRect();return e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))})()`);
+    await click(q('[data-specimen="input"] input[type="email"]:not([data-page-node])'));
+    await fill('[data-specimen="input"] input[type="email"]:not([data-page-node])','camera-input@example.com');
+    assert.equal(await evaluate(`${q('[data-specimen="input"] input[type="email"]:not([data-page-node])')}.value`),'camera-input@example.com');
     assert.ok(!await evaluate(`${q(canvas)}.hasAttribute('data-dragging')`),'input activation must not start a camera drag');
-    await fill('[data-specimen="input"] input[type="email"]','retained@example.com');
+    await fill('[data-specimen="input"] input[type="email"]:not([data-page-node])','retained@example.com');
     await capture('studio-canvas');
   });
   await check('hover outlines sections and clicking their empty areas selects tokens',async()=>{
@@ -991,7 +1035,7 @@ try {
     assert.equal(await evaluate(`${q('[data-specimen="card"] header a')}.getAttribute('aria-current')`),'page');
     await click(named('[aria-label="Canvas zoom"] button','Fit'));
     await delay(450);
-    await click(q('[data-specimen="input"] input[type="email"]'));
+    await click(q('[data-specimen="input"] input[type="email"]:not([data-page-node])'));
     await route('design','input');
     await evaluate(`history.back()`);
     await route('design','card');
@@ -1089,7 +1133,7 @@ try {
       await panel('workspace-inspector',true);
       if(id==='colors' || ids.includes(id)) assert.ok(await evaluate(`(()=>{const h=${q('.editor-title')}.getBoundingClientRect(),a=${q('.editor-title-actions')}.getBoundingClientRect();return a.left>=h.left && a.right<=h.right && Math.abs(h.right-a.right-parseFloat(getComputedStyle(${q('.editor-title')}).paddingRight))<3})()`),`inspector actions fit the overlay: ${id}`);
       assert.equal(await evaluate(`!!${q('.mobile-preview-link')} && ${q('.mobile-preview-link')}.getClientRects().length>0`),false,'panel toggles replace the old stacked-layout anchor');
-      if(id==='text') { await evaluate(`${q('#typography-tokens')}.scrollIntoView({block:'start',behavior:'instant'})`); await capture('studio-375-text'); }
+      if(id==='text') { await reveal(q('#typography-tokens')); await evaluate(`${q('#typography-tokens')}.scrollIntoView({block:'start',behavior:'instant'})`); await capture('studio-375-text'); }
       if(id==='spacing') {
         await capture('studio-375-spacing-inspector'); await hideMobilePanels();
         await evaluate(`${q('[data-foundation="spacing"]')}.scrollIntoView({block:'start',behavior:'instant'})`); await capture('studio-375-spacing');
@@ -1101,7 +1145,8 @@ try {
     // Isolate this coverage from a failed mobile header view-switch hit test.
     await openStatic('design','button'); await panel('workspace-inspector',true);
     assert.equal(await evaluate(`${q('[aria-controls="workspace-inspector"]')}.getAttribute('aria-expanded')`),'true');
-    assert.ok(await evaluate(`${q('#token-editor')}.getClientRects().length>0`)); await capture('studio-375-inspector');
+    assert.ok(await evaluate(`${q('#token-editor')}.getClientRects().length>0`));
+    await reveal(q('#token-background')); await capture('studio-375-inspector');
     await send('Emulation.setDeviceMetricsOverride',{width:320,height:812,deviceScaleFactor:1,mobile:false});
     assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth'),'compact component inspector must fit 320px');
     assert.ok(await evaluate(`(()=>{const row=${q('.color-fields .token-input')}.getBoundingClientRect(),input=${q('.color-fields .token-input input[type="text"]')}.getBoundingClientRect();return row.right<=innerWidth && input.width>=65})()`),'compact color field must keep its hex value editable');

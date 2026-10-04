@@ -3,9 +3,9 @@
 import { Fragment, useId, useRef, useState } from "react";
 import { Button } from "../controls";
 import { nodeRegistry } from "../page-document/registry";
-import { createPageNode } from "../page-document/defaults";
+import { createComponentNode } from "../component-defaults";
 import type { PageKind, PageNode } from "../page-document/model";
-import { draftCommand, resolveSelection, type NodeSelection } from "./selection";
+import { draftCommand, resetLocalStylesCommand, resolveSelection, type NodeSelection } from "./selection";
 import type { Composer } from "./use-composer";
 import { MovePanel } from "./move-panel";
 import { ActionsMenu } from "./context-actions";
@@ -17,7 +17,7 @@ const fieldLabels: Record<string, string> = {
   errorPosition: "Error placement", errorIcon: "Error icon", variant: "Variant", size: "Size", tone: "Tone", radius: "Radius preset",
   direction: "Direction", gap: "Gap preset", align: "Align", justify: "Distribute", wrap: "Wrap", columns: "Columns", span: "Column span",
   maxWidth: "Width preset", as: "HTML element", type: "Type", hideLabel: "Hide label", readOnly: "Read only", fullWidth: "Fill width",
-  defaultValue: "Initial value", defaultChecked: "Initially checked", name: "Field name", value: "Value", checked: "Checked",
+  defaultValue: "Initial value", defaultChecked: "Initially checked", name: "Field name", value: "Value", checked: "Checked", labelPosition: "Label position",
 };
 const contentKeys = ["text", "label", "placeholder", "description", "error", "errorPosition", "errorIcon"];
 const propertyKeys = ["variant", "size", "tone", "radius", "direction", "gap", "align", "justify", "wrap", "columns", "span", "maxWidth", "fullWidth"];
@@ -58,22 +58,45 @@ function DraftField({ composer, selection, field, value, disabled }: { composer:
 
 function CardSlots({ node, composer, selection, disabled }: { node: PageNode; composer: Composer; selection: NodeSelection; disabled: boolean }) {
   const supported: PageKind[] = node.kind === "card" ? ["cardHeader", "cardContent", "cardFooter"] : node.kind === "cardHeader" ? ["cardTitle", "cardDescription"] : [];
-  if (!supported.length) return null;
+  if (!supported.length && !(["cardContent", "cardFooter"].includes(node.kind) && node.children?.length)) return null;
+  const selectLayer = (child: PageNode) => <button type="button" key={child.id} disabled={disabled} aria-label={`Select ${nodeRegistry[child.kind].element} layer`} onClick={() => composer.controller.selectNode({ ...selection, nodeId: child.id })}>
+    {nodeRegistry[child.kind].element.replace("Card.", "")}<span>Edit →</span>
+  </button>;
   return <details className={styles.group} open><summary>Component layers</summary><div className={styles.slotList}>
     {supported.map(kind => {
       const child = node.children?.find(child => child.kind === kind);
       const name = nodeRegistry[kind].element.replace("Card.", "");
-      return <button type="button" key={kind} disabled={disabled} onClick={() => {
-        if (child) { composer.controller.selectNode({ ...selection, nodeId: child.id }); return; }
-        const nextId = () => `node_${crypto.randomUUID()}`;
-        const added = createPageNode(kind, nextId);
-        if (kind === "cardHeader") added.children!.push(createPageNode("cardDescription", nextId));
-        const children = node.children ?? [];
-        const after = children.findIndex(entry => supported.indexOf(entry.kind) > supported.indexOf(kind));
-        if (composer.controller.execute({ type: "nodeCommands", pageId: selection.pageId, frameId: selection.frameId, commands: [{ type: "insert", parentId: node.id, index: after === -1 ? children.length : after, node: added }] })) composer.controller.selectNode({ ...selection, nodeId: added.id });
-      }}>{name}<span>{child ? "Edit →" : "+ Add"}</span></button>;
+      return <Fragment key={kind}>{child ? selectLayer(child) : <button type="button" disabled={disabled} aria-label={`Add ${nodeRegistry[kind].element} layer`} onClick={() => {
+        try {
+          const added = createComponentNode(kind, () => `node_${crypto.randomUUID()}`, composer.controller.insertionDefaults());
+          const children = node.children ?? [];
+          const after = children.findIndex(entry => supported.indexOf(entry.kind) > supported.indexOf(kind));
+          if (composer.controller.execute({ type: "nodeCommands", pageId: selection.pageId, frameId: selection.frameId, commands: [{ type: "insert", parentId: node.id, index: after === -1 ? children.length : after, node: added }] })) composer.controller.selectNode({ ...selection, nodeId: added.id });
+        } catch (error) { composer.controller.report(error instanceof Error ? error.message : "Could not add this layer."); }
+      }}>{name}<span>+ Add</span></button>}
+        {child?.children?.length ? <div className={styles.slotChildren}>{child.children.map(selectLayer)}</div> : null}
+      </Fragment>;
     })}
+    {!supported.length && node.children?.map(selectLayer)}
   </div></details>;
+}
+
+function LegacyStyles({ node, composer, selection, disabled }: { node: PageNode; composer: Composer; selection: NodeSelection; disabled: boolean }) {
+  const [error, setError] = useState("");
+  const hasStyles = Object.keys(node.appearance ?? {}).length > 0 || Object.values(node.parts ?? {}).some(part => Object.keys(part).length > 0);
+  if (!hasStyles) return null;
+  return <section className={styles.legacyStyles} aria-label="Legacy local styles">
+    <h4>Legacy local styles</h4>
+    <p className={styles.note}>Saved local styles still override System styles on this layer. Reset keeps its parameters, content and child layers unchanged.</p>
+    <Button disabled={disabled} onClick={() => {
+      try {
+        const command = resetLocalStylesCommand(composer.document!, selection);
+        if (!composer.controller.execute({ type: "nodeCommands", pageId: selection.pageId, frameId: selection.frameId, commands: [command] })) throw new Error("Could not reset local styles. Check the project notice.");
+        setError("");
+      } catch (error) { setError(error instanceof Error ? error.message : "Could not reset local styles."); }
+    }}>Reset local styles</Button>
+    {error && <p className={styles.error} role="alert">{error}</p>}
+  </section>;
 }
 
 export function NodeInspector({ composer, disabled, onEditSystem }: { composer: Composer; disabled: boolean; onEditSystem: (id: string, kind?: string) => void }) {
@@ -81,6 +104,7 @@ export function NodeInspector({ composer, disabled, onEditSystem }: { composer: 
   const resolved = composer.document && resolveSelection(composer.document, selection);
   if (!resolved || !selection) return null;
   const { node, path } = resolved;
+  const isLayout = nodeRegistry[node.kind].source !== "components";
   const keys = [...(nodeRegistry[node.kind].text ? ["text"] : []), ...Object.keys(nodeRegistry[node.kind].props)];
   const renderFields = (fields: string[]) => <div className={styles.contentGrid}>{fields.map(field => {
     const value = String(field === "text" ? node.text : node.props?.[field] ?? "");
@@ -88,17 +112,21 @@ export function NodeInspector({ composer, disabled, onEditSystem }: { composer: 
   })}</div>;
   const groups = [
     { label: "Content", fields: keys.filter(key => contentKeys.includes(key)), open: true },
-    { label: ["stack", "grid", "gridItem", "container"].includes(node.kind) ? "Auto layout" : "Properties", fields: keys.filter(key => propertyKeys.includes(key)), open: true },
+    { label: isLayout ? "Auto layout" : "Options", fields: keys.filter(key => propertyKeys.includes(key)), open: true },
   ];
   const advanced = keys.filter(key => !contentKeys.includes(key) && !propertyKeys.includes(key));
   return <div aria-label="Instance settings">
-    <div className={styles.heading}><h3>{nodeRegistry[node.kind].element}<small>Local instance</small></h3><ActionsMenu composer={composer} /></div>
+    <div className={styles.heading}><h3>{isLayout ? nodeRegistry[node.kind].element : "Parameters"}<small>{isLayout ? "Layout settings" : nodeRegistry[node.kind].element}</small></h3><ActionsMenu composer={composer} /></div>
     <nav className={styles.breadcrumb} aria-label="Selection path">{path.map((entry, index) => <Fragment key={entry.id}>{index > 0 && <span aria-hidden="true">/</span>}<button type="button" aria-current={entry.id === node.id ? "true" : undefined} title={nodeRegistry[entry.kind].element} onClick={() => composer.controller.selectNode({ ...selection, nodeId: entry.id })}>{nodeRegistry[entry.kind].element.replace("Card.", "")}</button></Fragment>)}</nav>
     {groups.filter(group => group.fields.length).map(group => <details key={`${node.id}-${group.label}`} className={styles.group} open={group.open}><summary>{group.label}</summary>{renderFields(group.fields)}</details>)}
     <CardSlots key={node.id} node={node} composer={composer} selection={selection} disabled={disabled} />
-    <AppearanceInspector key={`${selection.frameId}-${node.id}`} composer={composer} selection={selection} node={node} disabled={disabled} />
+    {isLayout && <AppearanceInspector key={`${selection.frameId}-${node.id}`} composer={composer} selection={selection} node={node} disabled={disabled} />}
     {advanced.length > 0 && <details key={`${node.id}-advanced`} className={styles.group}><summary>States & behavior</summary>{renderFields(advanced)}{["input", "switch", "checkbox"].includes(node.kind) && <p className={styles.note}>Use initial values for interactive Preview. Value / checked are fixed snapshots.</p>}</details>}
     {path.length > 1 && <details className={styles.group}><summary>Arrange</summary><MovePanel key={`${selection.frameId}-${node.id}`} composer={composer} disabled={disabled} /><Button onClick={() => composer.controller.selectParent()}>Select parent</Button></details>}
-    <div className={styles.footer}><Button onClick={() => onEditSystem(composer.document!.systemId, node.kind.startsWith("card") ? "card" : node.kind)}>Edit shared system styles</Button><p className={styles.note}>Local edits stay with this instance. Save a reusable copy in Assets → Saved components.</p></div>
+    <div className={styles.footer}>
+      {!isLayout && <LegacyStyles key={`${selection.frameId}-${node.id}`} node={node} composer={composer} selection={selection} disabled={disabled} />}
+      <Button onClick={() => onEditSystem(composer.document!.systemId, node.kind.startsWith("card") ? "card" : node.kind)}>Edit styles in System</Button>
+      <p className={styles.note}>Parameters belong to this instance. Component styles and insertion defaults are authored in System; changing defaults does not rewrite existing content.</p>
+    </div>
   </div>;
 }

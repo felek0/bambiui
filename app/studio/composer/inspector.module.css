@@ -45,5 +45,9 @@
 .slotList button { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 28px; padding: 5px 7px; border: 1px solid var(--studio-color-border-subtle); border-radius: 4px; font-size: 10px; text-align: left; }
 .slotList button > span { color: var(--studio-color-text-subtle); }
 .slotList button:hover { background: var(--studio-color-surface-hover); }
+.slotList button:focus-visible { outline: var(--studio-focus-ring); outline-offset: 2px; }
+.slotChildren { display: grid; gap: 4px; padding-inline-start: 12px; }
+.legacyStyles { padding: 10px; border: 1px solid var(--studio-color-border); border-radius: 4px; }
+.legacyStyles h4 { margin: 0; font-size: 11px; font-weight: 600; }
 .footer { display: grid; gap: 8px; padding-top: 14px; border-top: 1px solid var(--studio-color-border-subtle); }
 .appearance { min-width: 0; }

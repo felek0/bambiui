@@ -31,6 +31,9 @@ import {
   type ThemeTokens,
 } from "./tokens";
 import styles from "./preview.module.css";
+import { ComponentStarterPreview } from "./component-starter-preview";
+import type { ComponentDefaults } from "./component-defaults";
+import type { ComponentStylePart } from "./component-styles";
 
 
 function DemoButton({
@@ -387,12 +390,20 @@ function Showcase({
   copy,
   selected,
   onSelect,
+  defaults,
+  part,
+  onSelectPart,
+  onEditParameters,
 }: {
   id: ShowcaseId;
   expanded: boolean;
   copy: PreviewCopy;
   selected: boolean;
   onSelect: (id: ComponentId) => void;
+  defaults?: ComponentDefaults;
+  part?: ComponentStylePart;
+  onSelectPart: (component: ComponentId, part: ComponentStylePart) => void;
+  onEditParameters: (component: ComponentId) => void;
 }) {
   const { name } = copy.components[id];
 
@@ -411,6 +422,7 @@ function Showcase({
       <header className={styles.showcaseHeader}>
         <h2><Link href={`/${id}`} aria-current={selected ? "page" : undefined}>{name}</Link></h2>
       </header>
+      <ComponentStarterPreview component={id} defaults={defaults} part={selected ? part : undefined} onSelectPart={onSelectPart} onEditParameters={() => onEditParameters(id)} />
       <div className={`${styles.specimen} ${expanded ? styles.expanded : ""}`}>
         <Specimen id={id} expanded={expanded} copy={copy} />
       </div>
@@ -439,13 +451,16 @@ function ThemePane({ theme, mode, children, copy }: {
   );
 }
 
-export function Preview({ selected, system, mode, active = true, onSelectColorRole, onEditToken }: {
+export function Preview({ selected, system, mode, active = true, onSelectColorRole, onEditToken, selectedPart, onSelectPart, onEditParameters }: {
   selected: "colors" | "spacing" | ComponentId;
   system: DesignSystem;
   mode: PaletteMode;
   active?: boolean;
   onSelectColorRole?: (role: ColorScaleRole) => void;
   onEditToken?: (selection: "colors" | "spacing", inputId: string) => void;
+  selectedPart?: ComponentStylePart;
+  onSelectPart: (component: ComponentId, part: ComponentStylePart) => void;
+  onEditParameters: (component: ComponentId) => void;
 }) {
   const copy = previewCopy;
   const router = useRouter();
@@ -793,6 +808,7 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
               onKeyDownCapture={(event) => { if (event.key !== "Tab" && !event.altKey && !event.metaKey && !event.ctrlKey) selectSpecimen("text"); }}>
               <h2><Link href="/text" aria-current={selected === "text" ? "page" : undefined}>Text</Link></h2>
               <p>Independent H1–H6, paragraph, label, caption and legacy heading styles.</p>
+              <ComponentStarterPreview component="text" defaults={system.componentDefaults} part={selected === "text" ? selectedPart : undefined} onSelectPart={onSelectPart} onEditParameters={() => onEditParameters("text")} />
               <div className={styles.foundationText}>
                 {typographyVariants.map((variant) => <div key={variant}>
                   <span className={styles.foundationTextLabel}>{variant === "heading" ? "Legacy heading" : variant.toUpperCase()}</span>
@@ -820,7 +836,7 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
             </section>
           </div>
           <div className={styles.grid}>
-            {componentIds.filter((id): id is ShowcaseId => id !== "text").map((id) => <Showcase key={id} id={id} expanded copy={copy} selected={selected === id} onSelect={selectSpecimen} />)}
+            {componentIds.filter((id): id is ShowcaseId => id !== "text").map((id) => <Showcase key={id} id={id} expanded copy={copy} selected={selected === id} onSelect={selectSpecimen} defaults={system.componentDefaults} part={selectedPart} onSelectPart={onSelectPart} onEditParameters={onEditParameters} />)}
           </div>
         </div>
       </div>

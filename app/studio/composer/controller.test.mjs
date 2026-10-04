@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ComposerController } from "./controller.ts";
 import { isComposerRoute } from "./workspace-route.ts";
-import { flattenNodes, nodePath } from "./selection.ts";
-import { createComposerDocument, createComposerPage, createComposerFrame } from "./model.ts";
+import { flattenNodes, nodePath, resetLocalStylesCommand } from "./selection.ts";
+import { insertionProposalCache } from "./insertion.ts";
+import { createComposerDocument, createComposerPage, createComposerFrame, composerFrameToPageDocument } from "./model.ts";
 import { COMPOSER_INDEX_KEY, composerDocumentKey, createStoredComposerProject, readComposerIndex, selectComposerProject } from "./storage.ts";
 
 function fixture() {
@@ -228,6 +229,108 @@ test("palette insertion is atomic, selects real child, saves once and rejects st
   controller.travel("undo"); assert.deepEqual(controller.active().history.present, before);
   controller.setMode("preview"); local.writes = []; assert.equal(controller.insert(scope, "card"), false); assert.equal(local.writes.length, 0);
 });
+test("new insertions snapshot the current linked System defaults, never catalog order or old content", () => {
+  const { local, systems, controller } = fixture();
+  systems[0].system = { name: "A", componentDefaults: { button: { text: "From A", props: { variant: "secondary", size: "sm" } } } };
+  systems[1].system = { name: "B", componentDefaults: { button: { text: "From B", props: { variant: "outline" } } } };
+  controller.hydrate(local); controller.create("Defaults", "a"); controller.addPage(); controller.addFrame("web");
+  const initial = activeDocument(controller), page = initial.pages[0], frame = page.frames[0];
+  const scope = { projectId: initial.id, pageId: page.id, frameId: frame.id, parentId: frame.root.id, index: 0 };
+  systems.reverse();
+  const beforeCatalog = structuredClone(systems);
+  assert.equal(controller.insert(scope, "button"), true);
+  const first = activeDocument(controller).pages[0].frames[0].root.children[0].children[0];
+  assert.equal(first.text, "From A"); assert.equal(first.props.variant, "secondary"); assert.equal(first.props.size, "sm");
+  assert.deepEqual(systems, beforeCatalog);
+  const a = systems.find(system => system.id === "a");
+  a.system.componentDefaults.button = { text: "Updated A", props: { variant: "ghost", loading: true } };
+  assert.equal(controller.insert({ ...scope, index: 1 }, "button"), true);
+  const inserted = activeDocument(controller), second = inserted.pages[0].frames[0].root.children[1].children[0];
+  assert.equal(second.text, "Updated A"); assert.equal(second.props.variant, "ghost"); assert.equal(second.props.loading, true);
+  assert.deepEqual(inserted.pages[0].frames[0].root.children[0].children[0], first);
+  a.system.componentDefaults.button.text = "Later default";
+  controller.travel("undo"); controller.travel("redo"); assert.deepEqual(activeDocument(controller), inserted);
+  assert.equal(controller.execute({ type: "changeProjectSystem", systemId: "b" }), true);
+  assert.equal(controller.insert({ ...scope, index: 2 }, "button"), true);
+  const switched = activeDocument(controller).pages[0].frames[0].root.children;
+  assert.equal(switched[2].children[0].text, "From B"); assert.deepEqual(switched[0].children[0], first);
+  const reload = new ComposerController(() => systems, () => "reload"); local.writes = []; reload.hydrate(local);
+  assert.deepEqual(activeDocument(reload), activeDocument(controller)); assert.equal(local.writes.length, 0);
+});
+
+test("drag proposals and commits share a defaults snapshot; Card insertion is populated in one save/undo step", () => {
+  const { local, systems, controller } = fixture();
+  systems[0].system = { componentDefaults: { card: { props: { variant: "filled" }, slots: { title: "Plan a launch", action: "Start planning" } }, button: { props: { variant: "outline" } } } };
+  controller.hydrate(local); controller.create("Drag", "a"); controller.addPage(); controller.addFrame("web");
+  const history = controller.active().history, expected = history.present, page = expected.pages[0], frame = page.frames[0];
+  const scope = { projectId: expected.id, pageId: page.id, frameId: frame.id, parentId: frame.root.id, index: 0 };
+  const defaults = controller.insertionDefaults(), session = controller.insertionSession();
+  const proposal = insertionProposalCache(composerFrameToPageDocument(frame), "card", defaults)(scope);
+  assert.equal(proposal.ok, true); local.writes = [];
+  assert.equal(controller.insert(scope, "card", expected, session, defaults), true);
+  const inserted = activeDocument(controller), card = inserted.pages[0].frames[0].root.children[0];
+  const withoutIds = node => { const copy = { ...node }; delete copy.id; if (copy.children) copy.children = copy.children.map(withoutIds); return copy; };
+  assert.deepEqual(withoutIds(card), withoutIds(proposal.page.root.children[0]));
+  assert.equal(card.children[0].children[0].text, "Plan a launch"); assert.equal(card.children[2].children[0].text, "Start planning");
+  assert.equal(card.children[2].children[0].props.variant, "outline");
+  assert.equal(controller.active().selection.nodeId, card.id); assert.equal(local.writes.length, 1);
+  assert.equal(controller.active().history.past.length, history.past.length + 1);
+  controller.travel("undo"); assert.deepEqual(activeDocument(controller), expected);
+  systems[0].system.componentDefaults.card.slots.title = "Changed later";
+  controller.travel("redo"); assert.deepEqual(activeDocument(controller), inserted);
+});
+
+test("defaults changed during a drag reject the stale insertion without writes, history or selection changes", () => {
+  const { local, systems, controller } = fixture();
+  systems[0].system = { componentDefaults: { input: { props: { label: "First label", type: "text" } } } };
+  controller.hydrate(local); controller.create("Guard", "a"); controller.addPage(); controller.addFrame("mobile");
+  const history = controller.active().history, expected = history.present, page = expected.pages[0], frame = page.frames[0];
+  const scope = { projectId: expected.id, pageId: page.id, frameId: frame.id, parentId: frame.root.id, index: 0 };
+  const defaults = controller.insertionDefaults(), session = controller.insertionSession(), selection = controller.active().selection;
+  systems[0].system.componentDefaults.input.props.label = "Changed label"; local.writes = [];
+  assert.equal(controller.insert(scope, "input", expected, session, defaults), false);
+  assert.match(controller.getSnapshot().message, /System insertion defaults changed/);
+  assert.equal(controller.active().history, history); assert.deepEqual(controller.active().selection, selection); assert.equal(local.writes.length, 0);
+  assert.equal(defaults.input.props.label, "First label");
+  const current = controller.insertionDefaults();
+  systems[0].system.componentDefaults = { input: { props: { type: "text", label: "Changed label" } } };
+  assert.equal(controller.insert(scope, "input", expected, session, current), true);
+  const first = activeDocument(controller).pages[0].frames[0].root.children[0].children[0];
+  assert.equal(first.props.label, "Changed label"); assert.equal(first.props.name, first.id);
+  assert.equal(controller.insert({ ...scope, index: 1 }, "input"), true);
+  const second = activeDocument(controller).pages[0].frames[0].root.children[1].children[0];
+  assert.notEqual(first.props.name, second.props.name);
+});
+
+test("invalid System insertion defaults fail closed without rewriting existing content", () => {
+  const { local, systems, controller } = fixture(); controller.hydrate(local); controller.create("Invalid", "a"); controller.addPage(); controller.addFrame("web");
+  const history = controller.active().history, document = history.present, page = document.pages[0], frame = page.frames[0];
+  const scope = { projectId: document.id, pageId: page.id, frameId: frame.id, parentId: frame.root.id, index: 0 };
+  for (const componentDefaults of [{ input: { props: { name: "shared" } } }, { button: { props: { size: "bad" } } }, { button: { appearance: { color: "#ffffff" } } }, null]) {
+    systems[0].system = { componentDefaults }; local.writes = [];
+    assert.equal(controller.insert(scope, "button"), false); assert.ok(controller.getSnapshot().message);
+    assert.equal(controller.active().history, history); assert.equal(local.writes.length, 0);
+  }
+  delete systems[0].system;
+  assert.equal(controller.insert(scope, "button"), true);
+  assert.equal(activeDocument(controller).pages[0].frames[0].root.children[0].children[0].text, "Continue");
+});
+
+test("legacy style reset saves once, undoes once, and leaves parameter values and saved assets untouched", () => {
+  const { local, controller, selection } = assetFixture(); controller.saveSelectionAsAsset("Original field");
+  const history = controller.active().history, before = history.present;
+  local.writes = [];
+  const command = resetLocalStylesCommand(before, selection);
+  assert.equal(controller.execute({ type: "nodeCommands", pageId: selection.pageId, frameId: selection.frameId, commands: [command] }), true);
+  const reset = activeDocument(controller), field = reset.pages[0].frames[0].root.children[0].children[0];
+  assert.equal(local.writes.length, 1); assert.equal(controller.active().history.past.length, history.past.length + 1);
+  assert.equal(field.appearance, undefined); assert.equal(field.parts, undefined);
+  assert.deepEqual(field.props, before.pages[0].frames[0].root.children[0].children[0].props);
+  assert.deepEqual(reset.assets, before.assets);
+  controller.travel("undo"); assert.deepEqual(activeDocument(controller), before);
+  controller.travel("redo"); assert.deepEqual(activeDocument(controller), reset);
+});
+
 test("insertion IDs avoid imported node IDs and repeated allocator values", () => {
   const {local,systems,controller}=fixture();controller.hydrate(local);controller.create('Insert','a');controller.addPage();controller.addFrame('web');
   const document=controller.active().history.present, page=document.pages[0],frame=page.frames[0];

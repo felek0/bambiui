@@ -1,4 +1,5 @@
 import { applyPageCommands, type PageCommand } from "../page-document/commands.ts";
+import type { ComponentDefaults } from "../component-defaults.ts";
 import { prepareMove, type MoveTarget } from "./movement.ts";
 import type { PageNode } from "../page-document/model.ts";
 import {
@@ -6,8 +7,8 @@ import {
   validateComposerSystemReference, type ComposerDocument, type ComposerFrame, type ComposerPage, type ComposerAsset,
 } from "./model.ts";
 
-/** Already validated system IDs or StoredSystem-shaped records. No token/catalog mutation or custom registry mapping. */
-export type ComposerSystemCatalog = readonly (string | { id: string })[];
+/** Live StoredSystem-shaped records supply insertion parameters; ID-only catalogs use built-in starters. */
+export type ComposerSystemCatalog = readonly (string | { id: string; system?: { name?: string; componentDefaults?: ComponentDefaults } })[];
 /** Exact source-node-ID -> new-node-ID map, including the root. Scoped by source frame. */
 export type ComposerFrameIdRemap = { frameId: string; nodeIds: Record<string, string> };
 export type ComposerPageIdRemap = { pageId: string; frames: Record<string, ComposerFrameIdRemap> };

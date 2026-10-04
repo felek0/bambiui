@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 import { createPortal } from "react-dom";
 import { Icon } from "../icons";
 import { INSERT_KINDS, insertionProposalCache, type InsertKind, type InsertionResult } from "./insertion";
+import type { ComponentDefaults } from "../component-defaults";
 import { composerFrameToPageDocument } from "./model";
 import { canvasTarget as hit, type CanvasTarget as Target } from "./canvas-target";
 import { nodePath } from "./selection";
@@ -29,13 +30,20 @@ export function InsertPanel({ composer }: { composer: Composer }) {
     if (disabled || event.pointerType !== 'mouse' || event.button !== 0 || !composer.document || !composer.page) return;
     event.stopPropagation();
     const expected = composer.document, pageId = composer.page.id, session = composer.controller.insertionSession();
+    let defaults: ComponentDefaults;
+    try { defaults = composer.controller.insertionDefaults(); }
+    catch (error) { composer.controller.report(error instanceof Error ? error.message : "Invalid System insertion defaults."); return; }
+    const defaultsKey = JSON.stringify(defaults);
     const caches = new Map<string, ReturnType<typeof insertionProposalCache>>();
     const proposalFor = (target: Target | null): InsertionResult => {
+      try {
+        if (JSON.stringify(composer.controller.insertionDefaults()) !== defaultsKey) return { ok: false, hint: "System insertion defaults changed. Start a new drag." };
+      } catch (error) { return { ok: false, hint: error instanceof Error ? error.message : "Invalid System insertion defaults." }; }
       if (!target) return { ok: false, hint: 'No visible insertion slot' };
       let cache = caches.get(target.frameId);
       if (!cache) {
         const frame = composer.page!.frames.find(frame => frame.id === target.frameId)!;
-        cache = insertionProposalCache(composerFrameToPageDocument(frame), kind);
+        cache = insertionProposalCache(composerFrameToPageDocument(frame), kind, defaults);
         caches.set(target.frameId, cache);
       }
       return cache(target);
@@ -51,7 +59,7 @@ export function InsertPanel({ composer }: { composer: Composer }) {
         setGhost(null); suppressClick.current = moved || !commit;
         if (commit && moved) {
           const target = hit(composer, point), proposal = proposalFor(target);
-          if (target && proposal.ok) composer.controller.insert({ projectId: expected.id, pageId, frameId: target.frameId, parentId: target.parentId, index: target.index }, kind, expected, session);
+          if (target && proposal.ok) composer.controller.insert({ projectId: expected.id, pageId, frameId: target.frameId, parentId: target.parentId, index: target.index }, kind, expected, session, defaults);
           else composer.controller.report(proposal.hint);
         }
       },
@@ -64,7 +72,7 @@ export function InsertPanel({ composer }: { composer: Composer }) {
     });
   };
   return <section className={styles.insertPanel} aria-label="Insert palette">
-    <h2>Components</h2><p className={styles.hint}>{composer.state.mode === 'preview' ? 'Switch to Design to insert.' : 'Drag onto a frame, or click to add to the selection.'}</p>
+    <h2>Components</h2><p className={styles.hint}>{composer.state.mode === 'preview' ? 'Switch to Design to insert.' : 'Drag or click to add with defaults from the linked System.'}</p>
     <div className={styles.insertItems}>{INSERT_KINDS.map(kind => <button key={kind} type="button" data-insert-kind={kind} disabled={disabled} draggable={false} title={`Drag ${kind} to canvas or insert into selected slot`} onPointerDown={event => down(event, kind)} onClick={event => { if (event.detail === 0) suppressClick.current = false; insertSelected(kind); }}><Icon name={kind === "stack" ? "box" : kind} size={18} /><span>{kind === "stack" ? "Auto layout" : kind[0].toUpperCase() + kind.slice(1)}</span></button>)}</div>
     {ghost && createPortal(<div className={styles.insertOverlay} data-insertion-valid={ghost.valid}>
       {ghost.target && <><div className={styles.dropHighlight} style={{ left: ghost.target.rect.x, top: ghost.target.rect.y, width: ghost.target.rect.width, height: ghost.target.rect.height }} />{ghost.valid && ghost.target.line && <div className={styles.insertionLine} style={{ left: ghost.target.line.x, top: ghost.target.line.y, width: ghost.target.line.width, height: ghost.target.line.height }} />}</>}

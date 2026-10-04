@@ -46,6 +46,14 @@ export function draftCommand(document: ComposerDocument, selection: NodeSelectio
   applyPageCommands(composerFrameToPageDocument(frame), [command]);
   return command;
 }
+/** Reset only this layer's legacy styles, including field parts, as one undoable update. */
+export function resetLocalStylesCommand(document: ComposerDocument, selection: NodeSelection): ComposerNodeCommand {
+  const resolved = resolveSelection(document, selection);
+  if (!resolved) throw new Error("Selection is no longer available");
+  const command: ComposerNodeCommand = { type: "update", nodeId: resolved.node.id, appearance: null, ...(resolved.node.parts !== undefined ? { parts: null } : {}) };
+  applyPageCommands(composerFrameToPageDocument(resolved.frame), [command]);
+  return command;
+}
 export type Rect = { x: number; y: number; width: number; height: number };
 export function clipRect(rect: Rect, width: number, height: number): Rect | null {
   const x = Math.max(0, rect.x), y = Math.max(0, rect.y);

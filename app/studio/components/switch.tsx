@@ -33,6 +33,7 @@ export function Switch({
   return (
     <FieldRoot
       kind="choice"
+      component="switch"
       pageOwner={props["data-page-node"]}
       size={size}
       disabled={disabled}
@@ -59,7 +60,7 @@ export function Switch({
         >
           <BaseSwitch.Thumb className={styles.thumb} />
         </BaseSwitch.Root>
-        <span data-appearance-part="label" className={labelClassName(hideLabel)} style={hideLabel ? undefined : appearanceToStyle(parts?.label)}>
+        <span data-appearance-part="label" data-hide-label={hideLabel || undefined} className={labelClassName(hideLabel)} style={hideLabel ? undefined : appearanceToStyle(parts?.label)}>
           {hideLabel && parts?.label ? <span style={appearanceToStyle(parts.label)}>{label}</span> : label}
         </span>
       </Field.Label>

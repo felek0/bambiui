@@ -60,15 +60,15 @@
 }
 
 /* Radius scale opt-in; omitted props preserve legacy numeric component radius values. */
-.button[data-radius="sm"], .field[data-radius="sm"] .inputControl, .field[data-radius="sm"] .checkbox { border-radius: var(--ds-radius-sm); }
-.button[data-radius="md"], .field[data-radius="md"] .inputControl, .field[data-radius="md"] .checkbox { border-radius: var(--ds-radius-md); }
-.button[data-radius="lg"], .field[data-radius="lg"] .inputControl, .field[data-radius="lg"] .checkbox { border-radius: var(--ds-radius-lg); }
-.badge[data-radius="sm"] { border-radius: var(--ds-radius-sm); }
-.badge[data-radius="md"] { border-radius: var(--ds-radius-md); }
-.badge[data-radius="lg"] { border-radius: var(--ds-radius-lg); }
-.card[data-radius="sm"] { border-radius: var(--ds-radius-sm); }
-.card[data-radius="md"] { border-radius: var(--ds-radius-md); }
-.card[data-radius="lg"] { border-radius: var(--ds-radius-lg); }
+.button[data-radius="sm"], .field[data-radius="sm"] .inputControl, .field[data-radius="sm"] .checkbox { --part-radius: var(--ds-radius-sm); }
+.button[data-radius="md"], .field[data-radius="md"] .inputControl, .field[data-radius="md"] .checkbox { --part-radius: var(--ds-radius-md); }
+.button[data-radius="lg"], .field[data-radius="lg"] .inputControl, .field[data-radius="lg"] .checkbox { --part-radius: var(--ds-radius-lg); }
+.badge[data-radius="sm"] { --part-radius: var(--ds-radius-sm); }
+.badge[data-radius="md"] { --part-radius: var(--ds-radius-md); }
+.badge[data-radius="lg"] { --part-radius: var(--ds-radius-lg); }
+.card[data-radius="sm"] { --part-radius: var(--ds-radius-sm); }
+.card[data-radius="md"] { --part-radius: var(--ds-radius-md); }
+.card[data-radius="lg"] { --part-radius: var(--ds-radius-lg); }
 
 /* Button -------------------------------------------------------------------- */
 
@@ -90,7 +90,8 @@
   margin: var(--button-margin);
   gap: var(--button-gap);
   border: var(--button-border-width) solid var(--button-stroke);
-  border-radius: var(--button-radius);
+  --part-radius: var(--button-radius);
+  border-radius: var(--part-radius);
   background: var(--button-fill);
   box-shadow: var(--button-shadow);
   color: var(--button-ink);
@@ -105,6 +106,7 @@
 }
 
 .button > svg,
+.buttonContent > svg,
 .decorativeIcon,
 .decorativeIcon > svg {
   width: var(--ds-icon-size);
@@ -160,18 +162,19 @@
   --button-stroke: var(--button-variant-link-border);
   --button-border-width: var(--button-variant-link-border-width);
   --button-shadow: var(--button-variant-link-shadow);
-  min-height: 0;
-  padding-inline: 0;
+  min-height: var(--button-part-root-min-height, 0);
+  padding-left: var(--button-part-root-padding-left, 0);
+  padding-right: var(--button-part-root-padding-right, 0);
   text-underline-offset: 0.2em;
 }
 
 .button[data-icon-only] {
-  width: var(--size-height);
-  padding: 0;
+  width: var(--button-part-root-width, var(--size-height));
+  padding: var(--button-part-root-padding-top, 0) var(--button-part-root-padding-right, 0) var(--button-part-root-padding-bottom, 0) var(--button-part-root-padding-left, 0);
 }
 
 .button[data-full-width] {
-  width: 100%;
+  width: var(--button-part-root-width, 100%);
 }
 
 .button[data-loading] {
@@ -265,7 +268,8 @@
   padding-inline: calc(var(--input-padding-x) * var(--size-scale));
   gap: calc(var(--input-gap) * var(--size-scale));
   border: var(--input-state-border-width) solid var(--input-state-border);
-  border-radius: var(--input-radius);
+  --part-radius: var(--input-radius);
+  border-radius: var(--part-radius);
   background: var(--input-state-background);
   color: var(--input-state-foreground);
   box-shadow: var(--input-state-shadow);
@@ -344,25 +348,25 @@
   flex-direction: row-reverse;
 }
 
-.field[data-kind="choice"]:has(.switch) {
+.field[data-component="switch"] {
   gap: calc(var(--switch-gap) / 2);
   padding: var(--switch-padding-y) var(--switch-padding-x);
   margin: var(--switch-margin);
   font-size: calc(var(--switch-font-size) * var(--size-scale));
 }
 
-.field[data-kind="choice"]:has(.switch) .choice {
+.field[data-component="switch"] .choice {
   gap: var(--switch-gap);
 }
 
-.field[data-kind="choice"]:has(.checkbox) {
+.field[data-component="checkbox"] {
   gap: calc(var(--checkbox-gap) / 2);
   padding: var(--checkbox-padding-y) var(--checkbox-padding-x);
   margin: var(--checkbox-margin);
   font-size: calc(var(--checkbox-font-size) * var(--size-scale));
 }
 
-.field[data-kind="choice"]:has(.checkbox) .choice {
+.field[data-component="checkbox"] .choice {
   gap: var(--checkbox-gap);
 }
 
@@ -381,7 +385,8 @@
   height: calc(var(--thumb-size) + var(--ds-control-inset) * 2 + var(--switch-state-border-width) * 2);
   padding: var(--ds-control-inset);
   border: var(--switch-state-border-width) solid var(--switch-state-border);
-  border-radius: var(--switch-radius);
+  --part-radius: var(--switch-radius);
+  border-radius: var(--part-radius);
   background: var(--switch-state-background);
   color: var(--switch-state-foreground);
   box-shadow: var(--switch-state-shadow);
@@ -401,10 +406,11 @@
 }
 
 .thumb[data-checked] {
-  transform: translateX(100%);
+  transform: var(--switch-part-control-thumb-transform, translateX(100%));
+  margin-inline-start: var(--switch-part-control-thumb-margin, 0);
 }
 
-/* Local track geometry must not retain the preset's one-thumb-width travel. */
+/* Local geometry wins over shared track geometry, including fill/hug/min/max widths. */
 .switch[data-local-geometry] .thumb[data-checked] {
   transform: none;
   margin-inline-start: auto;
@@ -424,7 +430,8 @@
   width: var(--box-size);
   height: var(--box-size);
   border: var(--checkbox-state-border-width) solid var(--checkbox-state-border);
-  border-radius: var(--checkbox-radius);
+  --part-radius: var(--checkbox-radius);
+  border-radius: var(--part-radius);
   background: var(--checkbox-state-background);
   color: var(--checkbox-state-foreground);
   box-shadow: var(--checkbox-state-shadow);
@@ -593,11 +600,11 @@ span.text[data-appearance-box],
   --text-size-scale: var(--ds-size-scale-lg);
 }
 
-.text[data-tone="primary"] { color: var(--ds-primary-on-subtle); }
-.text[data-tone="success"] { color: var(--ds-success-on-subtle); }
-.text[data-tone="warning"] { color: var(--ds-warning-on-subtle); }
-.text[data-tone="danger"] { color: var(--ds-danger-on-subtle); }
-.text[data-tone="info"] { color: var(--ds-info-on-subtle); }
+.text[data-tone="primary"] { color: var(--text-part-root-color, var(--ds-primary-on-subtle)); }
+.text[data-tone="success"] { color: var(--text-part-root-color, var(--ds-success-on-subtle)); }
+.text[data-tone="warning"] { color: var(--text-part-root-color, var(--ds-warning-on-subtle)); }
+.text[data-tone="danger"] { color: var(--text-part-root-color, var(--ds-danger-on-subtle)); }
+.text[data-tone="info"] { color: var(--text-part-root-color, var(--ds-info-on-subtle)); }
 
 /* Badge --------------------------------------------------------------------- */
 
@@ -619,7 +626,8 @@ span.text[data-appearance-box],
     calc(var(--badge-padding-x) * var(--size-scale));
   margin: var(--badge-margin);
   border: var(--badge-style-border-width) solid var(--tone-border);
-  border-radius: var(--badge-radius);
+  --part-radius: var(--badge-radius);
+  border-radius: var(--part-radius);
   background: var(--tone);
   color: var(--tone-text);
   box-shadow: var(--badge-style-shadow);
@@ -627,7 +635,8 @@ span.text[data-appearance-box],
   line-height: var(--ds-badge-line-height);
 }
 
-.badge > svg {
+.badge > svg,
+.badgeContent > svg {
   width: var(--ds-icon-size);
   height: var(--ds-icon-size);
   flex: 0 0 auto;
@@ -673,7 +682,8 @@ span.text[data-appearance-box],
     calc(var(--card-padding-x) * var(--size-scale));
   margin: var(--card-margin);
   border: var(--card-variant-outlined-border-width) solid var(--card-variant-outlined-border);
-  border-radius: var(--card-radius);
+  --part-radius: var(--card-radius);
+  border-radius: var(--part-radius);
   background: var(--card-variant-outlined-background);
   color: var(--card-variant-outlined-foreground);
   box-shadow: var(--card-variant-outlined-shadow);
@@ -697,9 +707,9 @@ span.text[data-appearance-box],
   box-shadow: var(--card-variant-filled-shadow);
 }
 
-.card[data-variant="outlined"] .cardDescription { color: var(--card-variant-outlined-description); }
-.card[data-variant="elevated"] .cardDescription { color: var(--card-variant-elevated-description); }
-.card[data-variant="filled"] .cardDescription { color: var(--card-variant-filled-description); }
+.card[data-variant="outlined"] .cardDescription { color: var(--card-part-description-color, var(--card-variant-outlined-description)); }
+.card[data-variant="elevated"] .cardDescription { color: var(--card-part-description-color, var(--card-variant-elevated-description)); }
+.card[data-variant="filled"] .cardDescription { color: var(--card-part-description-color, var(--card-variant-filled-description)); }
 
 .cardIcon {
   display: grid;
@@ -739,8 +749,8 @@ span.text[data-appearance-box],
   gap: var(--ds-spacing-md);
 }
 
-.card[data-size="sm"] .cardContent { gap: var(--ds-spacing-sm); }
-.card[data-size="lg"] .cardContent { gap: var(--ds-spacing-lg); }
+.card[data-size="sm"] .cardContent { gap: var(--card-part-content-gap, var(--ds-spacing-sm)); }
+.card[data-size="lg"] .cardContent { gap: var(--card-part-content-gap, var(--ds-spacing-lg)); }
 
 .cardFooter {
   display: flex;
@@ -748,6 +758,899 @@ span.text[data-appearance-box],
   align-items: center;
   align-self: stretch;
   gap: var(--card-gap);
+}
+
+/* Shared component parts ----------------------------------------------------
+ * Sparse System values override geometry/slot defaults, never variant/state
+ * paint or focus outlines. Unset extra properties revert to the prior layer/UA;
+ * existing properties retain their exact token fallback. Inline appearance wins.
+ */
+
+.button {
+  box-sizing: var(--button-part-root-box-sizing, revert-layer);
+  width: var(--button-part-root-width, revert-layer);
+  height: var(--button-part-root-height, revert-layer);
+  min-width: var(--button-part-root-min-width, revert-layer);
+  min-height: var(--button-part-root-min-height, var(--size-height));
+  max-width: var(--button-part-root-max-width, revert-layer);
+  padding-top: var(--button-part-root-padding-top, calc(var(--button-padding-y) * var(--size-scale)));
+  padding-right: var(--button-part-root-padding-right, calc(var(--button-padding-x) * var(--size-scale)));
+  padding-bottom: var(--button-part-root-padding-bottom, calc(var(--button-padding-y) * var(--size-scale)));
+  padding-left: var(--button-part-root-padding-left, calc(var(--button-padding-x) * var(--size-scale)));
+  margin-top: var(--button-part-root-margin-top, var(--button-margin));
+  margin-right: var(--button-part-root-margin-right, var(--button-margin));
+  margin-bottom: var(--button-part-root-margin-bottom, var(--button-margin));
+  margin-left: var(--button-part-root-margin-left, var(--button-margin));
+  border-top-left-radius: var(--button-part-root-border-top-left-radius, var(--part-radius));
+  border-top-right-radius: var(--button-part-root-border-top-right-radius, var(--part-radius));
+  border-bottom-right-radius: var(--button-part-root-border-bottom-right-radius, var(--part-radius));
+  border-bottom-left-radius: var(--button-part-root-border-bottom-left-radius, var(--part-radius));
+  font-size: var(--button-part-root-font-size, calc(var(--button-font-size) * var(--size-scale)));
+  font-weight: var(--button-part-root-font-weight, var(--ds-button-font-weight));
+  line-height: var(--button-part-root-line-height, var(--ds-button-line-height));
+  letter-spacing: var(--button-part-root-letter-spacing, revert-layer);
+  text-align: var(--button-part-root-text-align, revert-layer);
+  gap: var(--button-part-root-gap, var(--button-gap));
+  opacity: var(--button-part-root-opacity, revert-layer);
+}
+
+.field[data-component="input"] {
+  box-sizing: var(--input-part-root-box-sizing, revert-layer);
+  width: var(--input-part-root-width, revert-layer);
+  height: var(--input-part-root-height, revert-layer);
+  min-width: var(--input-part-root-min-width, 0);
+  min-height: var(--input-part-root-min-height, revert-layer);
+  max-width: var(--input-part-root-max-width, revert-layer);
+  padding-top: var(--input-part-root-padding-top, revert-layer);
+  padding-right: var(--input-part-root-padding-right, revert-layer);
+  padding-bottom: var(--input-part-root-padding-bottom, revert-layer);
+  padding-left: var(--input-part-root-padding-left, revert-layer);
+  margin-top: var(--input-part-root-margin-top, var(--input-margin));
+  margin-right: var(--input-part-root-margin-right, var(--input-margin));
+  margin-bottom: var(--input-part-root-margin-bottom, var(--input-margin));
+  margin-left: var(--input-part-root-margin-left, var(--input-margin));
+  border-top-left-radius: var(--input-part-root-border-top-left-radius, revert-layer);
+  border-top-right-radius: var(--input-part-root-border-top-right-radius, revert-layer);
+  border-bottom-right-radius: var(--input-part-root-border-bottom-right-radius, revert-layer);
+  border-bottom-left-radius: var(--input-part-root-border-bottom-left-radius, revert-layer);
+  font-size: var(--input-part-root-font-size, calc(var(--input-font-size) * var(--size-scale)));
+  font-weight: var(--input-part-root-font-weight, revert-layer);
+  line-height: var(--input-part-root-line-height, revert-layer);
+  letter-spacing: var(--input-part-root-letter-spacing, revert-layer);
+  text-align: var(--input-part-root-text-align, revert-layer);
+  gap: var(--input-part-root-gap, var(--input-gap));
+}
+
+.inputControl {
+  box-sizing: var(--input-part-control-box-sizing, revert-layer);
+  width: var(--input-part-control-width, revert-layer);
+  height: var(--input-part-control-height, revert-layer);
+  min-width: var(--input-part-control-min-width, 0);
+  min-height: var(--input-part-control-min-height, var(--size-height));
+  max-width: var(--input-part-control-max-width, revert-layer);
+  padding-top: var(--input-part-control-padding-top, 0);
+  padding-right: var(--input-part-control-padding-right, calc(var(--input-padding-x) * var(--size-scale)));
+  padding-bottom: var(--input-part-control-padding-bottom, 0);
+  padding-left: var(--input-part-control-padding-left, calc(var(--input-padding-x) * var(--size-scale)));
+  margin-top: var(--input-part-control-margin-top, revert-layer);
+  margin-right: var(--input-part-control-margin-right, revert-layer);
+  margin-bottom: var(--input-part-control-margin-bottom, revert-layer);
+  margin-left: var(--input-part-control-margin-left, revert-layer);
+  border-top-left-radius: var(--input-part-control-border-top-left-radius, var(--part-radius));
+  border-top-right-radius: var(--input-part-control-border-top-right-radius, var(--part-radius));
+  border-bottom-right-radius: var(--input-part-control-border-bottom-right-radius, var(--part-radius));
+  border-bottom-left-radius: var(--input-part-control-border-bottom-left-radius, var(--part-radius));
+  font-size: var(--input-part-control-font-size, revert-layer);
+  font-weight: var(--input-part-control-font-weight, revert-layer);
+  line-height: var(--input-part-control-line-height, revert-layer);
+  letter-spacing: var(--input-part-control-letter-spacing, revert-layer);
+  text-align: var(--input-part-control-text-align, revert-layer);
+  gap: var(--input-part-control-gap, calc(var(--input-gap) * var(--size-scale)));
+  opacity: var(--input-part-control-opacity, revert-layer);
+}
+
+.field[data-component="switch"] {
+  box-sizing: var(--switch-part-root-box-sizing, revert-layer);
+  width: var(--switch-part-root-width, revert-layer);
+  height: var(--switch-part-root-height, revert-layer);
+  min-width: var(--switch-part-root-min-width, 0);
+  min-height: var(--switch-part-root-min-height, revert-layer);
+  max-width: var(--switch-part-root-max-width, revert-layer);
+  padding-top: var(--switch-part-root-padding-top, var(--switch-padding-y));
+  padding-right: var(--switch-part-root-padding-right, var(--switch-padding-x));
+  padding-bottom: var(--switch-part-root-padding-bottom, var(--switch-padding-y));
+  padding-left: var(--switch-part-root-padding-left, var(--switch-padding-x));
+  margin-top: var(--switch-part-root-margin-top, var(--switch-margin));
+  margin-right: var(--switch-part-root-margin-right, var(--switch-margin));
+  margin-bottom: var(--switch-part-root-margin-bottom, var(--switch-margin));
+  margin-left: var(--switch-part-root-margin-left, var(--switch-margin));
+  border-top-left-radius: var(--switch-part-root-border-top-left-radius, revert-layer);
+  border-top-right-radius: var(--switch-part-root-border-top-right-radius, revert-layer);
+  border-bottom-right-radius: var(--switch-part-root-border-bottom-right-radius, revert-layer);
+  border-bottom-left-radius: var(--switch-part-root-border-bottom-left-radius, revert-layer);
+  font-size: var(--switch-part-root-font-size, calc(var(--switch-font-size) * var(--size-scale)));
+  font-weight: var(--switch-part-root-font-weight, revert-layer);
+  line-height: var(--switch-part-root-line-height, revert-layer);
+  letter-spacing: var(--switch-part-root-letter-spacing, revert-layer);
+  text-align: var(--switch-part-root-text-align, revert-layer);
+  gap: var(--switch-part-root-gap, calc(var(--switch-gap) / 2));
+}
+
+.field[data-component="switch"] > .choice {
+  box-sizing: var(--switch-part-row-box-sizing, revert-layer);
+  width: var(--switch-part-row-width, fit-content);
+  height: var(--switch-part-row-height, revert-layer);
+  min-width: var(--switch-part-row-min-width, revert-layer);
+  min-height: var(--switch-part-row-min-height, var(--size-height));
+  max-width: var(--switch-part-row-max-width, revert-layer);
+  padding-top: var(--switch-part-row-padding-top, revert-layer);
+  padding-right: var(--switch-part-row-padding-right, revert-layer);
+  padding-bottom: var(--switch-part-row-padding-bottom, revert-layer);
+  padding-left: var(--switch-part-row-padding-left, revert-layer);
+  margin-top: var(--switch-part-row-margin-top, revert-layer);
+  margin-right: var(--switch-part-row-margin-right, revert-layer);
+  margin-bottom: var(--switch-part-row-margin-bottom, revert-layer);
+  margin-left: var(--switch-part-row-margin-left, revert-layer);
+  border-top-left-radius: var(--switch-part-row-border-top-left-radius, revert-layer);
+  border-top-right-radius: var(--switch-part-row-border-top-right-radius, revert-layer);
+  border-bottom-right-radius: var(--switch-part-row-border-bottom-right-radius, revert-layer);
+  border-bottom-left-radius: var(--switch-part-row-border-bottom-left-radius, revert-layer);
+  font-size: var(--switch-part-row-font-size, revert-layer);
+  font-weight: var(--switch-part-row-font-weight, revert-layer);
+  line-height: var(--switch-part-row-line-height, revert-layer);
+  letter-spacing: var(--switch-part-row-letter-spacing, revert-layer);
+  text-align: var(--switch-part-row-text-align, revert-layer);
+  gap: var(--switch-part-row-gap, var(--switch-gap));
+  background-color: var(--switch-part-row-background, revert-layer);
+  color: var(--switch-part-row-color, revert-layer);
+  border-color: var(--switch-part-row-border-color, revert-layer);
+  border-width: var(--switch-part-row-border-width, revert-layer);
+  box-shadow: var(--switch-part-row-shadow, revert-layer);
+  opacity: var(--switch-part-row-opacity, revert-layer);
+  border-style: var(--switch-part-row-border-style, revert-layer);
+}
+
+.switch {
+  box-sizing: var(--switch-part-control-box-sizing, revert-layer);
+  width: var(--switch-part-control-width, calc(var(--thumb-size) * 2 + var(--ds-control-inset) * 2 + var(--switch-state-border-width) * 2));
+  height: var(--switch-part-control-height, calc(var(--thumb-size) + var(--ds-control-inset) * 2 + var(--switch-state-border-width) * 2));
+  min-width: var(--switch-part-control-min-width, revert-layer);
+  min-height: var(--switch-part-control-min-height, revert-layer);
+  max-width: var(--switch-part-control-max-width, revert-layer);
+  padding-top: var(--switch-part-control-padding-top, var(--ds-control-inset));
+  padding-right: var(--switch-part-control-padding-right, var(--ds-control-inset));
+  padding-bottom: var(--switch-part-control-padding-bottom, var(--ds-control-inset));
+  padding-left: var(--switch-part-control-padding-left, var(--ds-control-inset));
+  margin-top: var(--switch-part-control-margin-top, revert-layer);
+  margin-right: var(--switch-part-control-margin-right, revert-layer);
+  margin-bottom: var(--switch-part-control-margin-bottom, revert-layer);
+  margin-left: var(--switch-part-control-margin-left, revert-layer);
+  border-top-left-radius: var(--switch-part-control-border-top-left-radius, var(--part-radius));
+  border-top-right-radius: var(--switch-part-control-border-top-right-radius, var(--part-radius));
+  border-bottom-right-radius: var(--switch-part-control-border-bottom-right-radius, var(--part-radius));
+  border-bottom-left-radius: var(--switch-part-control-border-bottom-left-radius, var(--part-radius));
+  font-size: var(--switch-part-control-font-size, revert-layer);
+  opacity: var(--switch-part-control-opacity, revert-layer);
+}
+
+.field[data-component="checkbox"] {
+  box-sizing: var(--checkbox-part-root-box-sizing, revert-layer);
+  width: var(--checkbox-part-root-width, revert-layer);
+  height: var(--checkbox-part-root-height, revert-layer);
+  min-width: var(--checkbox-part-root-min-width, 0);
+  min-height: var(--checkbox-part-root-min-height, revert-layer);
+  max-width: var(--checkbox-part-root-max-width, revert-layer);
+  padding-top: var(--checkbox-part-root-padding-top, var(--checkbox-padding-y));
+  padding-right: var(--checkbox-part-root-padding-right, var(--checkbox-padding-x));
+  padding-bottom: var(--checkbox-part-root-padding-bottom, var(--checkbox-padding-y));
+  padding-left: var(--checkbox-part-root-padding-left, var(--checkbox-padding-x));
+  margin-top: var(--checkbox-part-root-margin-top, var(--checkbox-margin));
+  margin-right: var(--checkbox-part-root-margin-right, var(--checkbox-margin));
+  margin-bottom: var(--checkbox-part-root-margin-bottom, var(--checkbox-margin));
+  margin-left: var(--checkbox-part-root-margin-left, var(--checkbox-margin));
+  border-top-left-radius: var(--checkbox-part-root-border-top-left-radius, revert-layer);
+  border-top-right-radius: var(--checkbox-part-root-border-top-right-radius, revert-layer);
+  border-bottom-right-radius: var(--checkbox-part-root-border-bottom-right-radius, revert-layer);
+  border-bottom-left-radius: var(--checkbox-part-root-border-bottom-left-radius, revert-layer);
+  font-size: var(--checkbox-part-root-font-size, calc(var(--checkbox-font-size) * var(--size-scale)));
+  font-weight: var(--checkbox-part-root-font-weight, revert-layer);
+  line-height: var(--checkbox-part-root-line-height, revert-layer);
+  letter-spacing: var(--checkbox-part-root-letter-spacing, revert-layer);
+  text-align: var(--checkbox-part-root-text-align, revert-layer);
+  gap: var(--checkbox-part-root-gap, calc(var(--checkbox-gap) / 2));
+}
+
+.field[data-component="checkbox"] > .choice {
+  box-sizing: var(--checkbox-part-row-box-sizing, revert-layer);
+  width: var(--checkbox-part-row-width, fit-content);
+  height: var(--checkbox-part-row-height, revert-layer);
+  min-width: var(--checkbox-part-row-min-width, revert-layer);
+  min-height: var(--checkbox-part-row-min-height, var(--size-height));
+  max-width: var(--checkbox-part-row-max-width, revert-layer);
+  padding-top: var(--checkbox-part-row-padding-top, revert-layer);
+  padding-right: var(--checkbox-part-row-padding-right, revert-layer);
+  padding-bottom: var(--checkbox-part-row-padding-bottom, revert-layer);
+  padding-left: var(--checkbox-part-row-padding-left, revert-layer);
+  margin-top: var(--checkbox-part-row-margin-top, revert-layer);
+  margin-right: var(--checkbox-part-row-margin-right, revert-layer);
+  margin-bottom: var(--checkbox-part-row-margin-bottom, revert-layer);
+  margin-left: var(--checkbox-part-row-margin-left, revert-layer);
+  border-top-left-radius: var(--checkbox-part-row-border-top-left-radius, revert-layer);
+  border-top-right-radius: var(--checkbox-part-row-border-top-right-radius, revert-layer);
+  border-bottom-right-radius: var(--checkbox-part-row-border-bottom-right-radius, revert-layer);
+  border-bottom-left-radius: var(--checkbox-part-row-border-bottom-left-radius, revert-layer);
+  font-size: var(--checkbox-part-row-font-size, revert-layer);
+  font-weight: var(--checkbox-part-row-font-weight, revert-layer);
+  line-height: var(--checkbox-part-row-line-height, revert-layer);
+  letter-spacing: var(--checkbox-part-row-letter-spacing, revert-layer);
+  text-align: var(--checkbox-part-row-text-align, revert-layer);
+  gap: var(--checkbox-part-row-gap, var(--checkbox-gap));
+  background-color: var(--checkbox-part-row-background, revert-layer);
+  color: var(--checkbox-part-row-color, revert-layer);
+  border-color: var(--checkbox-part-row-border-color, revert-layer);
+  border-width: var(--checkbox-part-row-border-width, revert-layer);
+  box-shadow: var(--checkbox-part-row-shadow, revert-layer);
+  opacity: var(--checkbox-part-row-opacity, revert-layer);
+  border-style: var(--checkbox-part-row-border-style, revert-layer);
+}
+
+.checkbox {
+  box-sizing: var(--checkbox-part-control-box-sizing, revert-layer);
+  width: var(--checkbox-part-control-width, var(--box-size));
+  height: var(--checkbox-part-control-height, var(--box-size));
+  min-width: var(--checkbox-part-control-min-width, revert-layer);
+  min-height: var(--checkbox-part-control-min-height, revert-layer);
+  max-width: var(--checkbox-part-control-max-width, revert-layer);
+  padding-top: var(--checkbox-part-control-padding-top, revert-layer);
+  padding-right: var(--checkbox-part-control-padding-right, revert-layer);
+  padding-bottom: var(--checkbox-part-control-padding-bottom, revert-layer);
+  padding-left: var(--checkbox-part-control-padding-left, revert-layer);
+  margin-top: var(--checkbox-part-control-margin-top, revert-layer);
+  margin-right: var(--checkbox-part-control-margin-right, revert-layer);
+  margin-bottom: var(--checkbox-part-control-margin-bottom, revert-layer);
+  margin-left: var(--checkbox-part-control-margin-left, revert-layer);
+  border-top-left-radius: var(--checkbox-part-control-border-top-left-radius, var(--part-radius));
+  border-top-right-radius: var(--checkbox-part-control-border-top-right-radius, var(--part-radius));
+  border-bottom-right-radius: var(--checkbox-part-control-border-bottom-right-radius, var(--part-radius));
+  border-bottom-left-radius: var(--checkbox-part-control-border-bottom-left-radius, var(--part-radius));
+  font-size: var(--checkbox-part-control-font-size, revert-layer);
+  opacity: var(--checkbox-part-control-opacity, revert-layer);
+}
+
+.field:where([data-component="input"]) {
+  opacity: var(--input-part-root-opacity, revert-layer);
+}
+
+.field[data-component="input"] > .label:not([data-hide-label]) {
+  box-sizing: var(--input-part-label-box-sizing, revert-layer);
+  width: var(--input-part-label-width, revert-layer);
+  height: var(--input-part-label-height, revert-layer);
+  min-width: var(--input-part-label-min-width, revert-layer);
+  min-height: var(--input-part-label-min-height, revert-layer);
+  max-width: var(--input-part-label-max-width, revert-layer);
+  padding-top: var(--input-part-label-padding-top, revert-layer);
+  padding-right: var(--input-part-label-padding-right, revert-layer);
+  padding-bottom: var(--input-part-label-padding-bottom, revert-layer);
+  padding-left: var(--input-part-label-padding-left, revert-layer);
+  margin-top: var(--input-part-label-margin-top, revert-layer);
+  margin-right: var(--input-part-label-margin-right, revert-layer);
+  margin-bottom: var(--input-part-label-margin-bottom, revert-layer);
+  margin-left: var(--input-part-label-margin-left, revert-layer);
+  border-top-left-radius: var(--input-part-label-border-top-left-radius, revert-layer);
+  border-top-right-radius: var(--input-part-label-border-top-right-radius, revert-layer);
+  border-bottom-right-radius: var(--input-part-label-border-bottom-right-radius, revert-layer);
+  border-bottom-left-radius: var(--input-part-label-border-bottom-left-radius, revert-layer);
+  font-size: var(--input-part-label-font-size, revert-layer);
+  font-weight: var(--input-part-label-font-weight, var(--ds-field-label-font-weight));
+  line-height: var(--input-part-label-line-height, revert-layer);
+  letter-spacing: var(--input-part-label-letter-spacing, revert-layer);
+  text-align: var(--input-part-label-text-align, revert-layer);
+  background-color: var(--input-part-label-background, revert-layer);
+  color: var(--input-part-label-color, revert-layer);
+  border-color: var(--input-part-label-border-color, revert-layer);
+  border-width: var(--input-part-label-border-width, revert-layer);
+  box-shadow: var(--input-part-label-shadow, revert-layer);
+  opacity: var(--input-part-label-opacity, revert-layer);
+  border-style: var(--input-part-label-border-style, revert-layer);
+}
+
+.field[data-component="input"] > .description {
+  box-sizing: var(--input-part-description-box-sizing, revert-layer);
+  width: var(--input-part-description-width, revert-layer);
+  height: var(--input-part-description-height, revert-layer);
+  min-width: var(--input-part-description-min-width, revert-layer);
+  min-height: var(--input-part-description-min-height, revert-layer);
+  max-width: var(--input-part-description-max-width, revert-layer);
+  padding-top: var(--input-part-description-padding-top, revert-layer);
+  padding-right: var(--input-part-description-padding-right, revert-layer);
+  padding-bottom: var(--input-part-description-padding-bottom, revert-layer);
+  padding-left: var(--input-part-description-padding-left, revert-layer);
+  margin-top: var(--input-part-description-margin-top, 0);
+  margin-right: var(--input-part-description-margin-right, 0);
+  margin-bottom: var(--input-part-description-margin-bottom, 0);
+  margin-left: var(--input-part-description-margin-left, 0);
+  border-top-left-radius: var(--input-part-description-border-top-left-radius, revert-layer);
+  border-top-right-radius: var(--input-part-description-border-top-right-radius, revert-layer);
+  border-bottom-right-radius: var(--input-part-description-border-bottom-right-radius, revert-layer);
+  border-bottom-left-radius: var(--input-part-description-border-bottom-left-radius, revert-layer);
+  font-size: var(--input-part-description-font-size, var(--ds-field-helper-font-size));
+  font-weight: var(--input-part-description-font-weight, revert-layer);
+  line-height: var(--input-part-description-line-height, var(--ds-field-helper-line-height));
+  letter-spacing: var(--input-part-description-letter-spacing, revert-layer);
+  text-align: var(--input-part-description-text-align, revert-layer);
+  background-color: var(--input-part-description-background, revert-layer);
+  color: var(--input-part-description-color, var(--ds-muted-foreground));
+  border-color: var(--input-part-description-border-color, revert-layer);
+  border-width: var(--input-part-description-border-width, revert-layer);
+  box-shadow: var(--input-part-description-shadow, revert-layer);
+  opacity: var(--input-part-description-opacity, revert-layer);
+  border-style: var(--input-part-description-border-style, revert-layer);
+}
+
+.field[data-component="input"] > .error {
+  box-sizing: var(--input-part-error-box-sizing, revert-layer);
+  width: var(--input-part-error-width, revert-layer);
+  height: var(--input-part-error-height, revert-layer);
+  min-width: var(--input-part-error-min-width, revert-layer);
+  min-height: var(--input-part-error-min-height, revert-layer);
+  max-width: var(--input-part-error-max-width, revert-layer);
+  padding-top: var(--input-part-error-padding-top, revert-layer);
+  padding-right: var(--input-part-error-padding-right, revert-layer);
+  padding-bottom: var(--input-part-error-padding-bottom, revert-layer);
+  padding-left: var(--input-part-error-padding-left, revert-layer);
+  margin-top: var(--input-part-error-margin-top, 0);
+  margin-right: var(--input-part-error-margin-right, 0);
+  margin-bottom: var(--input-part-error-margin-bottom, 0);
+  margin-left: var(--input-part-error-margin-left, 0);
+  border-top-left-radius: var(--input-part-error-border-top-left-radius, revert-layer);
+  border-top-right-radius: var(--input-part-error-border-top-right-radius, revert-layer);
+  border-bottom-right-radius: var(--input-part-error-border-bottom-right-radius, revert-layer);
+  border-bottom-left-radius: var(--input-part-error-border-bottom-left-radius, revert-layer);
+  font-size: var(--input-part-error-font-size, var(--ds-field-helper-font-size));
+  font-weight: var(--input-part-error-font-weight, revert-layer);
+  line-height: var(--input-part-error-line-height, var(--ds-field-helper-line-height));
+  letter-spacing: var(--input-part-error-letter-spacing, revert-layer);
+  text-align: var(--input-part-error-text-align, revert-layer);
+  background-color: var(--input-part-error-background, revert-layer);
+  color: var(--input-part-error-color, var(--ds-danger));
+  border-color: var(--input-part-error-border-color, revert-layer);
+  border-width: var(--input-part-error-border-width, revert-layer);
+  box-shadow: var(--input-part-error-shadow, revert-layer);
+  opacity: var(--input-part-error-opacity, revert-layer);
+  border-style: var(--input-part-error-border-style, revert-layer);
+}
+
+.field[data-component="input"] > .error[data-error-icon] {
+  gap: var(--input-part-error-gap, var(--ds-spacing-sm));
+}
+
+.field:where([data-component="switch"]) {
+  opacity: var(--switch-part-root-opacity, revert-layer);
+}
+
+.field[data-component="switch"] > .choice > [data-appearance-part="label"]:not([data-hide-label]) {
+  box-sizing: var(--switch-part-label-box-sizing, revert-layer);
+  width: var(--switch-part-label-width, revert-layer);
+  height: var(--switch-part-label-height, revert-layer);
+  min-width: var(--switch-part-label-min-width, revert-layer);
+  min-height: var(--switch-part-label-min-height, revert-layer);
+  max-width: var(--switch-part-label-max-width, revert-layer);
+  padding-top: var(--switch-part-label-padding-top, revert-layer);
+  padding-right: var(--switch-part-label-padding-right, revert-layer);
+  padding-bottom: var(--switch-part-label-padding-bottom, revert-layer);
+  padding-left: var(--switch-part-label-padding-left, revert-layer);
+  margin-top: var(--switch-part-label-margin-top, revert-layer);
+  margin-right: var(--switch-part-label-margin-right, revert-layer);
+  margin-bottom: var(--switch-part-label-margin-bottom, revert-layer);
+  margin-left: var(--switch-part-label-margin-left, revert-layer);
+  border-top-left-radius: var(--switch-part-label-border-top-left-radius, revert-layer);
+  border-top-right-radius: var(--switch-part-label-border-top-right-radius, revert-layer);
+  border-bottom-right-radius: var(--switch-part-label-border-bottom-right-radius, revert-layer);
+  border-bottom-left-radius: var(--switch-part-label-border-bottom-left-radius, revert-layer);
+  font-size: var(--switch-part-label-font-size, revert-layer);
+  font-weight: var(--switch-part-label-font-weight, revert-layer);
+  line-height: var(--switch-part-label-line-height, revert-layer);
+  letter-spacing: var(--switch-part-label-letter-spacing, revert-layer);
+  text-align: var(--switch-part-label-text-align, revert-layer);
+  background-color: var(--switch-part-label-background, revert-layer);
+  color: var(--switch-part-label-color, revert-layer);
+  border-color: var(--switch-part-label-border-color, revert-layer);
+  border-width: var(--switch-part-label-border-width, revert-layer);
+  box-shadow: var(--switch-part-label-shadow, revert-layer);
+  opacity: var(--switch-part-label-opacity, revert-layer);
+  border-style: var(--switch-part-label-border-style, revert-layer);
+}
+
+.field[data-component="switch"] > .description {
+  box-sizing: var(--switch-part-description-box-sizing, revert-layer);
+  width: var(--switch-part-description-width, revert-layer);
+  height: var(--switch-part-description-height, revert-layer);
+  min-width: var(--switch-part-description-min-width, revert-layer);
+  min-height: var(--switch-part-description-min-height, revert-layer);
+  max-width: var(--switch-part-description-max-width, revert-layer);
+  padding-top: var(--switch-part-description-padding-top, revert-layer);
+  padding-right: var(--switch-part-description-padding-right, revert-layer);
+  padding-bottom: var(--switch-part-description-padding-bottom, revert-layer);
+  padding-left: var(--switch-part-description-padding-left, revert-layer);
+  margin-top: var(--switch-part-description-margin-top, 0);
+  margin-right: var(--switch-part-description-margin-right, 0);
+  margin-bottom: var(--switch-part-description-margin-bottom, 0);
+  margin-left: var(--switch-part-description-margin-left, 0);
+  border-top-left-radius: var(--switch-part-description-border-top-left-radius, revert-layer);
+  border-top-right-radius: var(--switch-part-description-border-top-right-radius, revert-layer);
+  border-bottom-right-radius: var(--switch-part-description-border-bottom-right-radius, revert-layer);
+  border-bottom-left-radius: var(--switch-part-description-border-bottom-left-radius, revert-layer);
+  font-size: var(--switch-part-description-font-size, var(--ds-field-helper-font-size));
+  font-weight: var(--switch-part-description-font-weight, revert-layer);
+  line-height: var(--switch-part-description-line-height, var(--ds-field-helper-line-height));
+  letter-spacing: var(--switch-part-description-letter-spacing, revert-layer);
+  text-align: var(--switch-part-description-text-align, revert-layer);
+  background-color: var(--switch-part-description-background, revert-layer);
+  color: var(--switch-part-description-color, var(--ds-muted-foreground));
+  border-color: var(--switch-part-description-border-color, revert-layer);
+  border-width: var(--switch-part-description-border-width, revert-layer);
+  box-shadow: var(--switch-part-description-shadow, revert-layer);
+  opacity: var(--switch-part-description-opacity, revert-layer);
+  border-style: var(--switch-part-description-border-style, revert-layer);
+}
+
+.field[data-component="switch"] > .error {
+  box-sizing: var(--switch-part-error-box-sizing, revert-layer);
+  width: var(--switch-part-error-width, revert-layer);
+  height: var(--switch-part-error-height, revert-layer);
+  min-width: var(--switch-part-error-min-width, revert-layer);
+  min-height: var(--switch-part-error-min-height, revert-layer);
+  max-width: var(--switch-part-error-max-width, revert-layer);
+  padding-top: var(--switch-part-error-padding-top, revert-layer);
+  padding-right: var(--switch-part-error-padding-right, revert-layer);
+  padding-bottom: var(--switch-part-error-padding-bottom, revert-layer);
+  padding-left: var(--switch-part-error-padding-left, revert-layer);
+  margin-top: var(--switch-part-error-margin-top, 0);
+  margin-right: var(--switch-part-error-margin-right, 0);
+  margin-bottom: var(--switch-part-error-margin-bottom, 0);
+  margin-left: var(--switch-part-error-margin-left, 0);
+  border-top-left-radius: var(--switch-part-error-border-top-left-radius, revert-layer);
+  border-top-right-radius: var(--switch-part-error-border-top-right-radius, revert-layer);
+  border-bottom-right-radius: var(--switch-part-error-border-bottom-right-radius, revert-layer);
+  border-bottom-left-radius: var(--switch-part-error-border-bottom-left-radius, revert-layer);
+  font-size: var(--switch-part-error-font-size, var(--ds-field-helper-font-size));
+  font-weight: var(--switch-part-error-font-weight, revert-layer);
+  line-height: var(--switch-part-error-line-height, var(--ds-field-helper-line-height));
+  letter-spacing: var(--switch-part-error-letter-spacing, revert-layer);
+  text-align: var(--switch-part-error-text-align, revert-layer);
+  background-color: var(--switch-part-error-background, revert-layer);
+  color: var(--switch-part-error-color, var(--ds-danger));
+  border-color: var(--switch-part-error-border-color, revert-layer);
+  border-width: var(--switch-part-error-border-width, revert-layer);
+  box-shadow: var(--switch-part-error-shadow, revert-layer);
+  opacity: var(--switch-part-error-opacity, revert-layer);
+  border-style: var(--switch-part-error-border-style, revert-layer);
+}
+
+.field[data-component="switch"] > .error[data-error-icon] {
+  gap: var(--switch-part-error-gap, var(--ds-spacing-sm));
+}
+
+.field:where([data-component="checkbox"]) {
+  opacity: var(--checkbox-part-root-opacity, revert-layer);
+}
+
+.field[data-component="checkbox"] > .choice > [data-appearance-part="label"]:not([data-hide-label]) {
+  box-sizing: var(--checkbox-part-label-box-sizing, revert-layer);
+  width: var(--checkbox-part-label-width, revert-layer);
+  height: var(--checkbox-part-label-height, revert-layer);
+  min-width: var(--checkbox-part-label-min-width, revert-layer);
+  min-height: var(--checkbox-part-label-min-height, revert-layer);
+  max-width: var(--checkbox-part-label-max-width, revert-layer);
+  padding-top: var(--checkbox-part-label-padding-top, revert-layer);
+  padding-right: var(--checkbox-part-label-padding-right, revert-layer);
+  padding-bottom: var(--checkbox-part-label-padding-bottom, revert-layer);
+  padding-left: var(--checkbox-part-label-padding-left, revert-layer);
+  margin-top: var(--checkbox-part-label-margin-top, revert-layer);
+  margin-right: var(--checkbox-part-label-margin-right, revert-layer);
+  margin-bottom: var(--checkbox-part-label-margin-bottom, revert-layer);
+  margin-left: var(--checkbox-part-label-margin-left, revert-layer);
+  border-top-left-radius: var(--checkbox-part-label-border-top-left-radius, revert-layer);
+  border-top-right-radius: var(--checkbox-part-label-border-top-right-radius, revert-layer);
+  border-bottom-right-radius: var(--checkbox-part-label-border-bottom-right-radius, revert-layer);
+  border-bottom-left-radius: var(--checkbox-part-label-border-bottom-left-radius, revert-layer);
+  font-size: var(--checkbox-part-label-font-size, revert-layer);
+  font-weight: var(--checkbox-part-label-font-weight, revert-layer);
+  line-height: var(--checkbox-part-label-line-height, revert-layer);
+  letter-spacing: var(--checkbox-part-label-letter-spacing, revert-layer);
+  text-align: var(--checkbox-part-label-text-align, revert-layer);
+  background-color: var(--checkbox-part-label-background, revert-layer);
+  color: var(--checkbox-part-label-color, revert-layer);
+  border-color: var(--checkbox-part-label-border-color, revert-layer);
+  border-width: var(--checkbox-part-label-border-width, revert-layer);
+  box-shadow: var(--checkbox-part-label-shadow, revert-layer);
+  opacity: var(--checkbox-part-label-opacity, revert-layer);
+  border-style: var(--checkbox-part-label-border-style, revert-layer);
+}
+
+.field[data-component="checkbox"] > .description {
+  box-sizing: var(--checkbox-part-description-box-sizing, revert-layer);
+  width: var(--checkbox-part-description-width, revert-layer);
+  height: var(--checkbox-part-description-height, revert-layer);
+  min-width: var(--checkbox-part-description-min-width, revert-layer);
+  min-height: var(--checkbox-part-description-min-height, revert-layer);
+  max-width: var(--checkbox-part-description-max-width, revert-layer);
+  padding-top: var(--checkbox-part-description-padding-top, revert-layer);
+  padding-right: var(--checkbox-part-description-padding-right, revert-layer);
+  padding-bottom: var(--checkbox-part-description-padding-bottom, revert-layer);
+  padding-left: var(--checkbox-part-description-padding-left, revert-layer);
+  margin-top: var(--checkbox-part-description-margin-top, 0);
+  margin-right: var(--checkbox-part-description-margin-right, 0);
+  margin-bottom: var(--checkbox-part-description-margin-bottom, 0);
+  margin-left: var(--checkbox-part-description-margin-left, 0);
+  border-top-left-radius: var(--checkbox-part-description-border-top-left-radius, revert-layer);
+  border-top-right-radius: var(--checkbox-part-description-border-top-right-radius, revert-layer);
+  border-bottom-right-radius: var(--checkbox-part-description-border-bottom-right-radius, revert-layer);
+  border-bottom-left-radius: var(--checkbox-part-description-border-bottom-left-radius, revert-layer);
+  font-size: var(--checkbox-part-description-font-size, var(--ds-field-helper-font-size));
+  font-weight: var(--checkbox-part-description-font-weight, revert-layer);
+  line-height: var(--checkbox-part-description-line-height, var(--ds-field-helper-line-height));
+  letter-spacing: var(--checkbox-part-description-letter-spacing, revert-layer);
+  text-align: var(--checkbox-part-description-text-align, revert-layer);
+  background-color: var(--checkbox-part-description-background, revert-layer);
+  color: var(--checkbox-part-description-color, var(--ds-muted-foreground));
+  border-color: var(--checkbox-part-description-border-color, revert-layer);
+  border-width: var(--checkbox-part-description-border-width, revert-layer);
+  box-shadow: var(--checkbox-part-description-shadow, revert-layer);
+  opacity: var(--checkbox-part-description-opacity, revert-layer);
+  border-style: var(--checkbox-part-description-border-style, revert-layer);
+}
+
+.field[data-component="checkbox"] > .error {
+  box-sizing: var(--checkbox-part-error-box-sizing, revert-layer);
+  width: var(--checkbox-part-error-width, revert-layer);
+  height: var(--checkbox-part-error-height, revert-layer);
+  min-width: var(--checkbox-part-error-min-width, revert-layer);
+  min-height: var(--checkbox-part-error-min-height, revert-layer);
+  max-width: var(--checkbox-part-error-max-width, revert-layer);
+  padding-top: var(--checkbox-part-error-padding-top, revert-layer);
+  padding-right: var(--checkbox-part-error-padding-right, revert-layer);
+  padding-bottom: var(--checkbox-part-error-padding-bottom, revert-layer);
+  padding-left: var(--checkbox-part-error-padding-left, revert-layer);
+  margin-top: var(--checkbox-part-error-margin-top, 0);
+  margin-right: var(--checkbox-part-error-margin-right, 0);
+  margin-bottom: var(--checkbox-part-error-margin-bottom, 0);
+  margin-left: var(--checkbox-part-error-margin-left, 0);
+  border-top-left-radius: var(--checkbox-part-error-border-top-left-radius, revert-layer);
+  border-top-right-radius: var(--checkbox-part-error-border-top-right-radius, revert-layer);
+  border-bottom-right-radius: var(--checkbox-part-error-border-bottom-right-radius, revert-layer);
+  border-bottom-left-radius: var(--checkbox-part-error-border-bottom-left-radius, revert-layer);
+  font-size: var(--checkbox-part-error-font-size, var(--ds-field-helper-font-size));
+  font-weight: var(--checkbox-part-error-font-weight, revert-layer);
+  line-height: var(--checkbox-part-error-line-height, var(--ds-field-helper-line-height));
+  letter-spacing: var(--checkbox-part-error-letter-spacing, revert-layer);
+  text-align: var(--checkbox-part-error-text-align, revert-layer);
+  background-color: var(--checkbox-part-error-background, revert-layer);
+  color: var(--checkbox-part-error-color, var(--ds-danger));
+  border-color: var(--checkbox-part-error-border-color, revert-layer);
+  border-width: var(--checkbox-part-error-border-width, revert-layer);
+  box-shadow: var(--checkbox-part-error-shadow, revert-layer);
+  opacity: var(--checkbox-part-error-opacity, revert-layer);
+  border-style: var(--checkbox-part-error-border-style, revert-layer);
+}
+
+.field[data-component="checkbox"] > .error[data-error-icon] {
+  gap: var(--checkbox-part-error-gap, var(--ds-spacing-sm));
+}
+
+.badge {
+  box-sizing: var(--badge-part-root-box-sizing, revert-layer);
+  width: var(--badge-part-root-width, fit-content);
+  height: var(--badge-part-root-height, revert-layer);
+  min-width: var(--badge-part-root-min-width, revert-layer);
+  min-height: var(--badge-part-root-min-height, revert-layer);
+  max-width: var(--badge-part-root-max-width, revert-layer);
+  padding-top: var(--badge-part-root-padding-top, calc(var(--badge-padding-y) * var(--size-scale)));
+  padding-right: var(--badge-part-root-padding-right, calc(var(--badge-padding-x) * var(--size-scale)));
+  padding-bottom: var(--badge-part-root-padding-bottom, calc(var(--badge-padding-y) * var(--size-scale)));
+  padding-left: var(--badge-part-root-padding-left, calc(var(--badge-padding-x) * var(--size-scale)));
+  margin-top: var(--badge-part-root-margin-top, var(--badge-margin));
+  margin-right: var(--badge-part-root-margin-right, var(--badge-margin));
+  margin-bottom: var(--badge-part-root-margin-bottom, var(--badge-margin));
+  margin-left: var(--badge-part-root-margin-left, var(--badge-margin));
+  border-top-left-radius: var(--badge-part-root-border-top-left-radius, var(--part-radius));
+  border-top-right-radius: var(--badge-part-root-border-top-right-radius, var(--part-radius));
+  border-bottom-right-radius: var(--badge-part-root-border-bottom-right-radius, var(--part-radius));
+  border-bottom-left-radius: var(--badge-part-root-border-bottom-left-radius, var(--part-radius));
+  font-size: var(--badge-part-root-font-size, calc(var(--badge-font-size) * var(--size-scale)));
+  font-weight: var(--badge-part-root-font-weight, revert-layer);
+  line-height: var(--badge-part-root-line-height, var(--ds-badge-line-height));
+  letter-spacing: var(--badge-part-root-letter-spacing, revert-layer);
+  text-align: var(--badge-part-root-text-align, revert-layer);
+  gap: var(--badge-part-root-gap, calc(var(--badge-gap) * var(--size-scale)));
+  opacity: var(--badge-part-root-opacity, revert-layer);
+}
+
+.card {
+  box-sizing: var(--card-part-root-box-sizing, revert-layer);
+  width: var(--card-part-root-width, revert-layer);
+  height: var(--card-part-root-height, revert-layer);
+  min-width: var(--card-part-root-min-width, 0);
+  min-height: var(--card-part-root-min-height, revert-layer);
+  max-width: var(--card-part-root-max-width, revert-layer);
+  padding-top: var(--card-part-root-padding-top, calc(var(--card-padding-y) * var(--size-scale)));
+  padding-right: var(--card-part-root-padding-right, calc(var(--card-padding-x) * var(--size-scale)));
+  padding-bottom: var(--card-part-root-padding-bottom, calc(var(--card-padding-y) * var(--size-scale)));
+  padding-left: var(--card-part-root-padding-left, calc(var(--card-padding-x) * var(--size-scale)));
+  margin-top: var(--card-part-root-margin-top, var(--card-margin));
+  margin-right: var(--card-part-root-margin-right, var(--card-margin));
+  margin-bottom: var(--card-part-root-margin-bottom, var(--card-margin));
+  margin-left: var(--card-part-root-margin-left, var(--card-margin));
+  border-top-left-radius: var(--card-part-root-border-top-left-radius, var(--part-radius));
+  border-top-right-radius: var(--card-part-root-border-top-right-radius, var(--part-radius));
+  border-bottom-right-radius: var(--card-part-root-border-bottom-right-radius, var(--part-radius));
+  border-bottom-left-radius: var(--card-part-root-border-bottom-left-radius, var(--part-radius));
+  font-size: var(--card-part-root-font-size, var(--card-font-size));
+  font-weight: var(--card-part-root-font-weight, revert-layer);
+  line-height: var(--card-part-root-line-height, revert-layer);
+  letter-spacing: var(--card-part-root-letter-spacing, revert-layer);
+  text-align: var(--card-part-root-text-align, revert-layer);
+  gap: var(--card-part-root-gap, calc(var(--card-gap) * var(--size-scale)));
+  opacity: var(--card-part-root-opacity, revert-layer);
+}
+
+.cardHeader {
+  box-sizing: var(--card-part-header-box-sizing, revert-layer);
+  width: var(--card-part-header-width, revert-layer);
+  height: var(--card-part-header-height, revert-layer);
+  min-width: var(--card-part-header-min-width, revert-layer);
+  min-height: var(--card-part-header-min-height, revert-layer);
+  max-width: var(--card-part-header-max-width, revert-layer);
+  padding-top: var(--card-part-header-padding-top, revert-layer);
+  padding-right: var(--card-part-header-padding-right, revert-layer);
+  padding-bottom: var(--card-part-header-padding-bottom, revert-layer);
+  padding-left: var(--card-part-header-padding-left, revert-layer);
+  margin-top: var(--card-part-header-margin-top, revert-layer);
+  margin-right: var(--card-part-header-margin-right, revert-layer);
+  margin-bottom: var(--card-part-header-margin-bottom, revert-layer);
+  margin-left: var(--card-part-header-margin-left, revert-layer);
+  border-top-left-radius: var(--card-part-header-border-top-left-radius, revert-layer);
+  border-top-right-radius: var(--card-part-header-border-top-right-radius, revert-layer);
+  border-bottom-right-radius: var(--card-part-header-border-bottom-right-radius, revert-layer);
+  border-bottom-left-radius: var(--card-part-header-border-bottom-left-radius, revert-layer);
+  font-size: var(--card-part-header-font-size, revert-layer);
+  font-weight: var(--card-part-header-font-weight, revert-layer);
+  line-height: var(--card-part-header-line-height, revert-layer);
+  letter-spacing: var(--card-part-header-letter-spacing, revert-layer);
+  text-align: var(--card-part-header-text-align, revert-layer);
+  gap: var(--card-part-header-gap, calc(var(--card-gap) / 2));
+  background-color: var(--card-part-header-background, revert-layer);
+  color: var(--card-part-header-color, revert-layer);
+  border-color: var(--card-part-header-border-color, revert-layer);
+  border-width: var(--card-part-header-border-width, revert-layer);
+  box-shadow: var(--card-part-header-shadow, revert-layer);
+  opacity: var(--card-part-header-opacity, revert-layer);
+  border-style: var(--card-part-header-border-style, revert-layer);
+}
+
+.cardTitle {
+  box-sizing: var(--card-part-title-box-sizing, revert-layer);
+  width: var(--card-part-title-width, revert-layer);
+  height: var(--card-part-title-height, revert-layer);
+  min-width: var(--card-part-title-min-width, revert-layer);
+  min-height: var(--card-part-title-min-height, revert-layer);
+  max-width: var(--card-part-title-max-width, revert-layer);
+  padding-top: var(--card-part-title-padding-top, revert-layer);
+  padding-right: var(--card-part-title-padding-right, revert-layer);
+  padding-bottom: var(--card-part-title-padding-bottom, revert-layer);
+  padding-left: var(--card-part-title-padding-left, revert-layer);
+  margin-top: var(--card-part-title-margin-top, revert-layer);
+  margin-right: var(--card-part-title-margin-right, revert-layer);
+  margin-bottom: var(--card-part-title-margin-bottom, revert-layer);
+  margin-left: var(--card-part-title-margin-left, revert-layer);
+  border-top-left-radius: var(--card-part-title-border-top-left-radius, revert-layer);
+  border-top-right-radius: var(--card-part-title-border-top-right-radius, revert-layer);
+  border-bottom-right-radius: var(--card-part-title-border-bottom-right-radius, revert-layer);
+  border-bottom-left-radius: var(--card-part-title-border-bottom-left-radius, revert-layer);
+  font-size: var(--card-part-title-font-size, revert-layer);
+  font-weight: var(--card-part-title-font-weight, var(--ds-card-title-font-weight));
+  line-height: var(--card-part-title-line-height, revert-layer);
+  letter-spacing: var(--card-part-title-letter-spacing, var(--ds-card-title-letter-spacing));
+  text-align: var(--card-part-title-text-align, revert-layer);
+  background-color: var(--card-part-title-background, revert-layer);
+  color: var(--card-part-title-color, revert-layer);
+  border-color: var(--card-part-title-border-color, revert-layer);
+  border-width: var(--card-part-title-border-width, revert-layer);
+  box-shadow: var(--card-part-title-shadow, revert-layer);
+  opacity: var(--card-part-title-opacity, revert-layer);
+  border-style: var(--card-part-title-border-style, revert-layer);
+}
+
+.cardDescription {
+  box-sizing: var(--card-part-description-box-sizing, revert-layer);
+  width: var(--card-part-description-width, revert-layer);
+  height: var(--card-part-description-height, revert-layer);
+  min-width: var(--card-part-description-min-width, revert-layer);
+  min-height: var(--card-part-description-min-height, revert-layer);
+  max-width: var(--card-part-description-max-width, revert-layer);
+  padding-top: var(--card-part-description-padding-top, revert-layer);
+  padding-right: var(--card-part-description-padding-right, revert-layer);
+  padding-bottom: var(--card-part-description-padding-bottom, revert-layer);
+  padding-left: var(--card-part-description-padding-left, revert-layer);
+  margin-top: var(--card-part-description-margin-top, 0);
+  margin-right: var(--card-part-description-margin-right, 0);
+  margin-bottom: var(--card-part-description-margin-bottom, 0);
+  margin-left: var(--card-part-description-margin-left, 0);
+  border-top-left-radius: var(--card-part-description-border-top-left-radius, revert-layer);
+  border-top-right-radius: var(--card-part-description-border-top-right-radius, revert-layer);
+  border-bottom-right-radius: var(--card-part-description-border-bottom-right-radius, revert-layer);
+  border-bottom-left-radius: var(--card-part-description-border-bottom-left-radius, revert-layer);
+  font-size: var(--card-part-description-font-size, revert-layer);
+  font-weight: var(--card-part-description-font-weight, revert-layer);
+  line-height: var(--card-part-description-line-height, var(--ds-card-description-line-height));
+  letter-spacing: var(--card-part-description-letter-spacing, revert-layer);
+  text-align: var(--card-part-description-text-align, revert-layer);
+  background-color: var(--card-part-description-background, revert-layer);
+  color: var(--card-part-description-color, var(--card-description));
+  border-color: var(--card-part-description-border-color, revert-layer);
+  border-width: var(--card-part-description-border-width, revert-layer);
+  box-shadow: var(--card-part-description-shadow, revert-layer);
+  opacity: var(--card-part-description-opacity, revert-layer);
+  border-style: var(--card-part-description-border-style, revert-layer);
+}
+
+.cardContent {
+  box-sizing: var(--card-part-content-box-sizing, revert-layer);
+  width: var(--card-part-content-width, revert-layer);
+  height: var(--card-part-content-height, revert-layer);
+  min-width: var(--card-part-content-min-width, revert-layer);
+  min-height: var(--card-part-content-min-height, revert-layer);
+  max-width: var(--card-part-content-max-width, revert-layer);
+  padding-top: var(--card-part-content-padding-top, revert-layer);
+  padding-right: var(--card-part-content-padding-right, revert-layer);
+  padding-bottom: var(--card-part-content-padding-bottom, revert-layer);
+  padding-left: var(--card-part-content-padding-left, revert-layer);
+  margin-top: var(--card-part-content-margin-top, revert-layer);
+  margin-right: var(--card-part-content-margin-right, revert-layer);
+  margin-bottom: var(--card-part-content-margin-bottom, revert-layer);
+  margin-left: var(--card-part-content-margin-left, revert-layer);
+  border-top-left-radius: var(--card-part-content-border-top-left-radius, revert-layer);
+  border-top-right-radius: var(--card-part-content-border-top-right-radius, revert-layer);
+  border-bottom-right-radius: var(--card-part-content-border-bottom-right-radius, revert-layer);
+  border-bottom-left-radius: var(--card-part-content-border-bottom-left-radius, revert-layer);
+  font-size: var(--card-part-content-font-size, revert-layer);
+  font-weight: var(--card-part-content-font-weight, revert-layer);
+  line-height: var(--card-part-content-line-height, revert-layer);
+  letter-spacing: var(--card-part-content-letter-spacing, revert-layer);
+  text-align: var(--card-part-content-text-align, revert-layer);
+  gap: var(--card-part-content-gap, var(--ds-spacing-md));
+  background-color: var(--card-part-content-background, revert-layer);
+  color: var(--card-part-content-color, revert-layer);
+  border-color: var(--card-part-content-border-color, revert-layer);
+  border-width: var(--card-part-content-border-width, revert-layer);
+  box-shadow: var(--card-part-content-shadow, revert-layer);
+  opacity: var(--card-part-content-opacity, revert-layer);
+  border-style: var(--card-part-content-border-style, revert-layer);
+}
+
+.cardFooter {
+  box-sizing: var(--card-part-footer-box-sizing, revert-layer);
+  width: var(--card-part-footer-width, revert-layer);
+  height: var(--card-part-footer-height, revert-layer);
+  min-width: var(--card-part-footer-min-width, revert-layer);
+  min-height: var(--card-part-footer-min-height, revert-layer);
+  max-width: var(--card-part-footer-max-width, revert-layer);
+  padding-top: var(--card-part-footer-padding-top, revert-layer);
+  padding-right: var(--card-part-footer-padding-right, revert-layer);
+  padding-bottom: var(--card-part-footer-padding-bottom, revert-layer);
+  padding-left: var(--card-part-footer-padding-left, revert-layer);
+  margin-top: var(--card-part-footer-margin-top, revert-layer);
+  margin-right: var(--card-part-footer-margin-right, revert-layer);
+  margin-bottom: var(--card-part-footer-margin-bottom, revert-layer);
+  margin-left: var(--card-part-footer-margin-left, revert-layer);
+  border-top-left-radius: var(--card-part-footer-border-top-left-radius, revert-layer);
+  border-top-right-radius: var(--card-part-footer-border-top-right-radius, revert-layer);
+  border-bottom-right-radius: var(--card-part-footer-border-bottom-right-radius, revert-layer);
+  border-bottom-left-radius: var(--card-part-footer-border-bottom-left-radius, revert-layer);
+  font-size: var(--card-part-footer-font-size, revert-layer);
+  font-weight: var(--card-part-footer-font-weight, revert-layer);
+  line-height: var(--card-part-footer-line-height, revert-layer);
+  letter-spacing: var(--card-part-footer-letter-spacing, revert-layer);
+  text-align: var(--card-part-footer-text-align, revert-layer);
+  gap: var(--card-part-footer-gap, var(--card-gap));
+  background-color: var(--card-part-footer-background, revert-layer);
+  color: var(--card-part-footer-color, revert-layer);
+  border-color: var(--card-part-footer-border-color, revert-layer);
+  border-width: var(--card-part-footer-border-width, revert-layer);
+  box-shadow: var(--card-part-footer-shadow, revert-layer);
+  opacity: var(--card-part-footer-opacity, revert-layer);
+  border-style: var(--card-part-footer-border-style, revert-layer);
+}
+
+.cardIcon {
+  box-sizing: var(--card-part-icon-box-sizing, revert-layer);
+  width: var(--card-part-icon-width, calc(var(--ds-icon-size) * 2));
+  height: var(--card-part-icon-height, calc(var(--ds-icon-size) * 2));
+  min-width: var(--card-part-icon-min-width, revert-layer);
+  min-height: var(--card-part-icon-min-height, revert-layer);
+  max-width: var(--card-part-icon-max-width, revert-layer);
+  padding-top: var(--card-part-icon-padding-top, revert-layer);
+  padding-right: var(--card-part-icon-padding-right, revert-layer);
+  padding-bottom: var(--card-part-icon-padding-bottom, revert-layer);
+  padding-left: var(--card-part-icon-padding-left, revert-layer);
+  margin-top: var(--card-part-icon-margin-top, revert-layer);
+  margin-right: var(--card-part-icon-margin-right, revert-layer);
+  margin-bottom: var(--card-part-icon-margin-bottom, revert-layer);
+  margin-left: var(--card-part-icon-margin-left, revert-layer);
+  border-top-left-radius: var(--card-part-icon-border-top-left-radius, inherit);
+  border-top-right-radius: var(--card-part-icon-border-top-right-radius, inherit);
+  border-bottom-right-radius: var(--card-part-icon-border-bottom-right-radius, inherit);
+  border-bottom-left-radius: var(--card-part-icon-border-bottom-left-radius, inherit);
+  font-size: var(--card-part-icon-font-size, revert-layer);
+  font-weight: var(--card-part-icon-font-weight, revert-layer);
+  line-height: var(--card-part-icon-line-height, revert-layer);
+  letter-spacing: var(--card-part-icon-letter-spacing, revert-layer);
+  text-align: var(--card-part-icon-text-align, revert-layer);
+  background-color: var(--card-part-icon-background, revert-layer);
+  color: var(--card-part-icon-color, revert-layer);
+  border-color: var(--card-part-icon-border-color, currentColor);
+  border-width: var(--card-part-icon-border-width, var(--ds-card-icon-border-width));
+  box-shadow: var(--card-part-icon-shadow, revert-layer);
+  opacity: var(--card-part-icon-opacity, revert-layer);
+  border-style: var(--card-part-icon-border-style, solid);
+}
+
+.text {
+  box-sizing: var(--text-part-root-box-sizing, revert-layer);
+  width: var(--text-part-root-width, revert-layer);
+  height: var(--text-part-root-height, revert-layer);
+  min-width: var(--text-part-root-min-width, revert-layer);
+  min-height: var(--text-part-root-min-height, revert-layer);
+  max-width: var(--text-part-root-max-width, revert-layer);
+  padding-top: var(--text-part-root-padding-top, revert-layer);
+  padding-right: var(--text-part-root-padding-right, revert-layer);
+  padding-bottom: var(--text-part-root-padding-bottom, revert-layer);
+  padding-left: var(--text-part-root-padding-left, revert-layer);
+  margin-top: var(--text-part-root-margin-top, 0);
+  margin-right: var(--text-part-root-margin-right, 0);
+  margin-bottom: var(--text-part-root-margin-bottom, 0);
+  margin-left: var(--text-part-root-margin-left, 0);
+  border-top-left-radius: var(--text-part-root-border-top-left-radius, revert-layer);
+  border-top-right-radius: var(--text-part-root-border-top-right-radius, revert-layer);
+  border-bottom-right-radius: var(--text-part-root-border-bottom-right-radius, revert-layer);
+  border-bottom-left-radius: var(--text-part-root-border-bottom-left-radius, revert-layer);
+  font-size: var(--text-part-root-font-size, calc(var(--text-font-size) * var(--text-size-scale)));
+  font-weight: var(--text-part-root-font-weight, var(--text-font-weight));
+  line-height: var(--text-part-root-line-height, var(--text-line-height));
+  letter-spacing: var(--text-part-root-letter-spacing, var(--text-letter-spacing));
+  text-align: var(--text-part-root-text-align, revert-layer);
+  background-color: var(--text-part-root-background, revert-layer);
+  color: var(--text-part-root-color, var(--text-foreground, var(--ds-foreground)));
+  border-color: var(--text-part-root-border-color, revert-layer);
+  border-width: var(--text-part-root-border-width, revert-layer);
+  box-shadow: var(--text-part-root-shadow, revert-layer);
+  opacity: var(--text-part-root-opacity, revert-layer);
+  border-style: var(--text-part-root-border-style, revert-layer);
+}
+
+/* These helpers activate only for explicit shared geometry/alignment. */
+.buttonContent {
+  display: var(--button-part-root-content-display, contents);
+  flex: 1;
+  min-width: 0;
+}
+.badgeContent {
+  display: var(--badge-part-root-content-display, contents);
+  flex: 1;
+  min-width: 0;
+}
+span.text:not([data-appearance-box]) {
+  display: var(--text-part-root-box-display, inline);
+}
+.cardTitle:not([data-appearance-box]) {
+  display: var(--card-part-title-box-display, inline);
+}
+.input {
+  padding-top: var(--input-part-control-inner-padding-top, calc(var(--input-padding-y) * var(--size-scale)));
+  padding-bottom: var(--input-part-control-inner-padding-bottom, calc(var(--input-padding-y) * var(--size-scale)));
+  line-height: var(--input-part-control-line-height, var(--ds-input-line-height));
+  letter-spacing: var(--input-part-control-letter-spacing, inherit);
+  text-align: var(--input-part-control-text-align, revert-layer);
 }
 
 @media (prefers-reduced-motion: reduce) {
