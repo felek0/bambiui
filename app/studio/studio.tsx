@@ -57,7 +57,8 @@ import { isComposerRoute } from "./composer/workspace-route";
 import { ProjectManager, PageCanvas, ProjectInspector } from "./composer/project-ui";
 import shell from "./composer/workspace-shell.module.css";
 import { SystemComponentEditor, type ComponentEditorTab } from "./system-component-editor";
-import { componentStyleParts, type ComponentStylePart } from "./component-styles";
+import type { ComponentStylePart } from "./component-styles";
+import type { ComponentRecipeSelection } from "./component-recipes";
 
 const compactQuery = "(max-width: 800px)";
 function subscribeCompact(listener: () => void) {
@@ -366,21 +367,26 @@ export default function Studio() {
   const [selectedTypography, setSelectedTypography] = useState<TypographyVariant>("heading");
   const [selectedVariantColor, setSelectedVariantColor] = useState<string>(componentVariantKeys.button[0]);
   const [componentEditorTab, setComponentEditorTab] = useState<ComponentEditorTab>("styles");
-  const [selectedPart, setSelectedPart] = useState<ComponentStylePart>("root");
-  function editComponentPart(component: ComponentId, part: ComponentStylePart) {
-    setComponentEditorTab("styles"); setSelectedPart(part); showInspector();
-    if (selection !== component) router.push(`/${component}`, { scroll: false });
+  const [recipeSelection, setRecipeSelection] = useState<ComponentRecipeSelection | null>(null);
+  const [sharedStyleTarget, setSharedStyleTarget] = useState<{ component: ComponentId; part: ComponentStylePart } | null>(null);
+  function editComponentRecipe(next: ComponentRecipeSelection) {
+    setComponentEditorTab("styles"); setRecipeSelection(next); showInspector();
+    if (selection !== next.component) router.push(`/${next.component}`, { scroll: false });
   }
   const [editTarget, setEditTarget] = useState<{ selection: Selection; inputId: string } | null>(null);
   const [highlightedTarget, setHighlightedTarget] = useState<{ selection: Selection; inputId: string } | null>(null);
   function navigateToColorToken(target: ColorCheckTarget) {
     const variant = target.variant;
     const variantSlug = variant?.replaceAll(".", "-").replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
-    const inputId = target.part ? `system-style-${target.selection}-${target.part}-${target.key}` : variant
-      ? `variant-color-${target.selection}-${variantSlug}-${target.key}`
-      : `token-${target.key}`;
+    const inputId = target.recipe ? `system-recipe-${target.selection}-${target.recipe}-${target.part}-${target.target}-${target.key}`
+      : target.part ? `system-shared-${target.selection}-${target.part}-${target.key}` : variant
+        ? `variant-color-${target.selection}-${variantSlug}-${target.key}` : `token-${target.key}`;
     setComponentEditorTab("styles");
-    if (target.part) setSelectedPart(target.part);
+    if (target.recipe !== undefined) setRecipeSelection({ component: target.selection, recipe: target.recipe, part: target.part, target: target.target });
+    else {
+      setRecipeSelection(null);
+      if (target.part && target.selection !== "colors") setSharedStyleTarget({ component: target.selection, part: target.part });
+    }
     const next = { selection: target.selection, inputId };
     if (variant) setSelectedVariantColor(variant);
     setHighlightedTarget(next);
@@ -1030,8 +1036,7 @@ export default function Studio() {
                   </SegmentedControl>
                 </div>
                 <Preview key={collection.activeId} selected={selection} system={system} mode={activeTheme} active={!pagesActive && view === "design"} onSelectColorRole={setScaleRole} onEditToken={(nextSelection, inputId) => { showInspector(); setEditTarget({ selection: nextSelection, inputId }); }}
-                  selectedPart={componentEditorTab === "styles" ? componentStyleParts(component).some(part => part.key === selectedPart) ? selectedPart : "root" : undefined}
-                  onSelectPart={editComponentPart} onEditParameters={component => { setComponentEditorTab("parameters"); showInspector(); router.push(`/${component}`, { scroll: false }); }} />
+                  recipeSelection={recipeSelection} onSelectRecipe={editComponentRecipe} />
               </div>
             </section>
             <section hidden={view !== "develop"} aria-label={t.develop} className="workspace-panel workspace-panel--develop">
@@ -1045,7 +1050,7 @@ export default function Studio() {
       <div className={shell.inspector} id="workspace-inspector" hidden={!rightVisible} onKeyDown={event => { if (compact && event.key === "Escape" && !event.defaultPrevented) { setMobilePanel(null); document.querySelector<HTMLButtonElement>('[aria-controls="workspace-inspector"]')?.focus(); } }}>
       {pagesActive && <ProjectInspector key={composer.document?.id ?? "empty"} composer={composer} systems={composerSystems} tab={inspectorView.context === inspectorContext ? inspectorView.tab : "design"} onTabChange={tab => setInspectorView({ context: inspectorContext, tab })} onEditSystem={(id, kind) => {
         const component = ["button", "input", "switch", "checkbox", "badge", "card", "text"].includes(kind ?? "") ? kind : "colors";
-        setComponentEditorTab("styles"); setSelectedPart("root");
+        setComponentEditorTab("styles"); setRecipeSelection(null);
         if (collectionRef.current.activeId === id || activate({ ...collectionRef.current, activeId: id })) router.push(`/${component}`);
       }} />}
       <aside
@@ -1073,8 +1078,11 @@ export default function Studio() {
             <div className="number-fields">{numberFields.filter((field) => group.keys.includes(field.key)).map(renderTokenField)}</div>
           </section>)}
           <SystemComponentEditor key={`${collection.activeId}-${workspaceRevision}-${component}-${activeTheme}`} component={isGlobal ? null : component} theme={theme} mode={activeTheme} defaults={system.componentDefaults}
-            tab={componentEditorTab} part={selectedPart} onTabChange={setComponentEditorTab} onPartChange={setSelectedPart}
+            tab={componentEditorTab} selection={recipeSelection} onTabChange={setComponentEditorTab} onSelectionChange={editComponentRecipe}
+            sharedPart={sharedStyleTarget?.component === component ? sharedStyleTarget.part : undefined}
+            onSharedPartChange={part => setSharedStyleTarget({ component, part })}
             onDefaultsChange={componentDefaults => update({ ...system, componentDefaults })}
+            onRecipesChange={componentRecipes => updateTheme({ ...theme, componentRecipes })}
             onStylesChange={componentStyles => updateTheme({ ...theme, componentStyles })}>
           {!isGlobal && variantComponent && <section className="token-section component-variant-editor" id="variant-colors">
             <div className="section-heading"><h3>Variant styles</h3><span>{t.themeOnly(activeTheme)} colors</span></div>

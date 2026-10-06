@@ -5,6 +5,7 @@ import { cx } from "../cx";
 import { FieldRoot, labelClassName, type FieldProps } from "./field";
 import styles from "./components.module.css";
 import { appearanceToStyle } from "./appearance";
+import { componentRecipeMarkers } from "./recipe-runtime";
 
 export type InputProps = Omit<BaseInput.Props, "className" | "size" | "type"> &
   FieldProps & {
@@ -60,10 +61,10 @@ export function Input({
       parts={parts}
       className={className}
     >
-      <Field.Label data-appearance-part="label" data-hide-label={hideLabel || undefined} className={cx(styles.label, labelClassName(hideLabel))} style={hideLabel ? undefined : appearanceToStyle(parts?.label)}>
+      <Field.Label {...componentRecipeMarkers("input", "label")} data-appearance-part="label" data-hide-label={hideLabel || undefined} className={cx(styles.label, labelClassName(hideLabel))} style={hideLabel ? undefined : appearanceToStyle(parts?.label)}>
         {hideLabel && parts?.label ? <span style={appearanceToStyle(parts.label)}>{label}</span> : label}
       </Field.Label>
-      <div data-appearance-part="control" className={styles.inputControl} style={controlStyle}>
+      <div {...componentRecipeMarkers("input", "control")} data-appearance-part="control" className={styles.inputControl} style={controlStyle}>
         {startIcon && (
           <span className={styles.adornment} aria-hidden="true">
             {startIcon}
@@ -71,6 +72,7 @@ export function Input({
         )}
         <BaseInput
           {...props}
+          {...componentRecipeMarkers("input", "control", "text")}
           type={type}
           disabled={disabled}
           className={styles.input}

@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
-import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { extname, resolve, sep } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -13,11 +13,12 @@ import { fileURLToPath } from 'node:url';
 const usage = `Usage: node scripts/studio-workspace-smoke.mjs [--shell-only] [--skip-input] [--skip-assets]
 Requires Node 22.18+ (native fetch/WebSocket/TypeScript), Chrome, and a fresh out/ export. Never builds the app.
 CHROME_PATH overrides the macOS Chrome executable. All browser data is disposable.
-Default: shell, frame styles, full Card, System styles/defaults/history, Project parameters, Input parts/ownership, snapshots, themes, reload/export/schema.
+WORKSPACE_SMOKE_SCREENSHOT optionally saves the selected Card title as PNG (parent directory must exist).
+Default: shell, frame styles, populated matrices, exact Card/Input recipes, insertion/instance parameters, history, snapshots, themes, reload/export/schema.
 --shell-only   Only project/page/frame creation, Layers, sizing, panels, menu, and reload.
 --skip-input   Explicitly omit Input part/owner checks while that UI is under development.
 --skip-assets  Explicitly omit saved-component checks. Missing controls otherwise FAIL, never silently skip.
-165-second full / 45-second shell watchdog; individual CDP commands and waits are also bounded.`;
+210-second full / 45-second shell watchdog; individual CDP commands and waits are also bounded.`;
 const args = new Set(process.argv.slice(2));
 if (args.has('--help')) { console.log(usage); process.exit(0); }
 for (const arg of args) if (!['--shell-only', '--skip-input', '--skip-assets'].includes(arg)) {
@@ -28,10 +29,11 @@ const skipInput = shellOnly || args.has('--skip-input');
 const skipAssets = shellOnly || args.has('--skip-assets');
 const projectRoot = fileURLToPath(new URL('../', import.meta.url));
 const root = resolve(projectRoot, 'out');
+const screenshotPath = process.env.WORKSPACE_SMOKE_SCREENSHOT ? resolve(projectRoot, process.env.WORKSPACE_SMOKE_SCREENSHOT) : null;
 const indexKey = 'bambiui.composer.projects.v1';
 const documentPrefix = 'bambiui.composer.document.v1.';
 const systemKey = 'bambiui.systems.v1';
-const budget = shellOnly ? 45000 : 165000;
+const budget = shellOnly ? 45000 : 210000;
 const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.txt': 'text/plain', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff': 'font/woff', '.woff2': 'font/woff2', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json' };
 const pending = new Map(), errors = [];
 let server, chrome, profile, socket, sequence = 0, checks = 0, aborted = false, stage = 'preflight';
@@ -68,8 +70,9 @@ async function evaluate(expression) {
   return result.value;
 }
 const q = selector => `document.querySelector(${JSON.stringify(selector)})`;
-const visible = expression => `(()=>{const e=(${expression});return !!e && e.getClientRects().length>0 && !e.closest('[hidden]') && getComputedStyle(e).visibility!=='hidden'})()`;
-const named = (selector, name) => `[...document.querySelectorAll(${JSON.stringify(selector)})].find(e=>e.textContent.trim()===${JSON.stringify(name)} && e.getClientRects().length>0 && !e.closest('[hidden]'))`;
+// Chromium can retain layout boxes inside closed details; checkVisibility also checks painting.
+const visible = expression => `(()=>{const e=(${expression});return !!e && e.checkVisibility({visibilityProperty:true}) && !e.closest('[hidden]')})()`;
+const named = (selector, name) => `[...document.querySelectorAll(${JSON.stringify(selector)})].find(e=>e.textContent.trim()===${JSON.stringify(name)} && e.checkVisibility({visibilityProperty:true}) && !e.closest('[hidden]'))`;
 const labelled = name => `(()=>{const label=[...document.querySelectorAll('#workspace-sidebar label')].find(e=>e.textContent.trim()===${JSON.stringify(name)});return label && document.getElementById(label.htmlFor)})()`;
 
 async function wait(expression, label = expression) {
@@ -79,11 +82,11 @@ async function wait(expression, label = expression) {
   throw new Error(`Timed out during ${stage}: ${label}`);
 }
 const settle = () => evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
-async function click(expression, scroll = true) {
+async function click(expression, scroll = true, exact = false) {
   await wait(visible(expression), `visible target ${expression}`);
   if (scroll) await evaluate(`(${expression}).scrollIntoView({block:'center',inline:'center',behavior:'instant'})`);
   await settle();
-  const point = await evaluate(`(()=>{const e=(${expression}),r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;if(e.disabled)throw Error('Disabled: '+e.outerHTML);if(!e.contains(document.elementFromPoint(x,y)))throw Error('Occluded: '+e.outerHTML);return {x,y}})()`);
+  const point = await evaluate(`(()=>{const e=(${expression});if(e.disabled)throw Error('Disabled: '+e.outerHTML);const fractions=${exact ? '[0.5,0.01,0.99,0.1,0.9,0.25,0.75,0.4,0.6]' : '[0.5]'};for(const r of e.getClientRects())for(const fy of fractions)for(const fx of fractions){const x=r.x+r.width*fx,y=r.y+r.height*fy,hit=document.elementFromPoint(x,y);if(${exact ? 'hit===e' : 'e.contains(hit)'})return {x,y}}throw Error('Occluded or no ${exact ? 'bare frame' : 'element'} hit: '+e.outerHTML)})()`);
   await send('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', clickCount: 1 });
   await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', clickCount: 1 });
   await settle();
@@ -126,8 +129,15 @@ const record = () => evaluate(stored());
 const project = async () => (await record()).document;
 const storedSystems = () => `JSON.parse(localStorage.getItem(${JSON.stringify(systemKey)}))`;
 const storedSystem = () => `${storedSystems()}.systems.find(entry=>entry.id===${stored()}.document.systemId).system`;
-const system = () => evaluate(storedSystem());
 const systemBytes = () => evaluate(`localStorage.getItem(${JSON.stringify(systemKey)})`);
+async function system() {
+  if (await systemBytes() !== null) return evaluate(storedSystem());
+  // Fresh sessions intentionally keep the built-in System in memory until the first edit.
+  const { defaultSystem, STORAGE_KEY } = await import('../app/studio/tokens.ts');
+  assert.equal((await project()).systemId, 'original');
+  assert.equal(await evaluate(`localStorage.getItem(${JSON.stringify(STORAGE_KEY)})`), null, 'Only an untouched default draft may lack the collection');
+  return structuredClone(defaultSystem);
+}
 const nodes = node => [node, ...(node.children ?? []).flatMap(nodes)];
 const frame = async () => (await project()).pages.flatMap(page => page.frames).find(entry => entry.id === frameId);
 const node = async id => nodes((await frame()).root).find(entry => entry.id === id);
@@ -164,40 +174,76 @@ async function systemTab(tab) {
   const target = named('[aria-label="Component editor"] [role="tab"]', tab);
   await click(target); await wait(`(${target}).getAttribute('aria-selected')==='true'`);
 }
-async function systemComponent(component, tab = 'Styles', part = 'root') {
+async function systemComponent(component, tab = 'Styles') {
   if (await evaluate(`${q('.studio-shell')}.dataset.workspace!=='system'`)) await click(named('[aria-label="Workspace"] a', 'System'));
   await wait(`${q('.studio-shell')}.dataset.workspace==='system'`);
   if (await evaluate(visible(q('[aria-label="Show left panel"]')))) await click(q('[aria-label="Show left panel"]'));
   if (await evaluate(`location.pathname!==${JSON.stringify('/' + component)}`)) await click(q(`#workspace-sidebar a[href="/${component}"]`));
   await wait(`location.pathname===${JSON.stringify('/' + component)} && ${q('[aria-label="Component editor"]')}`);
-  assert.deepEqual(await evaluate(`[...document.querySelectorAll('[aria-label="Component editor"] [role="tab"]')].map(e=>e.textContent.trim())`), ['Parameters', 'Styles']);
+  assert.deepEqual(await evaluate(`[...document.querySelectorAll('[aria-label="Component editor"] [role="tab"]')].map(e=>e.textContent.trim())`), ['Styles', 'Parameters']);
+  await wait(q(`[data-component-matrix="${component}"]`));
+  assert.deepEqual(await evaluate(`[...document.querySelectorAll('[data-component-matrix]')].map(e=>e.dataset.componentMatrix)`), [component], 'Only the selected component matrix is mounted');
+  assert.equal(await evaluate(`document.querySelectorAll('[data-system-starter]').length`), 0, 'No separate starting-component UI');
+  assert.equal(await evaluate(`!!(${named('h2,h3', 'Starting component')})`), false);
+  const interactions = `[data-specimen="${component}"] [data-interaction-examples]`;
+  assert.equal(await evaluate(`${q(interactions)}?.open ?? false`), false, 'Optional interaction examples stay collapsed');
   await systemTab(tab);
-  if (tab === 'Styles') await select('[aria-label="System component part"]', part);
 }
 async function systemTheme(mode) {
   const selector = `.canvas-theme [aria-label="${mode === 'light' ? 'Light' : 'Dark'}"]`;
   await click(q(selector));
   await wait(`${q(selector)}.getAttribute('aria-pressed')==='true' && document.documentElement.dataset.studioTheme===${JSON.stringify(mode)}`);
 }
-async function systemStyle(component, part, key, value, commit = 'enter') {
-  const selector = `#system-style-${component}-${part}-${key}`, before = await record();
+const recipeControls = '[data-system-recipe-controls]';
+const recipeInput = (component, recipe, part, target, key) => `[id="system-recipe-${component}-${recipe}-${part}-${target}-${key}"]`;
+const matrixExample = (component, recipe) => `[data-component-matrix="${component}"] [data-recipe-example="${recipe}"]`;
+const matrixPart = (component, recipe, part, target) => `${matrixExample(component, recipe)} [data-ds-component="${component}"][data-component-part="${part}"]${target ? `[data-component-target="${target}"]` : ''}`;
+const cardTextSelector = (root, part) => `${root} [data-ds-component="card"][data-component-part="${part}"] [data-component-target="text"]`;
+async function selectedRecipe(recipe, part, target) {
+  await wait(`${q(recipeControls)}?.dataset.recipe===${JSON.stringify(recipe)} && ${q(recipeControls)}?.dataset.part===${JSON.stringify(part)} && ${q(recipeControls)}?.dataset.target===${JSON.stringify(target)}`, `selected ${recipe}/${part}/${target}`);
+}
+async function matrixClick(component, recipe, part, target) {
+  const selector = component === 'card' && target === 'text' && ['content', 'footer'].includes(part)
+    ? cardTextSelector(matrixPart(component, recipe, 'root'), part) : matrixPart(component, recipe, part, target);
+  await wait(q(selector)); await settle();
+  // The canvas is transformed, not a scroll container. Pan with a real wheel before hit testing.
+  const pan = await evaluate(`(()=>{const r=${q(selector)}.getBoundingClientRect(),v=${q('[aria-label="Component canvas"]')}.getBoundingClientRect();return {x:v.x+v.width/2,y:v.y+v.height/2,deltaX:r.x+r.width/2-v.x-v.width/2,deltaY:r.y+r.height/2-v.y-v.height/2}})()`);
+  await send('Input.dispatchMouseEvent', { type: 'mouseWheel', ...pan }); await settle();
+  await click(q(selector), false, target === 'frame');
+  await selectedRecipe(recipe, part, target);
+  assert.equal(await evaluate(`${q(selector)}.getAttribute('data-system-selected-part')`), target);
+}
+async function recipeLayer(recipe, part, target, label) {
+  await click(q(`${recipeControls} [aria-label="Select ${label} ${target}"]`));
+  await selectedRecipe(recipe, part, target);
+}
+async function recipeStyle(component, recipe, part, target, key, value, commit = 'enter', linkedKeys = [key]) {
+  const selector = recipeInput(component, recipe, part, target, key), before = await record(), expected = await system();
   const mode = await evaluate('document.documentElement.dataset.studioTheme');
-  assert.equal(await evaluate(`${q('[aria-label="System component part"]')}.value`), part);
+  await selectedRecipe(recipe, part, target);
   await fill(q(selector), String(value), commit);
-  await wait(`${storedSystem()}.themes.${mode}.componentStyles?.${component}?.${part}?.${key}===${JSON.stringify(value)}`, `persisted System ${component}.${part}.${key}`);
+  await wait(`${storedSystem()}.themes.${mode}.componentRecipes?.[${JSON.stringify(component)}]?.[${JSON.stringify(recipe)}]?.[${JSON.stringify(part)}]?.[${JSON.stringify(key)}]===${JSON.stringify(value)}`, `persisted ${component}.${recipe}.${part}.${key}`);
   assert.notEqual(await evaluate(`${q(selector)}.getAttribute('aria-invalid')`), 'true');
-  assert.deepEqual(await record(), before, 'System styles must not rewrite Project records');
+  for (const theme of ['background', 'color', 'borderColor'].includes(key) ? [mode] : ['light', 'dark']) {
+    const recipes = expected.themes[theme].componentRecipes ??= {};
+    const values = ((recipes[component] ??= {})[recipe] ??= {})[part] ??= {};
+    for (const field of linkedKeys) values[field] = value;
+  }
+  assert.deepEqual(await system(), expected, 'Only the exact recipe fields may change: no globals, shared defaults, other combinations or content edits');
+  assert.deepEqual(await record(), before, 'Recipe styles must not rewrite Project records');
 }
 async function systemDefault(component, source, key, value, commit = 'enter') {
-  const selector = `#system-default-${component}-${key}`, before = await record();
+  const selector = `#system-default-${component}-${key}`, before = await record(), systems = await systemBytes();
   await wait(q(selector));
+  const unchanged = await evaluate(`${q(selector)}.value===${JSON.stringify(String(value))}`);
   if (await evaluate(`${q(selector)}.tagName==='SELECT'`)) await select(selector, String(value));
   else {
-    assert.equal(await evaluate(`${q(selector)}.tagName`), 'TEXTAREA', 'Starting content uses a textarea');
+    assert.equal(await evaluate(`${q(selector)}.tagName`), 'TEXTAREA', 'Insertion content uses a textarea');
     await fill(q(selector), String(value), commit);
     assert.notEqual(await evaluate(`${q(selector)}.getAttribute('aria-invalid')`), 'true');
   }
-  await wait(`${storedSystem()}.componentDefaults?.${component}?.${source}?.${key}===${JSON.stringify(value)}`, `persisted default ${component}.${key}`);
+  if (unchanged) assert.equal(await systemBytes(), systems, 'Reselecting an effective default does not author a redundant override');
+  else await wait(`${storedSystem()}.componentDefaults?.${component}?.${source}?.${key}===${JSON.stringify(value)}`, `persisted default ${component}.${key}`);
   assert.deepEqual(await record(), before, 'Starting parameters must not rewrite existing content');
 }
 async function systemHistory(direction, expected) {
@@ -230,11 +276,41 @@ function cardSlots(card) {
   for (const text of Object.values(slots)) assert.ok(text?.trim(), 'Every Card slot has meaningful content');
   return slots;
 }
-const starterCard = '[data-system-starter="card"] article[data-page-node]';
-const starterTitle = `${starterCard} > [data-page-node]:first-child > strong[data-page-node]`;
-const starterInputPart = part => `[data-system-starter="input"] [data-appearance-part="${part}"]`;
-async function starterSlots() {
-  return evaluate(`(()=>{const e=${q(starterCard)};if(!e || e.children.length!==3)throw Error('Missing full Card starter');const [header,content,footer]=e.children;if(header.children.length!==2 || content.children.length!==1 || footer.children.length!==1)throw Error('Missing Card starter slots');return {title:header.children[0].textContent,description:header.children[1].textContent,content:content.children[0].textContent,action:footer.children[0].textContent}})()`);
+const cardRecipe = 'outlined.md', inputRecipe = 'invalid.md';
+const matrixCard = matrixPart('card', cardRecipe, 'root', 'frame');
+const matrixTitle = matrixPart('card', cardRecipe, 'title', 'text');
+const matrixInputPart = (part, target) => matrixPart('input', inputRecipe, part, target);
+const cardThemeBaselines = {};
+async function matrixCards(copy) {
+  const cards = await evaluate(`(()=>{const parts={title:'title',description:'description',content:'content',action:'footer'};return [...document.querySelectorAll('[data-component-matrix="card"] [data-recipe-example]')].map(example=>{const card=example.querySelector('[data-ds-component="card"][data-component-part="root"]');return {recipe:example.dataset.recipeExample,variant:card.dataset.variant,size:card.dataset.size,copy:Object.fromEntries(Object.entries(parts).map(([key,part])=>[key,card.querySelector('[data-ds-component="card"][data-component-part="'+part+'"]').textContent]))}})})()`);
+  assert.deepEqual(cards.map(entry => entry.recipe), ['outlined.sm', 'outlined.md', 'outlined.lg', 'elevated.sm', 'elevated.md', 'elevated.lg', 'filled.sm', 'filled.md', 'filled.lg']);
+  for (const entry of cards) {
+    assert.equal(entry.recipe, `${entry.variant}.${entry.size}`, 'Matrix axes override insertion parameters');
+    assert.deepEqual(entry.copy, copy, `${entry.recipe} has identical populated Card copy`);
+  }
+  return cards;
+}
+async function matrixInputs(label, description, error) {
+  const fields = await evaluate(`(()=>{return [...document.querySelectorAll('[data-component-matrix="input"] [data-recipe-example]')].map(example=>{const root=example.querySelector('[data-component-part="root"]'),input=example.querySelector('input'),part=name=>root.querySelector('[data-component-part="'+name+'"]');return {recipe:example.dataset.recipeExample,size:root.dataset.size,invalid:root.hasAttribute('data-invalid'),readOnly:input.readOnly,disabled:input.disabled,label:part('label')?.textContent,hidden:part('label')?.hasAttribute('data-hide-label'),description:part('description')?.textContent,error:part('error')?.textContent ?? null}})})()`);
+  assert.deepEqual(fields.map(entry => entry.recipe), ['default.sm', 'default.md', 'default.lg', 'invalid.sm', 'invalid.md', 'invalid.lg', 'readonly.sm', 'readonly.md', 'readonly.lg']);
+  for (const entry of fields) {
+    const [variant, size] = entry.recipe.split('.');
+    assert.deepEqual(entry, { recipe: entry.recipe, size, invalid: variant === 'invalid', readOnly: variant === 'readonly', disabled: false, label, hidden: false, description, error: variant === 'invalid' ? error : null }, `${entry.recipe} exposes its own state/size and populated field anatomy`);
+  }
+  return fields;
+}
+const recipeCSSKeys = ['fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'textAlign', 'color', 'backgroundColor', 'borderColor', 'borderWidth', 'boxShadow', 'opacity', 'gap', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomRightRadius', 'borderBottomLeftRadius'];
+async function matrixSnapshot(component) {
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 700, y: 20, buttons: 0 }); await settle();
+  return evaluate(`Object.fromEntries([...document.querySelectorAll('[data-component-matrix="${component}"] [data-recipe-example]')].map(example=>[example.dataset.recipeExample,[...example.querySelectorAll('[data-recipe-body] [data-component-part]')].map(e=>{const s=getComputedStyle(e);return {component:e.dataset.dsComponent,part:e.dataset.componentPart,target:e.dataset.componentTarget,cardPart:e.closest('[data-ds-component="card"][data-component-part]')?.dataset.componentPart ?? null,text:e.textContent,styles:Object.fromEntries(${JSON.stringify(recipeCSSKeys)}.map(key=>[key,s[key]]))}})]))`);
+}
+async function matrixUnchangedExcept(component, baseline, recipe, parts) {
+  const current = await matrixSnapshot(component);
+  assert.deepEqual(Object.keys(current), Object.keys(baseline));
+  for (const key of Object.keys(baseline)) {
+    const untouched = entries => key !== recipe || !parts ? entries : entries.filter(entry => !(entry.component === component && parts.includes(entry.part) || component === 'card' && parts.includes(entry.cardPart)));
+    if (key !== recipe || parts) assert.deepEqual(untouched(current[key]), untouched(baseline[key]), `${component} ${key}: other combinations/layers retain text and computed styles`);
+  }
 }
 async function downloaded(name) {
   const until = Date.now() + 6500;
@@ -273,6 +349,12 @@ async function content(key, value, commit = 'enter') {
 }
 const cardStyles = { borderTopLeftRadius: 7, borderTopRightRadius: 13, borderBottomRightRadius: 19, borderBottomLeftRadius: 25, paddingTop: 9, paddingRight: 15, paddingBottom: 21, paddingLeft: 27 };
 const cardCSS = Object.fromEntries(Object.entries(cardStyles).map(([key, value]) => [key, `${value}px`]));
+const titleFrameStyles = { paddingLeft: 4, borderTopLeftRadius: 3 };
+const titleFrameCSS = { paddingLeft: '4px', borderTopLeftRadius: '3px' };
+const cardTextStyles = { content: { fontSize: 23 }, footer: { fontSize: 17 } };
+async function paintedCardText(root) {
+  for (const [part, values] of Object.entries(cardTextStyles)) await styleIs(cardTextSelector(root, part), { fontSize: `${values.fontSize}px` });
+}
 const startingCardCopy = { title: 'Project overview', description: 'Keep your ideas and next steps in one place.', content: 'Add details, organize your work, and share progress with your team.', action: 'Get started' };
 const nextCardCopy = { title: 'System card', description: 'Default description', content: 'Default body', action: 'Start here' };
 const themeColors = {
@@ -286,8 +368,9 @@ async function paintedStyles(mode) {
     assert.ok(id, 'Expected Card was inserted by this run');
     await styleIs(nodeSelector(id), cardCSS);
     const title = nodes(await node(id)).find(entry => entry.kind === 'cardTitle');
-    await styleIs(nodeSelector(title.id), { fontSize: '31px', fontWeight: '650', color: rgb(themeColors[mode].title) });
-    noLocalStyles(await node(id));
+    assert.deepEqual((await node(id)).props, { variant: 'outlined', size: 'md' });
+    await styleIs(nodeSelector(title.id), { ...titleFrameCSS, fontSize: '31px', fontWeight: '650', color: rgb(themeColors[mode].title) });
+    await paintedCardText(nodeSelector(id)); noLocalStyles(await node(id));
   }
   if (!skipInput) {
     assert.ok(inputId, 'Expected Input was inserted by this run');
@@ -367,6 +450,7 @@ async function start() {
   });
   await send('Runtime.enable'); await send('Log.enable'); await send('Page.enable');
   await send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: profile });
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
   await viewport(1440, 900);
   await send('Page.navigate', { url: `http://127.0.0.1:${server.address().port}/` });
   await wait(`${q('[aria-label="New project name"]')} && !${q('[aria-label="New project name"]')}.disabled`, 'project hydration');
@@ -462,43 +546,97 @@ try {
       assert.match(await evaluate(`${q(layerSelector(titleId))}.getAttribute('aria-label')`), /^Card\.Title/);
       assert.equal(await systemBytes(), originalSystems, 'Project insertion does not author System defaults');
     });
-    await check('System Card corners/padding paint the starter and existing Project without local overrides', async () => {
+    await check('Card matrix: exact outlined.md frame, independent corners/padding and linked-side history', async () => {
       const before = await record();
       await chooseLayer(cardId); await click(named('#project-inspector button', 'Edit styles in System'));
       await wait(`location.pathname==='/card' && ${q('[aria-label="Component editor"]')}`);
-      await systemComponent('card', 'Parameters');
-      assert.deepEqual(await starterSlots(), startingCardCopy);
+      await systemComponent('card');
+      assert.equal(await evaluate(`!!${q(recipeControls)}`), false, 'Project style link does not silently pick a system-wide or arbitrary recipe');
+      for (const selector of ['[data-system-shared-defaults]', '[data-system-base-tokens]']) assert.equal(await evaluate(`${q(selector)}.open`), false);
+      evidence('collapsed-shared-defaults', await evaluate(`(()=>{const e=${q('[aria-label="Shared default layer"]')};return {open:e.closest('details').open,layoutBoxes:e.getClientRects().length,painted:e.checkVisibility({visibilityProperty:true})}})()`));
+      assert.equal(await evaluate(visible(q('[aria-label="Shared default layer"]'))), false, 'Compatibility styles are not the primary editor');
+      await matrixCards(startingCardCopy);
+      const baseline = await matrixSnapshot('card');
+      await systemTab('Parameters');
       for (const [key, value] of Object.entries(startingCardCopy)) assert.equal(await evaluate(`${q(`#system-default-card-${key}`)}.value`), value);
       await systemTab('Styles');
-      assert.deepEqual(await evaluate(`[...${q('[aria-label="System component part"]')}.options].map(e=>e.value)`), ['root', 'header', 'title', 'description', 'content', 'footer', 'icon']);
-      await select('[aria-label="System component part"]', 'root');
-      assert.equal(await evaluate(`${q('#token-editor [aria-label="Link corners"]')}.getAttribute('aria-pressed')`), 'false');
-      assert.equal(await evaluate(`${q('#token-editor [aria-label="Link padding sides"]')}.getAttribute('aria-pressed')`), 'false');
-      for (const [key, value] of Object.entries(cardStyles)) await systemStyle('card', 'root', key, value, key === 'paddingLeft' ? 'blur' : 'enter');
-      for (const mode of ['light', 'dark']) assert.deepEqual((await system()).themes[mode].componentStyles.card.root, cardStyles);
-      await styleIs(starterCard, cardCSS);
+      await matrixClick('card', cardRecipe, 'root', 'frame');
+      assert.equal(await evaluate(`!!${q(`${recipeControls} [id$="-fontSize"]`)}`), false, 'Frame controls do not expose text typography');
+      for (const label of ['Link corners', 'Link padding sides']) assert.equal(await evaluate(`${q(`${recipeControls} [aria-label="${label}"]`)}.getAttribute('aria-pressed')`), 'false');
+      for (const [key, value] of Object.entries(cardStyles)) await recipeStyle('card', cardRecipe, 'root', 'frame', key, value, key === 'paddingLeft' ? 'blur' : 'enter');
+      for (const mode of ['light', 'dark']) assert.deepEqual((await system()).themes[mode].componentRecipes.card[cardRecipe].root, cardStyles);
+      const independent = await system();
+      await click(q(`${recipeControls} [aria-label="Link padding sides"]`));
+      assert.equal(await evaluate(`${q(`${recipeControls} [aria-label="Link padding sides"]`)}.getAttribute('aria-pressed')`), 'true');
+      const padding = Object.keys(cardStyles).filter(key => key.startsWith('padding'));
+      await recipeStyle('card', cardRecipe, 'root', 'frame', 'paddingTop', 11, 'enter', padding);
+      const linked = await system();
+      await styleIs(matrixCard, { ...cardCSS, ...Object.fromEntries(padding.map(key => [key, '11px'])) });
+      await systemHistory('Undo', independent); await styleIs(matrixCard, cardCSS);
+      await systemHistory('Redo', linked); await styleIs(matrixCard, Object.fromEntries(padding.map(key => [key, '11px'])));
+      await systemHistory('Undo', independent); await styleIs(matrixCard, cardCSS);
+      // Card.Icon has always used border-radius: inherit; root corners legitimately reach this child.
+      Object.assign(baseline[cardRecipe].find(entry => entry.component === 'card' && entry.part === 'icon').styles, Object.fromEntries(Object.entries(cardCSS).filter(([key]) => key.endsWith('Radius'))));
+      await matrixUnchangedExcept('card', baseline, cardRecipe, ['root']); await matrixCards(startingCardCopy);
       await projectWorkspace(); assert.deepEqual(await record(), before);
       noLocalStyles(await node(cardId)); await styleIs(nodeSelector(cardId), cardCSS);
-      evidence('card-system-styles', { id: cardId, shared: cardStyles, painted: await computed(nodeSelector(cardId), Object.keys(cardCSS)) });
+      evidence('card-recipe-frame', { id: cardId, recipe: cardRecipe, sharedAcrossThemes: cardStyles, otherRecipesUnchanged: 8, painted: await computed(nodeSelector(cardId), Object.keys(cardCSS)) });
     });
-    await check('System Card.Title typography, one-step Undo/Redo and layer reset leave Project data intact', async () => {
+    await check('real outlined.md title text click: isolated typography, Undo/Redo and text reset preserve frame fields', async () => {
       const projectBefore = await record();
-      await systemComponent('card', 'Styles');
-      await delay(400);
-      await click(q(starterTitle));
-      await wait(`${q('[aria-label="System component part"]')}.value==='title'`, 'clicking the starter title selects its System layer');
-      const before = await system(), previous = await computed(starterTitle, ['fontSize']);
-      await systemStyle('card', 'title', 'fontSize', 31); const after = await system();
-      await styleIs(starterTitle, { fontSize: '31px' });
-      await systemHistory('Undo', before); await styleIs(starterTitle, previous);
-      await systemHistory('Redo', after); await styleIs(starterTitle, { fontSize: '31px' });
-      await click(named('#token-editor button', 'Reset layer styles'));
-      await wait(`!${storedSystem()}.themes.light.componentStyles?.card?.title && !${storedSystem()}.themes.dark.componentStyles?.card?.title`);
-      await styleIs(starterTitle, previous);
-      await systemHistory('Undo', after); await styleIs(starterTitle, { fontSize: '31px' });
+      await systemComponent('card');
+      await matrixClick('card', cardRecipe, 'root', 'frame');
+      await matrixClick('card', cardRecipe, 'title', 'text');
+      await recipeLayer(cardRecipe, 'title', 'frame', 'Title');
+      for (const [key, value] of Object.entries(titleFrameStyles)) await recipeStyle('card', cardRecipe, 'title', 'frame', key, value);
+      await matrixClick('card', cardRecipe, 'title', 'text');
+      assert.equal(await evaluate(`!!${q(`${recipeControls} [id$="-paddingLeft"]`)}`), false, 'Text and frame fields are disjoint');
+      const before = await system(), previous = await computed(matrixTitle, ['fontSize']), baseline = await matrixSnapshot('card');
+      const input = q(recipeInput('card', cardRecipe, 'title', 'text', 'fontSize'));
+      await fill(input, '31px', 'enter');
+      assert.equal(await evaluate(`${input}.getAttribute('aria-invalid')`), 'true');
+      assert.deepEqual(await system(), before, 'Rejected style drafts cannot mutate any recipe');
+      await press('Escape'); assert.equal(await evaluate(`${input}.value`), '');
+      await recipeStyle('card', cardRecipe, 'title', 'text', 'fontSize', 31); const after = await system();
+      await styleIs(matrixTitle, { ...titleFrameCSS, fontSize: '31px' });
+      await matrixUnchangedExcept('card', baseline, cardRecipe, ['title']);
+      await systemHistory('Undo', before); await styleIs(matrixTitle, { ...titleFrameCSS, ...previous });
+      await systemHistory('Redo', after); await styleIs(matrixTitle, { ...titleFrameCSS, fontSize: '31px' });
+      await click(named(`${recipeControls} button`, 'Reset text styles'));
+      await wait(`!${storedSystem()}.themes.light.componentRecipes.card[${JSON.stringify(cardRecipe)}].title.fontSize`);
+      assert.deepEqual(await system(), before, 'Text reset preserves the same title frame fields, root geometry, all other recipes and content');
+      await styleIs(matrixTitle, { ...titleFrameCSS, ...previous });
+      await systemHistory('Undo', after); await styleIs(matrixTitle, { ...titleFrameCSS, fontSize: '31px' });
+      await matrixUnchangedExcept('card', baseline, cardRecipe, ['title']); await matrixCards(startingCardCopy);
+      if (screenshotPath) {
+        await matrixClick('card', cardRecipe, 'title', 'text');
+        await evaluate(`${q('#token-editor')}.scrollTo({top:0,behavior:'instant'})`); await settle();
+        const { data } = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+        await writeFile(screenshotPath, Buffer.from(data, 'base64'));
+        evidence('screenshot', { path: screenshotPath, recipe: cardRecipe, part: 'title', target: 'text' });
+      }
       await projectWorkspace(); assert.deepEqual(await record(), projectBefore);
-      await styleIs(nodeSelector(titleId), { fontSize: '31px' });
-      assert.equal((await system()).themes.dark.componentStyles.card.title.fontSize, 31);
+      await styleIs(nodeSelector(titleId), { ...titleFrameCSS, fontSize: '31px' });
+      assert.deepEqual(cardSlots(await node(cardId)), startingCardCopy);
+      assert.equal((await system()).themes.dark.componentRecipes.card[cardRecipe].title.fontSize, 31);
+      evidence('card-recipe-title', { recipe: cardRecipe, part: 'title', target: 'text', fontSize: 31, otherRecipesUnchanged: 8, retainedFrame: titleFrameStyles, projectContentUntouched: true });
+    });
+    await check('nested Card content/action text clicks edit the enclosing exact recipe, never standalone Text/Button styles', async () => {
+      const before = await record();
+      await systemComponent('card');
+      const baseline = await matrixSnapshot('card');
+      for (const [part, values] of Object.entries(cardTextStyles)) {
+        await matrixClick('card', cardRecipe, part, 'text');
+        await recipeStyle('card', cardRecipe, part, 'text', 'fontSize', values.fontSize);
+      }
+      await paintedCardText(matrixCard);
+      await matrixUnchangedExcept('card', baseline, cardRecipe, ['content', 'footer']);
+      await matrixCards(startingCardCopy);
+      for (const mode of ['light', 'dark']) for (const component of ['text', 'button']) assert.equal((await system()).themes[mode].componentRecipes[component], undefined, `${component} has no accidental global recipe edit`);
+      await projectWorkspace(); assert.deepEqual(await record(), before);
+      await paintedCardText(nodeSelector(cardId));
+      assert.deepEqual(cardSlots(await node(cardId)), startingCardCopy); noLocalStyles(await node(cardId));
+      evidence('card-nested-text', { recipe: cardRecipe, parts: cardTextStyles, otherRecipesUnchanged: 8, standaloneRecipesUntouched: true });
     });
     await check('Project Card.Title content/history stay isolated; canvas selection reveals collapsed ancestry', async () => {
       const before = await project(), systems = await systemBytes();
@@ -512,7 +650,7 @@ try {
       assert.equal(await evaluate(`!!${q('[aria-label="Collapse Card.Header"]')}`), true);
       await styleIs(nodeSelector(titleId), { fontSize: '31px' });
       await systemComponent('card', 'Parameters');
-      assert.equal((await starterSlots()).title, startingCardCopy.title);
+      await matrixCards(startingCardCopy);
       assert.equal(await evaluate(`${q('#system-default-card-title')}.value`), startingCardCopy.title);
       assert.equal(await systemBytes(), systems);
       await projectWorkspace();
@@ -540,56 +678,74 @@ try {
       assert.ok(await evaluate(`!!${q(partSelector('error') + '[data-error-icon="warning"] svg[aria-hidden="true"]')}`));
       assert.equal(await systemBytes(), systems);
     });
-    await check('optional starting copy can be cleared/reset; error layer samples never become insertion content', async () => {
+    await check('Input optional insertion copy resets; invalid examples expose an error for each size without saving sample content', async () => {
       const projectBefore = await record();
       await systemComponent('input', 'Parameters');
       const helper = await evaluate(`${q('#system-default-input-description')}.value`);
+      await matrixInputs('Email address', helper, 'Please check this field.');
       await systemDefault('input', 'props', 'description', '');
-      assert.equal(await evaluate(`!!${q(starterInputPart('description'))}`), false);
+      assert.equal(await evaluate(`${q('#system-default-input-description')}.value`), '');
+      await matrixInputs('Email address', 'Helpful context for this field.', 'Please check this field.');
       await click(q('[aria-label="Reset Default Description"]'));
       await wait(`${q('#system-default-input-description')}.value===${JSON.stringify(helper)}`);
-      assert.equal(await evaluate(`${q(starterInputPart('description'))}.textContent`), helper);
+      await matrixInputs('Email address', helper, 'Please check this field.');
       const before = await systemBytes();
-      await systemTab('Styles'); await select('[aria-label="System component part"]', 'error');
-      await wait(`${q(starterInputPart('error'))}?.textContent.includes('Please check this field.')`);
-      assert.match(await evaluate(`${q('[data-system-starter="input"] header')}.textContent`), /sample · not saved as content/);
+      for (const size of ['sm', 'md', 'lg']) await matrixClick('input', `invalid.${size}`, 'error', 'text');
       await systemTab('Parameters');
-      assert.equal(await evaluate(`!!${q(starterInputPart('error'))}`), false);
-      assert.equal(await systemBytes(), before);
-      assert.deepEqual(await record(), projectBefore);
+      assert.equal(await evaluate(`${q('#system-default-input-error')}.value`), '', 'Sample errors are not insertion defaults');
+      await matrixInputs('Email address', helper, 'Please check this field.');
+      assert.equal(await systemBytes(), before); assert.deepEqual(await record(), projectBefore);
       await projectWorkspace();
     });
-    await check('System Input defaults and shared Field/Control/Label/Description/Error styles reach existing instances', async () => {
+    await check('Input invalid.md recipe: control frame/text split and all field parts reach only matching instances', async () => {
       const before = await record();
       await systemComponent('input', 'Parameters');
       assert.equal(await evaluate(`${q('#system-default-input-label')}.value`), 'Email address');
       assert.equal(await evaluate(`${q('#system-default-input-error')}.value`), '');
       await systemDefault('input', 'props', 'label', 'Contact email');
-      await systemDefault('input', 'props', 'error', 'Starter error');
+      await systemDefault('input', 'props', 'error', 'Insertion error');
       await systemDefault('input', 'props', 'errorPosition', 'below');
       await systemDefault('input', 'props', 'errorIcon', 'info');
-      assert.equal(await evaluate(`${q(starterInputPart('label'))}.textContent.trim()`), 'Contact email');
-      assert.equal(await evaluate(`${q(starterInputPart('error'))}.textContent.trim()`), 'Starter error');
-      assert.equal(await evaluate(`${q(starterInputPart('root'))}.lastElementChild.getAttribute('data-appearance-part')`), 'error');
-      assert.ok(await evaluate(`!!${q(starterInputPart('error') + '[data-error-icon="info"] svg[aria-hidden="true"]')}`));
+      for (const [key, value] of Object.entries({ size: 'lg', hideLabel: true, disabled: true, readOnly: true })) await systemDefault('input', 'props', key, value);
+      const helper = await evaluate(`${q('#system-default-input-description')}.value`);
+      await matrixInputs('Contact email', helper, 'Insertion error');
+      assert.equal(await evaluate(`${q(matrixInputPart('root'))}.lastElementChild.getAttribute('data-appearance-part')`), 'error');
+      assert.ok(await evaluate(`!!${q(matrixInputPart('error') + '[data-error-icon="info"] svg[aria-hidden="true"]')}`));
       await systemTab('Styles');
-      assert.deepEqual(await evaluate(`[...${q('[aria-label="System component part"]')}.options].map(e=>e.value)`), ['root', 'label', 'control', 'description', 'error']);
+      const baseline = await matrixSnapshot('input');
       const parts = { root: { gap: 9 }, control: { fontSize: 17, borderTopLeftRadius: 5 }, label: { fontSize: 15, color: themeColors.light.label }, description: { fontSize: 12 }, error: { fontSize: 13, color: themeColors.light.error } };
-      for (const [part, values] of Object.entries(parts)) {
-        await select('[aria-label="System component part"]', part);
-        for (const [key, value] of Object.entries(values)) await systemStyle('input', part, key, value, key === 'color' ? 'blur' : 'enter');
-        await styleIs(starterInputPart(part), Object.fromEntries(Object.entries(values).map(([key, value]) => [key, key === 'color' ? rgb(value) : `${value}px`])));
+      await matrixClick('input', inputRecipe, 'root', 'frame');
+      await recipeStyle('input', inputRecipe, 'root', 'frame', 'gap', 9);
+      await matrixClick('input', inputRecipe, 'control', 'frame');
+      assert.equal(await evaluate(`!!${q(`${recipeControls} [id$="-fontSize"]`)}`), false);
+      await recipeStyle('input', inputRecipe, 'control', 'frame', 'borderTopLeftRadius', 5);
+      await matrixClick('input', inputRecipe, 'control', 'text');
+      assert.equal(await evaluate(`!!${q(`${recipeControls} [id$="-borderTopLeftRadius"]`)}`), false);
+      await recipeStyle('input', inputRecipe, 'control', 'text', 'fontSize', 17);
+      for (const part of ['label', 'description', 'error']) {
+        await matrixClick('input', inputRecipe, part, 'text');
+        for (const [key, value] of Object.entries(parts[part])) await recipeStyle('input', inputRecipe, part, 'text', key, value, key === 'color' ? 'blur' : 'enter');
       }
-      assert.deepEqual((await system()).themes.light.componentStyles.input, parts);
+      for (const [part, values] of Object.entries(parts)) await styleIs(matrixInputPart(part), Object.fromEntries(Object.entries(values).map(([key, value]) => [key, key === 'color' ? rgb(value) : `${value}px`])));
+      await styleIs(matrixInputPart('control', 'text'), { fontSize: '17px' });
+      assert.deepEqual((await system()).themes.light.componentRecipes.input, { [inputRecipe]: parts });
       const geometry = structuredClone(parts); delete geometry.label.color; delete geometry.error.color;
-      assert.deepEqual((await system()).themes.dark.componentStyles.input, geometry);
+      assert.deepEqual((await system()).themes.dark.componentRecipes.input, { [inputRecipe]: geometry });
+      await matrixUnchangedExcept('input', baseline, inputRecipe);
+      for (const size of ['sm', 'lg']) {
+        await matrixClick('input', `invalid.${size}`, 'error', 'text');
+        assert.equal(await evaluate(`${q(recipeInput('input', `invalid.${size}`, 'error', 'text', 'fontSize'))}.value`), '', 'Other sizes still inherit their error typography');
+      }
+      await matrixInputs('Contact email', helper, 'Insertion error');
       await projectWorkspace(); assert.deepEqual(await record(), before);
       for (const [part, values] of Object.entries(parts)) await styleIs(partSelector(part), Object.fromEntries(Object.entries(values).map(([key, value]) => [key, key === 'color' ? rgb(value) : `${value}px`])));
       await styleIs(nodeSelector(inputId), { fontSize: '17px' }); noLocalStyles(await node(inputId));
       assert.equal((await node(inputId)).props.errorPosition, 'above');
       assert.equal((await node(inputId)).props.errorIcon, 'warning');
+      assert.equal((await node(inputId)).props.size, 'md');
+      assert.equal(await evaluate(`${q(nodeSelector(inputId))}.readOnly`), false);
       assert.equal(await evaluate(`${q(partSelector('error'))}.textContent.trim()`), 'Enter a valid email');
-      evidence('input', { id: inputId, instance: (await node(inputId)).props, defaults: (await system()).componentDefaults.input, shared: parts });
+      evidence('input-recipe', { id: inputId, recipe: inputRecipe, instance: (await node(inputId)).props, defaults: (await system()).componentDefaults.input, parts, otherRecipesUnchanged: 8 });
     });
     await check('canvas label and error clicks select the owning Input, not the frame/layout', async () => {
       await fitPage();
@@ -603,23 +759,42 @@ try {
     });
   } else console.log(`SKIP Input parts and field-owner selection (${shellOnly ? '--shell-only' : '--skip-input'})`);
 
-  if (!shellOnly) await check('System Card starting content updates preview/new insertion, never existing Project content', async () => {
+  if (!shellOnly) await check('insertion defaults do not change matrix scope; new Card axes and instance parameters resolve the matching recipe', async () => {
     const before = await record();
-    await systemComponent('card', 'Parameters');
+    await systemComponent('card'); await matrixClick('card', cardRecipe, 'title', 'text');
+    const recipes = (await system()).themes;
+    await systemTab('Parameters');
     for (const [key, value] of Object.entries(nextCardCopy)) await systemDefault('card', 'slots', key, value, key === 'description' ? 'blur' : 'enter');
-    assert.deepEqual(await starterSlots(), nextCardCopy);
+    await systemDefault('card', 'props', 'variant', 'filled');
+    await systemDefault('card', 'props', 'size', 'lg');
+    await matrixCards(nextCardCopy);
     assert.deepEqual((await system()).componentDefaults.card.slots, nextCardCopy);
+    assert.deepEqual((await system()).themes, recipes, 'Content/default axes never author recipe styles');
+    await systemTab('Styles'); await selectedRecipe(cardRecipe, 'title', 'text');
+    const otherRoot = await computed(matrixPart('card', 'filled.lg', 'root'), recipeCSSKeys);
+    const otherTitle = await computed(matrixPart('card', 'filled.lg', 'title'), recipeCSSKeys);
+    const smallRoot = await computed(matrixPart('card', 'outlined.sm', 'root'), recipeCSSKeys);
+    const smallTitle = await computed(matrixPart('card', 'outlined.sm', 'title'), recipeCSSKeys);
     await projectWorkspace(); assert.deepEqual(await record(), before);
     assert.deepEqual(cardSlots(await node(cardId)), { ...startingCardCopy, title: 'Workspace card' });
     const systems = await systemBytes();
     await chooseLayer(); await sidebar('Assets'); await click(q('[data-insert-kind="card"]'));
     await wait(`${stored()}.document.pages[0].frames[0].root.children.filter(n=>n.kind==='card').length===2`);
     const inserted = (await frame()).root.children.find(entry => entry.kind === 'card' && entry.id !== cardId); newCardId = inserted.id;
+    const insertedTitle = nodes(inserted).find(entry => entry.kind === 'cardTitle');
+    assert.deepEqual(inserted.props, { variant: 'filled', size: 'lg' });
     assert.deepEqual(cardSlots(inserted), nextCardCopy); noLocalStyles(inserted); await parameterInspector();
+    await styleIs(nodeSelector(newCardId), otherRoot); await styleIs(nodeSelector(insertedTitle.id), otherTitle);
+    await select('#project-inspector [aria-label="Instance variant"]', 'outlined');
+    await select('#project-inspector [aria-label="Instance size"]', 'sm');
+    await styleIs(nodeSelector(newCardId), smallRoot); await styleIs(nodeSelector(insertedTitle.id), smallTitle);
+    await select('#project-inspector [aria-label="Instance size"]', 'md');
     await styleIs(nodeSelector(newCardId), cardCSS);
+    await styleIs(nodeSelector(insertedTitle.id), { ...titleFrameCSS, fontSize: '31px' });
+    assert.deepEqual(cardSlots(await node(newCardId)), nextCardCopy); noLocalStyles(await node(newCardId));
     assert.equal((await node(titleId)).text, 'Workspace card');
-    assert.equal(await systemBytes(), systems, 'New insertion reads defaults without changing them');
-    evidence('insertion-defaults', { existing: cardSlots(await node(cardId)), inserted: cardSlots(inserted), newCardId });
+    assert.equal(await systemBytes(), systems, 'Insertion and instance parameters only read System defaults/recipes');
+    evidence('insertion-defaults', { existing: cardSlots(await node(cardId)), inserted: cardSlots(inserted), defaults: inserted.props, instance: (await node(newCardId)).props, newCardId });
   });
 
   if (!skipAssets) await check('saved Card snapshot preserves content with fresh IDs, independent copies and Project history', async () => {
@@ -654,29 +829,44 @@ try {
     evidence('asset', { assetId: asset.id, originalId: cardId, copyId, originalTitle: (await node(titleId)).text, savedTitle: cardSlots(asset.root).title, copyTitle: (await node(copyTitle.id)).text });
   }); else console.log(`SKIP saved components (${shellOnly ? '--shell-only' : '--skip-assets'})`);
 
-  if (!shellOnly) await check('System colors are theme-specific, geometry is shared, and Project theme switching is read-only', async () => {
+  if (!shellOnly) await check('recipe colors are theme-specific, geometry/typography are shared, and linked Project theme switching is read-only', async () => {
     const saved = await record(), defaults = (await system()).componentDefaults, backgrounds = {};
-    await systemComponent('card', 'Styles', 'title');
-    await systemTheme('light'); await systemStyle('card', 'title', 'color', themeColors.light.title);
-    await systemTheme('dark'); await systemStyle('card', 'title', 'color', themeColors.dark.title);
-    await systemStyle('card', 'title', 'fontWeight', 650, 'blur');
-    await styleIs(starterTitle, { fontSize: '31px', fontWeight: '650', color: rgb(themeColors.dark.title) });
-    if (!skipInput) {
-      await systemComponent('input', 'Styles', 'label');
-      await systemStyle('input', 'label', 'color', themeColors.dark.label);
-      await select('[aria-label="System component part"]', 'error');
-      await systemStyle('input', 'error', 'color', themeColors.dark.error);
-      await styleIs(starterInputPart('error'), { fontSize: '13px', color: rgb(themeColors.dark.error) });
+    await systemComponent('card'); await matrixClick('card', cardRecipe, 'title', 'text');
+    for (const mode of ['light', 'dark']) {
+      await systemTheme(mode); cardThemeBaselines[mode] = await matrixSnapshot('card');
+      await recipeStyle('card', cardRecipe, 'title', 'text', 'color', themeColors[mode].title);
+      await styleIs(matrixTitle, { ...titleFrameCSS, fontSize: '31px', color: rgb(themeColors[mode].title) });
+      await matrixUnchangedExcept('card', cardThemeBaselines[mode], cardRecipe, ['title']);
     }
+    const beforeWeight = await system();
+    await recipeStyle('card', cardRecipe, 'title', 'text', 'fontWeight', 650, 'blur');
+    const afterWeight = await system();
+    await systemHistory('Undo', beforeWeight); await systemHistory('Redo', afterWeight);
+    if (!skipInput) {
+      await systemComponent('input');
+      const baseline = await matrixSnapshot('input');
+      await matrixClick('input', inputRecipe, 'label', 'text');
+      await recipeStyle('input', inputRecipe, 'label', 'text', 'color', themeColors.dark.label);
+      await matrixClick('input', inputRecipe, 'error', 'text');
+      await recipeStyle('input', inputRecipe, 'error', 'text', 'color', themeColors.dark.error);
+      await styleIs(matrixInputPart('error'), { fontSize: '13px', color: rgb(themeColors.dark.error) });
+      await matrixUnchangedExcept('input', baseline, inputRecipe, ['label', 'error']);
+    }
+    await systemComponent('card');
     for (const mode of ['light', 'dark']) {
       const theme = (await system()).themes[mode];
-      assert.deepEqual(theme.componentStyles.card.root, cardStyles);
-      assert.deepEqual(theme.componentStyles.card.title, { fontSize: 31, fontWeight: 650, color: themeColors[mode].title });
+      assert.deepEqual(theme.componentRecipes.card, { [cardRecipe]: { root: cardStyles, title: { ...titleFrameStyles, fontSize: 31, fontWeight: 650, color: themeColors[mode].title }, ...cardTextStyles } });
       if (!skipInput) {
-        assert.deepEqual(theme.componentStyles.input.control, { fontSize: 17, borderTopLeftRadius: 5 });
-        assert.deepEqual(theme.componentStyles.input.label, { fontSize: 15, color: themeColors[mode].label });
-        assert.deepEqual(theme.componentStyles.input.error, { fontSize: 13, color: themeColors[mode].error });
+        assert.deepEqual(Object.keys(theme.componentRecipes.input), [inputRecipe]);
+        assert.deepEqual(theme.componentRecipes.input[inputRecipe].control, { fontSize: 17, borderTopLeftRadius: 5 });
+        assert.deepEqual(theme.componentRecipes.input[inputRecipe].label, { fontSize: 15, color: themeColors[mode].label });
+        assert.deepEqual(theme.componentRecipes.input[inputRecipe].error, { fontSize: 13, color: themeColors[mode].error });
       }
+      assert.deepEqual(theme.componentStyles ?? {}, {}, 'Recipe editing never authors all-variant shared defaults');
+      await systemTheme(mode);
+      await styleIs(matrixTitle, { ...titleFrameCSS, fontSize: '31px', fontWeight: '650', color: rgb(themeColors[mode].title) });
+      await paintedCardText(matrixCard);
+      await matrixUnchangedExcept('card', cardThemeBaselines[mode], cardRecipe, ['title']);
     }
     assert.deepEqual((await system()).componentDefaults, defaults);
     const systems = await systemBytes();
@@ -689,10 +879,10 @@ try {
     }
     assert.notEqual(backgrounds.light, backgrounds.dark, 'The linked theme actually changes, not just the select');
     assert.equal(await systemBytes(), systems, 'Theme switching cannot mutate System');
-    evidence('themes', { backgrounds, colors: themeColors, sharedCard: cardStyles });
+    evidence('themes', { backgrounds, colors: themeColors, recipe: cardRecipe, sharedCard: cardStyles, otherRecipesUnchanged: 8 });
   });
 
-  if (!shellOnly) await check('real CSS/JSON exports and Project backup preserve schema, shared styles and independent content', async () => {
+  if (!shellOnly) await check('real CSS/JSON exports and Project backup preserve exact recipes, shared geometry and independent content', async () => {
     const before = await record(), systems = await systemBytes(), authored = await system();
     await systemComponent('card');
     await click(q('[aria-label="Export tokens"]')); await wait(visible(q('[aria-label="Exported tokens"]')));
@@ -700,9 +890,11 @@ try {
     const css = await evaluate(`${q('[aria-label="Exported tokens"] code')}.textContent`);
     for (const mode of ['light', 'dark']) {
       const block = css.split(`[data-ds-theme="${mode}"] {`)[1]?.split('}')[0]; assert.ok(block, `${mode} CSS block`);
-      for (const [key, value] of Object.entries(cardStyles)) assert.ok(block.includes(`--card-part-root-${key.replace(/[A-Z]/g, letter => '-' + letter.toLowerCase())}: ${value}px;`), `${mode} ${key} export`);
-      for (const declaration of [`--card-part-title-font-size: 31px;`, `--card-part-title-font-weight: 650;`, `--card-part-title-color: ${themeColors[mode].title};`]) assert.ok(block.includes(declaration), `${mode} ${declaration}`);
-      if (!skipInput) for (const declaration of [`--input-part-root-gap: 9px;`, `--input-part-control-font-size: 17px;`, `--input-part-control-border-top-left-radius: 5px;`, `--input-part-label-font-size: 15px;`, `--input-part-label-color: ${themeColors[mode].label};`, `--input-part-description-font-size: 12px;`, `--input-part-error-font-size: 13px;`, `--input-part-error-color: ${themeColors[mode].error};`]) assert.ok(block.includes(declaration), `${mode} ${declaration}`);
+      for (const [part, values] of Object.entries({ root: cardStyles, title: titleFrameStyles, ...cardTextStyles })) for (const [key, value] of Object.entries(values)) assert.ok(block.includes(`--card-recipe-outlined-md-${part}-${key.replace(/[A-Z]/g, letter => '-' + letter.toLowerCase())}: ${value}px;`), `${mode} ${part}.${key} export`);
+      for (const declaration of [`--card-recipe-outlined-md-title-font-size: 31px;`, `--card-recipe-outlined-md-title-font-weight: 650;`, `--card-recipe-outlined-md-title-color: ${themeColors[mode].title};`]) assert.ok(block.includes(declaration), `${mode} ${declaration}`);
+      if (!skipInput) for (const declaration of [`--input-recipe-invalid-md-root-gap: 9px;`, `--input-recipe-invalid-md-control-font-size: 17px;`, `--input-recipe-invalid-md-control-border-top-left-radius: 5px;`, `--input-recipe-invalid-md-label-font-size: 15px;`, `--input-recipe-invalid-md-label-color: ${themeColors[mode].label};`, `--input-recipe-invalid-md-description-font-size: 12px;`, `--input-recipe-invalid-md-error-font-size: 13px;`, `--input-recipe-invalid-md-error-color: ${themeColors[mode].error};`]) assert.ok(block.includes(declaration), `${mode} ${declaration}`);
+      for (const [declaration] of block.matchAll(/--(?:card|input)-recipe-[\w-]+:/g)) assert.ok(declaration.startsWith('--card-recipe-outlined-md-') || !skipInput && declaration.startsWith('--input-recipe-invalid-md-'), `No unrelated recipe declarations: ${declaration}`);
+      assert.equal(/--(?:card|input)-part-[\w-]+:/.test(block), false, 'No accidental shared-part export');
     }
     assert.equal(css.includes(nextCardCopy.title), false, 'Content defaults are data, not CSS');
     await click(named('[role="dialog"] button', 'Download')); assert.equal(await downloaded('bambiui-tokens.css'), css);
@@ -733,11 +925,27 @@ try {
     assert.deepEqual(await record(), before);
     if (!shellOnly) {
       for (const mode of ['light', 'dark']) { await select('[aria-label="Frame theme"]', mode); await paintedStyles(mode); }
-      await systemComponent('card', 'Parameters'); assert.deepEqual(await starterSlots(), nextCardCopy);
+      await systemComponent('card', 'Parameters'); await matrixCards(nextCardCopy);
       for (const [key, value] of Object.entries(nextCardCopy)) assert.equal(await evaluate(`${q(`#system-default-card-${key}`)}.value`), value);
-      await systemTab('Styles'); await select('[aria-label="System component part"]', 'title');
-      assert.equal(await evaluate(`${q('#system-style-card-title-fontSize')}.value`), '31');
-      assert.equal(await evaluate(`${q('#system-style-card-title-color')}.value`), themeColors.dark.title);
+      assert.equal(await evaluate(`${q('#system-default-card-variant')}.value`), 'filled');
+      assert.equal(await evaluate(`${q('#system-default-card-size')}.value`), 'lg');
+      await matrixClick('card', cardRecipe, 'title', 'text');
+      assert.equal(await evaluate(`${q(recipeInput('card', cardRecipe, 'title', 'text', 'fontSize'))}.value`), '31');
+      for (const mode of ['light', 'dark']) {
+        await systemTheme(mode);
+        assert.equal(await evaluate(`${q(recipeInput('card', cardRecipe, 'title', 'text', 'color'))}.value`), themeColors[mode].title);
+        await styleIs(matrixCard, cardCSS);
+        await styleIs(matrixTitle, { ...titleFrameCSS, fontSize: '31px', fontWeight: '650', color: rgb(themeColors[mode].title) });
+        await paintedCardText(matrixCard);
+        await matrixUnchangedExcept('card', cardThemeBaselines[mode], cardRecipe, ['title']);
+      }
+      if (!skipInput) {
+        await systemComponent('input'); await matrixClick('input', inputRecipe, 'error', 'text');
+        assert.equal(await evaluate(`${q(recipeInput('input', inputRecipe, 'error', 'text', 'fontSize'))}.value`), '13');
+        await styleIs(matrixInputPart('error'), { fontSize: '13px', color: rgb(themeColors.dark.error) });
+        await systemTab('Parameters');
+        await matrixInputs('Contact email', await evaluate(`${q('#system-default-input-description')}.value`), 'Insertion error');
+      }
       await projectWorkspace();
     }
     if (!skipAssets) { assert.ok(copyId); await sidebar('Assets'); await wait(visible(q('[aria-label="Insert Workspace card snapshot"]'))); }
@@ -773,12 +981,12 @@ try {
   process.exitCode = process.exitCode || 1;
   if (!aborted && socket?.readyState === 1) {
     try {
-      evidence('failure', await evaluate(`({url:location.href,viewport:[innerWidth,innerHeight],selected:[...document.querySelectorAll('[role="treeitem"][aria-selected="true"]')].map(e=>({id:e.dataset.layerId,label:e.getAttribute('aria-label')})),inspector:[...document.querySelectorAll('#workspace-inspector input,#workspace-inspector select,#workspace-inspector textarea')].filter(e=>e.getClientRects().length).map(e=>({id:e.id,label:e.getAttribute('aria-label'),value:e.value,invalid:e.getAttribute('aria-invalid')})).slice(0,32),systemPart:document.querySelector('[aria-label="System component part"]')?.value,notices:[...document.querySelectorAll('[role="alert"]')].filter(e=>e.getClientRects().length).map(e=>e.textContent)})`));
+      evidence('failure', await evaluate(`({url:location.href,viewport:[innerWidth,innerHeight],selected:[...document.querySelectorAll('[role="treeitem"][aria-selected="true"]')].map(e=>({id:e.dataset.layerId,label:e.getAttribute('aria-label')})),inspector:[...document.querySelectorAll('#workspace-inspector input,#workspace-inspector select,#workspace-inspector textarea')].filter(e=>e.checkVisibility({visibilityProperty:true})).map(e=>({id:e.id,label:e.getAttribute('aria-label'),value:e.value,invalid:e.getAttribute('aria-invalid')})).slice(0,32),recipe:[...document.querySelectorAll('[data-system-recipe-controls]')].map(e=>({recipe:e.dataset.recipe,part:e.dataset.part,target:e.dataset.target})),matrices:[...document.querySelectorAll('[data-component-matrix]')].map(e=>e.dataset.componentMatrix),sharedLayer:document.querySelector('[aria-label="Shared default layer"]')?.value,notices:[...document.querySelectorAll('[role="alert"]')].filter(e=>e.getClientRects().length).map(e=>e.textContent)})`));
     } catch (diagnosticError) { console.error(`Failure evidence unavailable: ${diagnosticError.message}`); }
   }
   if (errors.length) evidence('browser-errors', errors);
 } finally {
-  try { await cleanup(); console.log('CLEANUP disposable Chrome/profile/server removed; no app or smoke files changed by the run'); }
+  try { await cleanup(); console.log('CLEANUP disposable Chrome/profile/server removed; no app or smoke files changed by the run (optional screenshot retained)'); }
   catch (error) { console.error(`FAIL cleanup: ${error.message}`); process.exitCode = process.exitCode || 1; }
   clearTimeout(watchdog); process.removeListener('SIGINT', interrupt); process.removeListener('SIGTERM', interrupt);
 }

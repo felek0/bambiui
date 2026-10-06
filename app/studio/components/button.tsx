@@ -2,7 +2,9 @@ import type { ReactNode } from "react";
 import { Button as BaseButton } from "@base-ui/react/button";
 import { cx } from "../cx";
 import { Spinner } from "./spinner";
-import { mergeAppearanceStyle, type AppearanceProps } from "./appearance";
+import type { AppearanceProps } from "./appearance";
+import { componentRecipeKey } from "./recipes";
+import { componentRecipeMarkers, mergeRecipeStyle } from "./recipe-runtime";
 import type { Radius, Size } from "./types";
 import styles from "./components.module.css";
 
@@ -47,10 +49,13 @@ export function Button({
   style,
   ...props
 }: ButtonProps) {
+  const recipe = componentRecipeKey("button", { variant, size });
   return (
     <BaseButton
       {...props}
-      style={mergeAppearanceStyle(style, appearance)}
+      style={mergeRecipeStyle("button", recipe, style, appearance)}
+      {...componentRecipeMarkers("button", "root")}
+      data-component-recipe={recipe}
       className={cx(styles.button, className)}
       disabled={disabled || loading}
       // Keep focus on the button when it enters the loading state after activation.
@@ -66,7 +71,7 @@ export function Button({
       {loading ? <Spinner /> : startIcon && (
               <span className={styles.decorativeIcon} aria-hidden="true">{startIcon}</span>
             )}
-      {iconOnly && loading ? null : appearance?.textAlign ? <span className={styles.alignedContent}>{children}</span> : iconOnly ? children : <span className={styles.buttonContent}>{children}</span>}
+      {iconOnly && loading ? null : iconOnly ? children : <span {...componentRecipeMarkers("button", "text")} className={cx(styles.buttonContent, appearance?.textAlign && styles.alignedContent)}>{children}</span>}
       {!iconOnly && endIcon && (
               <span className={styles.decorativeIcon} aria-hidden="true">{endIcon}</span>
             )}

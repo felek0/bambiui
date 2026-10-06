@@ -6,6 +6,7 @@ import { Icon } from "../icons";
 import { FieldRoot, labelClassName, type FieldProps } from "./field";
 import styles from "./components.module.css";
 import { appearanceToStyle, mergeAppearanceStyle } from "./appearance";
+import { componentRecipeMarkers } from "./recipe-runtime";
 
 export type CheckboxProps = Omit<
   BaseCheckbox.Root.Props,
@@ -49,6 +50,7 @@ export function Checkbox({
       className={className}
     >
       <Field.Label
+        {...componentRecipeMarkers("checkbox", "row")}
         data-appearance-part="row"
         className={styles.choice}
         style={appearanceToStyle(parts?.row)}
@@ -56,6 +58,7 @@ export function Checkbox({
       >
         <BaseCheckbox.Root
           {...props}
+          {...componentRecipeMarkers("checkbox", "control")}
           data-appearance-part="control"
           disabled={disabled}
           className={styles.checkbox}
@@ -70,7 +73,7 @@ export function Checkbox({
             )}
           />
         </BaseCheckbox.Root>
-        <span data-appearance-part="label" data-hide-label={hideLabel || undefined} className={labelClassName(hideLabel)} style={hideLabel ? undefined : appearanceToStyle(parts?.label)}>
+        <span {...componentRecipeMarkers("checkbox", "label")} data-appearance-part="label" data-hide-label={hideLabel || undefined} className={labelClassName(hideLabel)} style={hideLabel ? undefined : appearanceToStyle(parts?.label)}>
           {hideLabel && parts?.label ? <span style={appearanceToStyle(parts.label)}>{label}</span> : label}
         </span>
       </Field.Label>

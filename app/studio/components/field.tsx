@@ -4,6 +4,7 @@ import { cx } from "../cx";
 import type { Radius, Size } from "./types";
 import styles from "./components.module.css";
 import { appearanceToStyle, type AppearanceProps, type NodeParts } from "./appearance";
+import { componentRecipeMarkers, fieldRecipeStyle } from "./recipe-runtime";
 
 export type ErrorPosition = "below" | "above";
 export type ErrorIcon = "none" | "info" | "warning";
@@ -59,7 +60,7 @@ export function FieldRoot({
   children: ReactNode;
 }) {
   const message = error && (
-    <Field.Error match data-appearance-part="error" className={styles.error} style={appearanceToStyle(parts?.error)} data-error-icon={errorIcon === "none" ? undefined : errorIcon}>
+    <Field.Error match {...componentRecipeMarkers(component, "error")} data-appearance-part="error" className={styles.error} style={appearanceToStyle(parts?.error)} data-error-icon={errorIcon === "none" ? undefined : errorIcon}>
       {errorIcon !== "none" && (
         <svg className={styles.errorIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
           {errorIcon === "info" ? <><circle cx="12" cy="12" r="9" /><path d="M12 11v6m0-10v1" /></> : <path d="M12 3 2 21h20L12 3z M12 9v5m0 3v1" />}
@@ -71,7 +72,8 @@ export function FieldRoot({
   return (
     <Field.Root
       className={cx(styles.field, className)}
-      style={appearanceToStyle(parts?.root)}
+      style={{ ...fieldRecipeStyle(component, size), ...appearanceToStyle(parts?.root) }}
+      {...componentRecipeMarkers(component, "root")}
       data-appearance-part="root"
       data-page-owner={pageOwner}
       data-kind={kind}
@@ -85,7 +87,7 @@ export function FieldRoot({
       {errorPosition === "above" && message}
       {children}
       {description && (
-        <Field.Description data-appearance-part="description" className={styles.description} style={appearanceToStyle(parts?.description)}>
+        <Field.Description {...componentRecipeMarkers(component, "description")} data-appearance-part="description" className={styles.description} style={appearanceToStyle(parts?.description)}>
           {description}
         </Field.Description>
       )}

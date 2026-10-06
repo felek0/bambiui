@@ -1,3 +1,7 @@
+/** Shared anatomy types also used by the pure System style/recipe models. */
+export type SharedComponentId = "button" | "input" | "switch" | "checkbox" | "badge" | "card" | "text";
+export type ComponentStylePart = "root" | "control" | "row" | "label" | "description" | "error" | "header" | "title" | "content" | "footer" | "icon";
+
 /** Shared size scale. Maps to the `controlHeight{Sm,Md,Lg}` tokens. */
 export type Size = "sm" | "md" | "lg";
 

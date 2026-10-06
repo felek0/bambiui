@@ -14,7 +14,7 @@ const root = fileURLToPath(new URL('../out/', import.meta.url));
 const captureDir = fileURLToPath(new URL('../.next/color-review/', import.meta.url));
 const mime = { '.html':'text/html', '.js':'text/javascript', '.css':'text/css', '.json':'application/json', '.svg':'image/svg+xml', '.png':'image/png', '.woff2':'font/woff2', '.ico':'image/x-icon', '.webmanifest':'application/manifest+json' };
 const pending = new Map(), failures = [], errors = [];
-let server, chrome, profile, socket, sequence = 0, passes = 0, acceptImportDialog = false, timedOut = false, currentCheck = 'startup';
+let server, chrome, profile, socket, sequence = 0, passes = 0, acceptImportDialog = false, timedOut = false, currentCheck = 'startup', pressedPointer = null;
 const watchdog = setTimeout(() => {
   timedOut = true;
   console.error(`Smoke test exceeded 180 seconds during ${currentCheck}`);
@@ -23,6 +23,20 @@ const watchdog = setTimeout(() => {
 }, 180000);
 const ids = ['button', 'input', 'card', 'badge', 'switch', 'checkbox', 'text'];
 const foundations = ['colors', 'spacing'];
+const matrixCounts = { button:18, input:9, switch:12, checkbox:12, badge:54, card:9, text:180 };
+const matrixVariants = {
+  button:['primary','secondary','outline','ghost','destructive','link'], input:['default','invalid','readonly'],
+  switch:['checked','unchecked','invalidChecked','invalidUnchecked'], checkbox:['checked','unchecked','invalidChecked','invalidUnchecked'],
+  badge:['solid','subtle','outline'], card:['outlined','elevated','filled'], text:['heading','h1','h2','h3','h4','h5','h6','paragraph','label','caption'],
+};
+const tones = ['neutral','primary','success','warning','danger','info'];
+const matrix = id => `[data-component-matrix="${id}"]`;
+const example = (id, recipe) => `${matrix(id)} [data-recipe-example="${recipe}"]`;
+const recipePart = (id, recipe, part, target) => `${example(id,recipe)} [data-ds-component="${id}"][data-component-part="${part}"]${target ? `[data-component-target="${target}"]` : ''}`;
+const recipeField = (id, recipe, part, target, field) => `[id="system-recipe-${id}-${recipe}-${part}-${target}-${field}"]`;
+const interactions = id => `[data-specimen="${id}"] [data-interaction-examples]`;
+const textFields = ['fontSize','fontWeight','lineHeight','letterSpacing','textAlign','color'];
+const frameFields = ['width','height','minWidth','minHeight','maxWidth','paddingTop','paddingRight','paddingBottom','paddingLeft','marginTop','marginRight','marginBottom','marginLeft','borderTopLeftRadius','borderTopRightRadius','borderBottomRightRadius','borderBottomLeftRadius','gap','background','borderColor','borderWidth','shadow','opacity'];
 const href = (view, id = 'colors') => `${view === 'develop' ? '/develop' : ''}/${id}`;
 const canvas = '[aria-label="Component canvas"]';
 const viewNav = '.studio-header nav.view-switch';
@@ -45,7 +59,7 @@ async function wheel(point, deltaX, deltaY, modifiers = 0) {
 }
 async function canvasBackground() {
   // Locate a real empty hit target; specimen inputs and controls must remain interactive.
-  return evaluate(`(()=>{const e=${q(canvas)},r=e.getBoundingClientRect();for(let y=r.top+12;y<Math.min(r.bottom,innerHeight)-12;y+=8)for(let x=r.left+12;x<Math.min(r.right,innerWidth)-12;x+=8){const t=document.elementFromPoint(x,y);if(t && e.contains(t) && !t.closest('[data-specimen],button,a,input,textarea,select,label'))return {x,y};}throw Error('No visible canvas background')})()`);
+  return evaluate(`(()=>{const e=${q(canvas)},r=e.getBoundingClientRect();for(let y=r.top+12;y<Math.min(r.bottom,innerHeight)-12;y+=8)for(let x=r.left+12;x<Math.min(r.right,innerWidth)-12;x+=8){const t=document.elementFromPoint(x,y);if(t && e.contains(t) && !t.closest('[data-specimen],[data-foundation],button,a,input,textarea,select,label,summary'))return {x,y};}throw Error('No visible canvas background')})()`);
 }
 async function stableCamera() {
   await delay(500);
@@ -60,10 +74,13 @@ async function route(view, id = 'colors') {
   assert.equal(await evaluate(`!!${q('.breadcrumbs')} || !!${q('.viewport-controls')}`), false);
   assert.equal(await evaluate(`${q('#token-editor')}.hidden`), view === 'develop');
   assert.equal(await evaluate(`!!${q('.editor-scope')}`),false);
-  assert.deepEqual(await evaluate(`[...document.querySelectorAll('[data-specimen]')].map(e=>e.dataset.specimen).sort()`), [...ids].sort());
-  assert.deepEqual(await evaluate(`[...document.querySelectorAll('[data-foundation]')].map(e=>e.dataset.foundation).sort()`), ['colors', 'spacing', 'text']);
-  assert.equal(await evaluate(`document.querySelectorAll('[data-specimen="text"]').length`),1);
-  assert.equal(await evaluate(`${q('[data-specimen="text"]')}===${q('[data-foundation="text"]')}`),true);
+  const isFoundation = foundations.includes(id);
+  assert.deepEqual(await evaluate(`[...document.querySelectorAll('[data-specimen]')].map(e=>e.dataset.specimen)`),isFoundation ? [] : [id]);
+  assert.deepEqual(await evaluate(`[...document.querySelectorAll('[data-component-matrix]')].map(e=>e.dataset.componentMatrix)`),isFoundation ? [] : [id]);
+  assert.deepEqual(await evaluate(`[...document.querySelectorAll('[data-foundation]')].map(e=>e.dataset.foundation).sort()`),isFoundation ? foundations : []);
+  assert.equal(await evaluate(`document.querySelectorAll('[data-recipe-example]').length`),isFoundation ? 0 : matrixCounts[id]);
+  assert.equal(await evaluate(`document.querySelectorAll('[data-interaction-examples]').length`),isFoundation || id==='text' ? 0 : 1);
+  assert.equal(await evaluate(`!!${q('[data-system-starter]')} || /Starting component/i.test(${q('.preview-canvas')}.textContent)`),false,'Starting component must not be rendered');
 }
 async function navigate(view, id = 'colors') {
   const currentView = await evaluate(`location.pathname.startsWith('/develop') ? 'develop' : 'design'`);
@@ -85,6 +102,11 @@ async function key(key, code = key) {
 
 function send(method, params = {}) {
   if (timedOut || socket?.readyState !== 1) return Promise.reject(new Error('CDP unavailable'));
+  if(method==='Input.dispatchMouseEvent') {
+    if(params.type==='mousePressed') pressedPointer={x:params.x,y:params.y,button:params.button};
+    else if(params.type==='mouseReleased') pressedPointer=null;
+    else if(pressedPointer) Object.assign(pressedPointer,{x:params.x,y:params.y});
+  }
   return new Promise((resolve, reject) => {
     const id = ++sequence;
     const timer = setTimeout(() => { pending.delete(id); reject(new Error(`CDP timed out: ${method}`)); }, 7000);
@@ -104,7 +126,29 @@ async function wait(expression) {
 }
 const q = selector => `document.querySelector(${JSON.stringify(selector)})`;
 const cameraState = `(() => {const view=${q(canvas)},layer=${q(camera)},matrix=new DOMMatrixReadOnly(getComputedStyle(layer).transform);return {x:matrix.m41,y:matrix.m42,scale:matrix.a,scrollLeft:view.scrollLeft,scrollTop:view.scrollTop,scrollWidth:view.scrollWidth,clientWidth:view.clientWidth,scrollHeight:view.scrollHeight,clientHeight:view.clientHeight}})()`;
-const named = (selector, name) => `[...document.querySelectorAll(${JSON.stringify(selector)})].find(e => (e.textContent.trim() === ${JSON.stringify(name)} || (!e.textContent.trim() && e.getAttribute('aria-label') === ${JSON.stringify(name)})) && !e.closest('[hidden]'))`;
+const named = (selector, name) => `[...document.querySelectorAll(${JSON.stringify(selector)})].find(e => (e.getAttribute('aria-label') || e.textContent.trim()) === ${JSON.stringify(name)} && !e.closest('[hidden]'))`;
+async function assertRecipeSelection(id, recipe, part, target) {
+  const controls = '[data-system-recipe-controls]';
+  await wait(`${q(controls)}?.dataset.recipe===${JSON.stringify(recipe)} && ${q(controls)}?.dataset.part===${JSON.stringify(part)} && ${q(controls)}?.dataset.target===${JSON.stringify(target)}`);
+  assert.equal(await evaluate('location.pathname'),href('design',id));
+  assert.equal(await evaluate(`document.querySelectorAll('${controls}').length`),1);
+  assert.equal(await evaluate(`${named('[aria-label="Component editor"] [role="tab"]','Styles')}.getAttribute('aria-selected')`),'true');
+  assert.deepEqual(await evaluate(`[...document.querySelectorAll('${matrix(id)} [data-recipe-example][data-selected]')].map(e=>e.dataset.recipeExample)`),[recipe]);
+  const prefix = `system-recipe-${id}-${recipe}-${part}-${target}-`;
+  const gap = id!=='text' && ['root','header','content','footer','row','error'].includes(part) || id==='input' && part==='control';
+  const expected = target==='text' ? (['switch','checkbox'].includes(id) && part==='control' || id==='card' && part==='icon' ? ['color'] : textFields) : frameFields.filter(field=>field!=='gap' || gap);
+  assert.deepEqual(await evaluate(`[...${q(controls)}.querySelectorAll('input,select,textarea')].map(e=>e.id.startsWith(${JSON.stringify(prefix)}) ? e.id.slice(${prefix.length}) : e.id).sort()`),[...expected].sort(),'only controls consumed by this exact frame/text layer');
+}
+async function commitRecipe(id, recipe, part, target, field, value) {
+  await fill(recipeField(id,recipe,part,target,field),String(value));
+  await key('Enter');
+  await wait(`JSON.parse(localStorage.getItem('bambiui.design-system.v1')).themes[document.documentElement.dataset.studioTheme].componentRecipes?.[${JSON.stringify(id)}]?.[${JSON.stringify(recipe)}]?.[${JSON.stringify(part)}]?.[${JSON.stringify(field)}]===${JSON.stringify(value)}`);
+}
+async function openInteractions(id) {
+  const selector = interactions(id);
+  if (!await evaluate(`${q(selector)}?.open`)) await click(q(`${selector} > summary`));
+  assert.equal(await evaluate(`${q(selector)}.open`),true);
+}
 async function panel(id, open) {
   const hidden = await evaluate(`${q('#' + id)}.hidden`);
   if (hidden === open) await click(q(`[aria-controls="${id}"]`), false);
@@ -134,7 +178,17 @@ async function componentTab(tab) {
   if (!await evaluate(`(${target})?.getAttribute('aria-selected')==='true'`)) await click(target);
   await wait(`(${target})?.getAttribute('aria-selected')==='true'`);
 }
-async function click(expression, preparePanel = true) {
+async function positionCanvas(expression) {
+  if (!await evaluate(`innerWidth>760 && !!(${expression}).closest('[data-canvas]')`)) return;
+  await wait(`new Promise(resolve=>{const before=getComputedStyle(${q(camera)}).transform;requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(before===getComputedStyle(${q(camera)}).transform)))})`);
+  // Desktop uses a transform camera, not native scrolling. Pan using real wheel input.
+  const offset = await evaluate(`(()=>{const r=(${expression}).getBoundingClientRect(),v=${q(canvas)}.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;return x>=v.left+24 && x<=v.right-24 && y>=v.top+72 && y<=v.bottom-76 ? null : {x:v.x+v.width/2,y:v.y+v.height/2,dx:x-v.x-v.width/2,dy:y-v.y-v.height/2}})()`);
+  if (!offset) return;
+  assert.equal(await evaluate(`${q(canvas)}.contains(document.elementFromPoint(${offset.x},${offset.y}))`),true,'wheel pan must hit the canvas');
+  await wheel({x:offset.x,y:offset.y},offset.dx,offset.dy);
+  await wait(`(()=>{const r=(${expression}).getBoundingClientRect();return Math.abs(r.x+r.width/2-${offset.x})<3 && Math.abs(r.y+r.height/2-${offset.y})<3})()`);
+}
+async function click(expression, preparePanel = true, exact = false) {
   assert.ok(await evaluate(`!!(${expression})`), `Missing control: ${expression}`);
   if (preparePanel && await evaluate('innerWidth<=800')) {
     const target = await evaluate(`(${expression}).closest('#workspace-sidebar,#workspace-inspector,.studio-main')?.id || null`);
@@ -145,7 +199,8 @@ async function click(expression, preparePanel = true) {
   const destination = await evaluate(`(${expression}).closest('a')?.getAttribute('href') || null`);
   await evaluate(`(${expression}).scrollIntoView({block:'center',inline:'center',behavior:'instant'})`);
   await evaluate('new Promise(resolve => requestAnimationFrame(resolve))');
-  const point = await evaluate(`(() => {const e=${expression},r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;const hit=document.elementFromPoint(x,y);if(!e.contains(hit))throw Error('Occluded: '+e.outerHTML+'; rect: '+JSON.stringify(r.toJSON())+'; hit: '+hit?.outerHTML.slice(0,250));return {x,y};})()`);
+  await positionCanvas(expression);
+  const point = await evaluate(`(() => {const e=(${expression}),r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;const candidates=[{x,y},...[0.25,0.5,1,2,4,8].flatMap(inset=>[{x:r.left+inset,y},{x:r.right-inset,y},{x,y:r.top+inset},{x,y:r.bottom-inset}])];for(const point of candidates){const hit=document.elementFromPoint(point.x,point.y);if(${exact ? 'hit===e' : 'e.contains(hit)'})return point;}throw Error('No ${exact ? 'exact frame' : 'visible'} hit: '+e.outerHTML+'; rect: '+JSON.stringify(r.toJSON())+'; hit: '+document.elementFromPoint(x,y)?.outerHTML.slice(0,250));})()`);
   await send('Input.dispatchMouseEvent', { type:'mousePressed', ...point, button:'left', clickCount:1 });
   await send('Input.dispatchMouseEvent', { type:'mouseReleased', ...point, button:'left', clickCount:1 });
   if (destination?.startsWith('/')) {
@@ -170,7 +225,9 @@ async function check(label, run) {
     if (!timedOut) {
       try {
         console.error('EVIDENCE', await evaluate(`JSON.stringify({route:location.pathname,width:innerWidth,height:innerHeight,selected:document.querySelector('.studio-sidebar a[aria-current="page"]')?.getAttribute('href'),leftHidden:document.querySelector('#workspace-sidebar')?.hidden,rightHidden:document.querySelector('#workspace-inspector')?.hidden})`));
-        // A failed assertion must not leave a modal blocking all later System coverage.
+        await capture(`studio-failure-${label.toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,100)}`);
+        // A failed gesture/modal must not contaminate later System coverage.
+        if(pressedPointer) await send('Input.dispatchMouseEvent',{type:'mouseReleased',...pressedPointer,clickCount:1});
         for (const label of ['Close color builder','Close color pair results','Close export dialog']) {
           const target = q(`[aria-label="${label}"]`);
           if (await evaluate(`!!(${target}) && ${target}.getClientRects().length>0`)) await click(target);
@@ -313,10 +370,8 @@ try {
 
     assert.ok(await evaluate(`(()=>{const area=${q('.preview-frame')}.getBoundingClientRect(),specimen=${q('.theme-pane')}.getBoundingClientRect();return ['left','right','top','bottom'].every(edge=>Math.abs(specimen[edge]-area[edge])<2)})()`),'preview fills the work area without an inset border');
     assert.equal(await evaluate(`${q('.canvas-label')}`),null);
-    for(const foundation of ['colors','spacing','text']) assert.ok(await evaluate(`${q(`[data-foundation="${foundation}"]`)}.getBoundingClientRect().width > 0 && ${q(`[data-foundation="${foundation}"]`)}.getBoundingClientRect().height > 0`),`visible ${foundation} foundation`);
-    assert.equal(await evaluate(`getComputedStyle(${q('.theme-pane:not([hidden]) section[aria-label="Button preview"]')}).borderTopWidth`),'0px');
-    assert.equal(await evaluate(`getComputedStyle(${q('.theme-pane:not([hidden]) section[aria-label="Button preview"]')}).backgroundColor`),'rgba(0, 0, 0, 0)');
-    assert.equal(await evaluate(`getComputedStyle(${q('.theme-pane:not([hidden]) section[aria-label="Card preview"] article')}).borderTopWidth`),'1px');
+    for(const foundation of foundations) assert.ok(await evaluate(`${q(`[data-foundation="${foundation}"]`)}.getBoundingClientRect().width > 0 && ${q(`[data-foundation="${foundation}"]`)}.getBoundingClientRect().height > 0`),`visible ${foundation} foundation`);
+    await route('design','colors');
     assert.equal(await evaluate(`document.querySelectorAll('[data-palette-builder] button').length`),5);
     await click(q('[aria-label="Close color builder"]'));
     await wait(`!${q('[data-palette-builder]')}`);
@@ -324,11 +379,12 @@ try {
   });
   await check('component typography consumes exported system constants',async()=>{
     const pane='[data-ds-theme="light"]';
-    for(const [selector,property,constant] of [
-      ['[data-specimen="button"] button[data-variant="primary"]','fontWeight','--ds-button-font-weight'],
-      ['[data-specimen="card"] [class*="cardTitle"]','fontWeight','--ds-card-title-font-weight'],
-      ['[data-specimen="badge"] [data-variant="outline"]','lineHeight','--ds-badge-line-height'],
+    for(const [id,selector,property,constant] of [
+      ['button',recipePart('button','primary.md','text'),'fontWeight','--ds-button-font-weight'],
+      ['card',recipePart('card','outlined.md','title'),'fontWeight','--ds-card-title-font-weight'],
+      ['badge',recipePart('badge','outline.neutral.md','text'),'lineHeight','--ds-badge-line-height'],
     ]) {
+      await navigate('design',id);
       const computed=await evaluate(`getComputedStyle(${q(selector)})[${JSON.stringify(property)}]`);
       const value=await evaluate(`${q(pane)}.style.getPropertyValue(${JSON.stringify(constant)}).trim()`);
       if(property === 'lineHeight') {
@@ -337,12 +393,15 @@ try {
       } else assert.equal(computed,value,`${selector} uses ${constant}`);
     }
   });
-  await check('System separates Styles from Parameters and reveals base tokens only through their disclosure',async()=>{
+  await check('System puts exact Styles first, with Parameters and collapsed shared/base defaults separate',async()=>{
     await navigate('design','button');
-    assert.deepEqual(await evaluate(`[...document.querySelectorAll('[aria-label="Component editor"] [role="tab"]')].map(e=>e.textContent.trim())`),['Parameters','Styles']);
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('[aria-label="Component editor"] [role="tab"]')].map(e=>e.textContent.trim())`),['Styles','Parameters']);
     assert.equal(await evaluate(`${named('[aria-label="Component editor"] [role="tab"]','Styles')}.getAttribute('aria-selected')`),'true');
-    assert.equal(await evaluate(`${q('[data-system-base-tokens]')}.open`),false);
+    assert.equal(await evaluate(`!!${q('[data-system-recipe-controls]')}`),false,'no recipe is selected by insertion defaults');
+    assert.ok(await evaluate(`${q('#token-editor')}.textContent.includes('Select a frame or text')`));
+    for(const selector of ['[data-system-shared-defaults]','[data-system-base-tokens]']) assert.equal(await evaluate(`${q(selector)}.open`),false);
     assert.equal(await evaluate(`${q('#token-paddingX')}.checkVisibility()`),false,'base token controls start collapsed');
+    assert.equal(await evaluate(`${q('#token-paddingX')}.closest('[data-system-base-tokens]')!==null`),true);
     await click(q('[data-system-base-tokens] > summary'));
     assert.equal(await evaluate(`${q('[data-system-base-tokens]')}.open && ${q('#token-paddingX')}.checkVisibility()`),true);
     await click(q('[data-system-base-tokens] > summary'));
@@ -350,67 +409,313 @@ try {
     assert.equal(await evaluate(`${q('[aria-label="Default Text"]')}.value`),'Continue');
     assert.equal(await evaluate(`${q('[aria-label="Default Variant"]')}.value`),'primary');
     assert.equal(await evaluate(`${q('[aria-label="Default Size"]')}.value`),'md');
-    assert.equal(await evaluate(`!!${q('#token-editor [aria-label="System component part"]')} || !!${q('#token-editor [data-system-base-tokens]')} || !!${q('#token-editor [id^="system-style-"]')}`),false,'Parameters does not expose style controls');
+    assert.equal(await evaluate(`!!${q('#token-editor [data-system-recipe-controls], #token-editor [data-system-shared-defaults], #token-editor [data-system-base-tokens]')}`),false,'Parameters does not expose style controls');
     await componentTab('Styles');
     assert.equal(await evaluate(`${q('[data-system-base-tokens]')}.open`),false);
-    assert.equal(await evaluate(`${q('[aria-label="System component part"]')}.value`),'root');
-    assert.deepEqual(await evaluate(`[...document.querySelectorAll('[data-system-starter]')].map(e=>e.dataset.systemStarter).sort()`),[...ids].sort());
-    assert.deepEqual(await evaluate(`[...document.querySelectorAll('[data-system-starter="card"] [data-page-node]')].map(e=>e.tagName)`),['DIV','DIV','ARTICLE','DIV','STRONG','P','DIV','P','DIV','BUTTON']);
+    assert.equal(await evaluate(`!!${q('[aria-label="System component part"]')}`),false);
+    await select('[aria-label="Shared default layer"]','root');
+    assert.equal(await evaluate(`${q('[id="system-shared-button-root-paddingLeft"]')}.closest('[data-system-shared-defaults]')!==null`),true);
+    await click(q('[data-system-shared-defaults] > summary'));
   });
-  await check('expanded specimens expose states and read-only choices resist pointer and keyboard input',async()=>{
-    try {
-      for(const [id,label] of [['switch','Read-only setting'],['checkbox','Read-only selection']]) {
-        await navigate('design',id);
-        await stableCamera();
-        const specimen=`[data-specimen="${id}"]`;
-        const control=`${specimen} [role="${id}"][aria-readonly="true"]`;
-        assert.equal(await evaluate(`document.querySelectorAll(${JSON.stringify(control)}).length`),1,`${id} read-only control`);
-        assert.equal(await evaluate(`${q(control)}.getAttribute('aria-checked')`),'true');
-        assert.equal(await evaluate(`${q(control)}.closest('label')?.textContent.trim()`),label);
-        await click(q(control));
-        assert.equal(await evaluate(`${q(control)}.getAttribute('aria-checked')`),'true',`${id} pointer click must not toggle`);
-        await evaluate(`${q(control)}.focus({preventScroll:true})`);
-        assert.equal(await evaluate(`document.activeElement===${q(control)}`),true,`${id} should be keyboard focusable`);
-        await key(' ','Space');
-        assert.equal(await evaluate(`${q(control)}.getAttribute('aria-checked')`),'true',`${id} Space must not toggle`);
-        await key('Enter');
-        assert.equal(await evaluate(`${q(control)}.getAttribute('aria-checked')`),'true',`${id} Enter must not toggle`);
-        assert.equal(await evaluate(`${q(`${specimen} [role="${id}"][aria-disabled="true"]`)}.getAttribute('aria-checked')`),'true',`${id} disabled checked state`);
-      }
-      assert.equal(await evaluate(`${q('[data-specimen="switch"] [role="switch"][aria-invalid="true"]')}?.getAttribute('aria-checked')`),'false','switch error state');
-      assert.equal(await evaluate(`${q('[data-specimen="checkbox"] [role="checkbox"][aria-checked="mixed"]')}?.closest('[data-size]')?.dataset.size`),'lg','large indeterminate checkbox');
-      assert.ok(await evaluate(`${q('[data-specimen="checkbox"] [role="checkbox"][aria-checked="mixed"]')}?.getAttribute('aria-describedby')`),'indeterminate checkbox description');
-      assert.equal(await evaluate(`${q('[data-specimen="checkbox"] [role="checkbox"][aria-invalid="true"]')}?.getAttribute('aria-required')`),'true','required checkbox error');
-      await navigate('design','input');
-      await stableCamera();
-      const email='[data-specimen="input"] input[type="email"]:not([data-page-node])';
-      assert.equal(await evaluate(`${q(email)}.required && !${q(email)}.checkValidity()`),true,'empty required email');
-      await fill(email,'not-an-email');
-      assert.equal(await evaluate(`${q(email)}.validity.typeMismatch && !${q(email)}.checkValidity()`),true,'invalid email');
-      assert.equal(await evaluate(`${q('[data-specimen="input"] input[type="url"][aria-invalid="true"]')}?.value`),'studio','URL error example');
-      assert.ok(await evaluate(`!!${q('[data-specimen="input"] input[type="url"] + [aria-hidden="true"]')}`),'URL end icon');
-      assert.equal(await evaluate(`${q('[data-specimen="input"] input:disabled')}?.closest('[data-size]')?.dataset.size`),'lg','disabled large input');
-      assert.ok(await evaluate(`!!${q('[data-specimen="card"] article[data-variant="elevated"][data-size="lg"] [class*="cardContent"]')}`),'large card content');
-      assert.ok(await evaluate(`!!${q('[data-specimen="badge"] [data-variant="outline"][data-tone="info"] [aria-hidden="true"]')}`),'info outline badge start icon');
-      for(const [tone,size] of [['primary','lg'],['info','sm'],['danger','lg']])
-        assert.ok(await evaluate(`!!${q(`[data-specimen="text"] [data-tone="${tone}"][data-size="${size}"]`)}`),`Text ${tone}/${size}`);
-    } finally {
-      if(await evaluate(`${q('[data-specimen="input"] input[type="email"]:not([data-page-node])')}?.value`)) {
-        await stableCamera();
-        await click(q('[data-specimen="input"] input[type="email"]:not([data-page-node])'));
-        await send('Input.dispatchKeyEvent',{type:'keyDown',key:'a',code:'KeyA',modifiers:4,commands:['selectAll']});
-        await send('Input.dispatchKeyEvent',{type:'keyUp',key:'a',code:'KeyA',modifiers:4});
-        await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8});
-        await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8});
-        await wait(`${q('[data-specimen="input"] input[type="email"]:not([data-page-node])')}.value === ''`);
-      }
-      await navigate('design','button');
+  for(const [id,count] of Object.entries(matrixCounts)) await check(`${id} matrix renders all ${count} exact combinations and no other component board`,async()=>{
+    await navigate('design',id);
+    const expected = matrixVariants[id].flatMap(variant=>(['badge','text'].includes(id) ? tones : [null]).flatMap(tone=>['sm','md','lg'].map(size=>[variant,tone,size].filter(Boolean).join('.'))));
+    assert.equal(expected.length,count);
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('${matrix(id)} [data-recipe-example]')].map(e=>e.dataset.recipeExample)`),expected);
+    assert.equal(await evaluate(`document.querySelectorAll('${matrix(id)} [data-recipe-example] > button[aria-label^="Select "]').length`),count);
+    assert.equal(await evaluate(`document.querySelectorAll('${matrix(id)} [data-recipe-body][aria-hidden="true"]').length`),count);
+    await wait(`[...document.querySelectorAll('${matrix(id)} [data-recipe-body] :is(a,button,input,select,textarea,[tabindex])')].every(e=>e.tabIndex===-1)`);
+    assert.ok(await evaluate(`[...document.querySelectorAll('${matrix(id)} [data-recipe-example]')].every(e=>{const root=e.querySelector('[data-ds-component="${id}"][data-component-part="root"]');return root && root.dataset.size===e.dataset.recipeExample.split('.').at(-1)})`),'each example uses its own public size');
+    if(id!=='text') assert.equal(await evaluate(`${q(interactions(id))}.open`),false,'behavior examples start collapsed on a newly mounted component');
+    assert.equal(await evaluate(`!!${q('[data-foundation="text"]')} || !!${q('[data-system-starter]')}`),false);
+  });
+  await check('Card exact frame/text hits expose only their own controls; nested Text and Button stay in Card scope',async()=>{
+    await navigate('design','card');
+    await stableCamera();
+    await click(q(recipePart('card','outlined.md','root')),true,true);
+    await assertRecipeSelection('card','outlined.md','root','frame');
+    await click(q(recipePart('card','outlined.md','title')));
+    await assertRecipeSelection('card','outlined.md','title','text');
+    assert.equal(await evaluate(`${q(recipePart('card','outlined.md','title'))}.dataset.systemSelectedPart`),'text');
+    for(const [part,child] of [['content','[data-ds-component="text"][data-component-target="text"]'],['footer','[data-ds-component="button"][data-component-part="text"]']]) {
+      await click(q(`${recipePart('card','outlined.md',part)} ${child}`));
+      await assertRecipeSelection('card','outlined.md',part,'text');
+      assert.equal(await evaluate(`${q(`${recipePart('card','outlined.md',part)} ${child}`)}.dataset.systemSelectedPart`),'text');
     }
+    await capture('studio-matrix-card-footer');
+    await componentTab('Parameters');
+    await click(q(recipePart('card','outlined.md','title')));
+    await assertRecipeSelection('card','outlined.md','title','text');
+  });
+  await check('Card outlined.md title font size/weight affect only that combination and title, with undo/reset/export',async()=>{
+    // A pristine workspace intentionally has no persisted system until its first edit.
+    await click(q('[aria-label="Export tokens"]'));
+    await click(named('[aria-label="Export format"] button','JSON'));
+    const before = JSON.parse(await evaluate(`${q('[aria-label="Exported tokens"]')}.textContent`));
+    await click(named('[aria-label="Export format"] button','CSS'));
+    await click(q('[aria-label="Close export dialog"]'));
+    const snapshot = () => evaluate(`[...document.querySelectorAll('${matrix('card')} [data-recipe-body] [data-component-part]')].map(e=>{const s=getComputedStyle(e);return {recipe:e.closest('[data-recipe-example]').dataset.recipeExample,component:e.dataset.dsComponent,part:e.dataset.componentPart,fontSize:s.fontSize,fontWeight:s.fontWeight}})`);
+    const original = await snapshot();
+    assert.equal(await evaluate(`getComputedStyle(${q('[data-specimen="card"]')}).borderTopWidth`),'0px');
+    assert.equal(await evaluate(`getComputedStyle(${q('[data-specimen="card"]')}).backgroundColor`),'rgba(0, 0, 0, 0)','matrix board does not paint another component surface');
+    assert.equal(await evaluate(`getComputedStyle(${q(recipePart('card','outlined.md','root'))}).borderTopWidth`),'1px');
+    await commitRecipe('card','outlined.md','title','text','fontSize',31);
+    await commitRecipe('card','outlined.md','title','text','fontWeight',650);
+    const expected = original.map(entry=>entry.recipe==='outlined.md' && entry.component==='card' && entry.part==='title' ? {...entry,fontSize:'31px',fontWeight:'650'} : entry);
+    assert.deepEqual(await snapshot(),expected,'other sizes, variants, Card slots and nested components retain typography');
+    await capture('studio-matrix-card-title');
+    for(const mode of ['light','dark']) assert.deepEqual((await stored()).themes[mode].componentRecipes.card['outlined.md'].title,{fontSize:31,fontWeight:650});
+    const customized = await stored();
+    await click(q('[aria-label="Undo change"]'));
+    assert.equal(await evaluate(`getComputedStyle(${q(recipePart('card','outlined.md','title'))}).fontWeight`),original.find(entry=>entry.recipe==='outlined.md' && entry.part==='title').fontWeight);
+    await click(q('[aria-label="Redo change"]'));
+    assert.deepEqual(await stored(),customized);
+    await click(q('[aria-label="Export tokens"]'));
+    const css = await evaluate(`${q('[aria-label="Exported tokens"]')}.textContent`);
+    assert.ok(css.includes('--card-recipe-outlined-md-title-font-size: 31px;') && css.includes('--card-recipe-outlined-md-title-font-weight: 650;'));
+    await click(named('[aria-label="Export format"] button','JSON'));
+    assert.deepEqual(JSON.parse(await evaluate(`${q('[aria-label="Exported tokens"]')}.textContent`)),customized);
+    await click(named('[aria-label="Export format"] button','CSS'));
+    await click(q('[aria-label="Close export dialog"]'));
+    await navigate('develop','card');
+    assert.ok(await evaluate(`${q('.workspace-panel--develop')}.textContent.includes('--card-recipe-outlined-md-title-font-size') && ${q('.workspace-panel--develop')}.textContent.includes('outlined.md')`));
+    await navigate('design','card');
+    await assertRecipeSelection('card','outlined.md','title','text');
+    await click(named('[data-system-recipe-controls] button','Reset text styles'));
+    const reset = structuredClone(before);
+    for(const mode of ['light','dark']) reset.themes[mode].componentRecipes ??= {};
+    assert.deepEqual(await stored(),reset,'reset prunes the authored entries without materializing inherited values');
+    assert.deepEqual(await snapshot(),original);
+  });
+  await check('keyboard example label selects a recipe, then inspector layers select frame/text without native activation',async()=>{
+    await navigate('design','card');
+    const label = q(`${example('card','outlined.md')} > button[aria-label="Select Card Outlined Medium frame"]`);
+    await positionCanvas(label);
+    await evaluate(`${label}.focus({preventScroll:true})`);
+    await key('Enter');
+    await assertRecipeSelection('card','outlined.md','root','frame');
+    assert.equal(await evaluate(`document.activeElement===${label}`),true);
+    const {nodes}=await send('Accessibility.getFullAXTree');
+    for(const name of ['Select Card Outlined Medium frame','Select Title text','Select Title frame']) assert.ok(nodes.some(node=>!node.ignored && node.name?.value===name),`matrix/layer AX name: ${name}`);
+    const first = q('[data-system-recipe-controls] [aria-label="Select Card frame"]');
+    await evaluate(`${first}.focus({preventScroll:true})`);
+    await key('ArrowDown');
+    assert.equal(await evaluate('document.activeElement.getAttribute("aria-label")'),'Select Header frame');
+    await key('ArrowDown');
+    assert.equal(await evaluate('document.activeElement.getAttribute("aria-label")'),'Select Title text');
+    await assertRecipeSelection('card','outlined.md','root','frame');
+    await key('Enter');
+    await assertRecipeSelection('card','outlined.md','title','text');
+    await evaluate(`${q('[data-system-recipe-controls] [aria-label="Select Title text"]')}.focus({preventScroll:true})`);
+    await key('ArrowDown');
+    assert.equal(await evaluate('document.activeElement.getAttribute("aria-label")'),'Select Title frame');
+    await key(' ','Space');
+    await assertRecipeSelection('card','outlined.md','title','frame');
+  });
+  await check('Button and Badge label hits differ from their frames; design clicks never activate native controls',async()=>{
+    for(const [id,recipe] of [['button','primary.md'],['badge','outline.info.md']]) {
+      await navigate('design',id);
+      await stableCamera();
+      const before = await stored();
+      await click(q(recipePart(id,recipe,'root')),true,true);
+      await assertRecipeSelection(id,recipe,'root','frame');
+      await evaluate(`window.__matrixActivations=0;${q(recipePart(id,recipe,'root'))}.addEventListener('click',()=>window.__matrixActivations++)`);
+      await click(q(recipePart(id,recipe,'text')));
+      await assertRecipeSelection(id,recipe,'text','text');
+      assert.equal(await evaluate('window.__matrixActivations'),0,'capture selection must stop native target handlers');
+      assert.equal(await evaluate(`!!document.activeElement.closest('[data-recipe-body]')`),false,'design labels do not focus underlying buttons');
+      assert.deepEqual(await stored(),before,'selection must not create style or default edits');
+      await capture(`studio-matrix-${id}-text`);
+    }
+    for(const id of ['switch','checkbox']) {
+      await navigate('design',id);
+      const control = recipePart(id,'unchecked.md','control');
+      await click(q(control));
+      await assertRecipeSelection(id,'unchecked.md','control','frame');
+      assert.equal(await evaluate(`${q(control)}.getAttribute('aria-checked')`),'false','selection must not toggle an unchecked choice');
+      await click(q(recipePart(id,'checked.md','label')));
+      await assertRecipeSelection(id,'checked.md','label','text');
+      assert.equal(await evaluate(`${q(recipePart(id,'checked.md','control'))}.getAttribute('aria-checked')`),'true','label selection must not activate its native choice');
+    }
+  });
+  await check('exact field recipes omit valid Error layers and expose real invalid Error layers',async()=>{
+    const before = await stored();
+    for(const [id,states] of [['input',['default','invalid']],['switch',['checked','unchecked','invalidChecked','invalidUnchecked']],['checkbox',['checked','unchecked','invalidChecked','invalidUnchecked']]]) {
+      await navigate('design',id);
+      for(const state of states) {
+        const recipe = `${state}.md`;
+        const invalid = state.startsWith('invalid');
+        await click(q(`${example(id,recipe)} > button`));
+        await assertRecipeSelection(id,recipe,'root','frame');
+        assert.deepEqual(await evaluate(`[...document.querySelectorAll('[data-system-recipe-controls] [aria-label^="Select Error "]')].map(e=>e.getAttribute('aria-label')).sort()`),invalid ? ['Select Error frame','Select Error text'] : [],`${id}/${recipe}: only reachable Error targets appear`);
+        assert.equal(await evaluate(`document.querySelectorAll(${JSON.stringify(recipePart(id,recipe,'error'))}).length`),invalid ? 1 : 0,`${id}/${recipe}: layer list matches actual message anatomy`);
+        if(invalid) {
+          await click(q(recipePart(id,recipe,'error')));
+          await assertRecipeSelection(id,recipe,'error','text');
+          await wait(`${q(recipePart(id,recipe,'error'))}.dataset.systemSelectedPart==='text'`);
+          assert.ok(await evaluate(`${q(recipePart(id,recipe,'error'))}.textContent.trim().length>0`));
+        } else assert.equal(await evaluate(`!!${q(`[data-system-recipe-controls] [id^="system-recipe-${id}-${recipe}-error-"]`)}`),false,'valid recipes cannot expose Error token controls');
+      }
+    }
+    assert.deepEqual(await stored(),before,'inspecting reachable layers must not author tokens or insertion defaults');
+  });
+  await check('Input invalid error and control have separate exact frame/text scopes and clicks do not focus inputs',async()=>{
+    await navigate('design','input');
+    await stableCamera();
+    const recipe = 'invalid.md';
+    const native = `${example('input',recipe)} input`;
+    const value = await evaluate(`${q(native)}.value`);
+    await click(q(recipePart('input',recipe,'error')));
+    await assertRecipeSelection('input',recipe,'error','text');
+    await capture('studio-matrix-input-error');
+    await click(q(recipePart('input',recipe,'control','frame')),true,true);
+    await assertRecipeSelection('input',recipe,'control','frame');
+    await click(q(native));
+    await assertRecipeSelection('input',recipe,'control','text');
+    await capture('studio-matrix-input-control');
+    assert.equal(await evaluate(`${q(native)}.getAttribute('aria-invalid')`),'true');
+    assert.equal(await evaluate(`${q(native)}.value`),value);
+    assert.equal(await evaluate(`document.activeElement===${q(native)}`),false);
+    await click(q(recipePart('input',recipe,'label')));
+    await assertRecipeSelection('input',recipe,'label','text');
+    assert.equal(await evaluate(`document.activeElement===${q(native)}`),false,'field label default activation must be prevented');
+  });
+  await check('readonly Input Error selection reveals and highlights its message without changing recipe or native readonly',async()=>{
+    await navigate('design','input');
+    const recipe = 'readonly.md';
+    const error = recipePart('input',recipe,'error');
+    const native = `${example('input',recipe)} input`;
+    const readonlyErrors = `${matrix('input')} [data-recipe-example^="readonly."] [data-component-part="error"]`;
+    const before = await stored();
+    const value = await evaluate(`${q(native)}.value`);
+    await click(q(`${example('input',recipe)} > button`));
+    await assertRecipeSelection('input',recipe,'root','frame');
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('[data-system-recipe-controls] [aria-label^="Select Error "]')].map(e=>e.getAttribute('aria-label')).sort()`),['Select Error frame','Select Error text'],'readonly takes precedence over invalid, so its optional Error layer is reachable');
+    assert.equal(await evaluate(`document.querySelectorAll(${JSON.stringify(readonlyErrors)}).length`),0,'readonly messages stay absent until their Error layer is selected');
+    await click(q('[data-system-recipe-controls] [aria-label="Select Error text"]'));
+    await assertRecipeSelection('input',recipe,'error','text');
+    const assertReadonlyError = async () => {
+      await wait(`${q(error)}?.dataset.systemSelectedPart==='text'`);
+      await positionCanvas(q(error));
+      assert.equal(await evaluate(`${q(error)}.checkVisibility()`),true);
+      assert.equal(await evaluate(`${q(error)}.textContent.trim()`),'Please check this field.');
+      assert.equal(await evaluate(`document.querySelectorAll(${JSON.stringify(readonlyErrors)}).length`),1,'only the selected readonly size reveals its message');
+      assert.equal(await evaluate(`getComputedStyle(${q(error)}).outlineStyle`),'solid');
+      assert.ok(await evaluate(`parseFloat(getComputedStyle(${q(error)}).outlineWidth)>0`));
+      assert.equal(await evaluate(`${q(native)}.readOnly && ${q(native)}.hasAttribute('readonly') && !${q(native)}.disabled`),true);
+      assert.equal(await evaluate(`${q(native)}.value`),value);
+      assert.equal(await evaluate(`${q(native)}.getAttribute('aria-invalid')`),'true');
+      assert.ok(await evaluate(`${q(error)}.id && (${q(native)}.getAttribute('aria-describedby') || '').split(/\\s+/).includes(${q(error)}.id)`),'actual error message stays associated with the readonly control');
+    };
+    await assertReadonlyError();
+    await click(q(error));
+    await assertRecipeSelection('input',recipe,'error','text');
+    assert.equal(await evaluate(`document.activeElement===${q(native)}`),false,'message selection does not activate the native input');
+    assert.deepEqual(await stored(),before,'revealing optional anatomy does not mutate insertion defaults');
+    await commitRecipe('input',recipe,'error','text','color','#234567');
+    assert.equal(await evaluate(`getComputedStyle(${q(error)}).color`),'rgb(35, 69, 103)','accepted readonly Error token is consumed by the visible message');
+    await click(q('[data-system-recipe-controls] [aria-label="Select Label text"]'));
+    await assertRecipeSelection('input',recipe,'label','text');
+    assert.equal(await evaluate(`document.querySelectorAll(${JSON.stringify(readonlyErrors)}).length`),0,'leaving Error hides its optional message even when its recipe has an authored token');
+    assert.equal(await evaluate(`${q(native)}.readOnly`),true);
+    await navigate('design','colors');
+    await click(q('.editor-title-actions button[aria-label*="System color pairs"]'));
+    await click(named('[data-contrast-check="input.recipe.readonly.md.error/text"] button','Edit Input / readonly md / error text color'));
+    await wait(`location.pathname==='/input' && document.activeElement?.id==='system-recipe-input-readonly.md-error-text-color'`);
+    await assertRecipeSelection('input',recipe,'error','text');
+    assert.equal(await evaluate(`${q(recipeField('input',recipe,'error','text','color'))}.value`),'#234567');
+    await assertReadonlyError();
+    await capture('studio-matrix-input-readonly-error');
+    await click(q('[aria-label="Undo change"]'));
+    assert.deepEqual(await stored(),before);
+    await click(q('[data-system-recipe-controls] [aria-label="Select Label text"]'));
+    await assertRecipeSelection('input',recipe,'label','text');
+    assert.equal(await evaluate(`document.querySelectorAll(${JSON.stringify(readonlyErrors)}).length`),0);
+  });
+  await check('recipe colors stay theme-specific while dimensions and typography stay shared',async()=>{
+    await navigate('design','card');
+    await click(named(themeControl + ' button','Light'));
+    await click(q(recipePart('card','outlined.md','title')));
+    const before = await stored();
+    await commitRecipe('card','outlined.md','title','text','color','#123456');
+    assert.deepEqual((await stored()).themes.dark,before.themes.dark);
+    await click(named(themeControl + ' button','Dark'));
+    await assertRecipeSelection('card','outlined.md','title','text');
+    assert.equal(await evaluate(`${q(recipeField('card','outlined.md','title','text','color'))}.value`),'');
+    assert.equal(await evaluate(`${q('[data-ds-theme]')}.style.getPropertyValue('--card-recipe-outlined-md-title-color')`),'');
+    assert.notEqual(await evaluate(`getComputedStyle(${q(recipePart('card','outlined.md','title'))}).color`),'rgb(18, 52, 86)');
+    await commitRecipe('card','outlined.md','title','text','color','#abcdef');
+    await commitRecipe('card','outlined.md','title','text','fontSize',29);
+    await click(q('[data-system-recipe-controls] [aria-label="Select Card frame"]'));
+    await commitRecipe('card','outlined.md','root','frame','paddingLeft',23);
+    const customized = await stored();
+    for(const mode of ['light','dark']) {
+      assert.equal(customized.themes[mode].componentRecipes.card['outlined.md'].title.fontSize,29);
+      assert.equal(customized.themes[mode].componentRecipes.card['outlined.md'].root.paddingLeft,23);
+    }
+    assert.equal(customized.themes.light.componentRecipes.card['outlined.md'].title.color,'#123456');
+    assert.equal(customized.themes.dark.componentRecipes.card['outlined.md'].title.color,'#abcdef');
+    for(const [label,color] of [['Light','rgb(18, 52, 86)'],['Dark','rgb(171, 205, 239)']]) {
+      await click(named(themeControl + ' button',label));
+      assert.equal(await evaluate(`getComputedStyle(${q(recipePart('card','outlined.md','title'))}).color`),color);
+      assert.equal(await evaluate(`getComputedStyle(${q(recipePart('card','outlined.md','title'))}).fontSize`),'29px');
+      assert.equal(await evaluate(`getComputedStyle(${q(recipePart('card','outlined.md','root'))}).paddingLeft`),'23px');
+    }
+    for(let i=0;i<4;i++) await click(q('[aria-label="Undo change"]'));
+    assert.deepEqual(await stored(),before);
+    await click(named(themeControl + ' button','Light'));
+  });
+  await check('optional interaction previews retain real states and read-only choices resist pointer/keyboard input',async()=>{
+    for(const [id,label] of [['switch','Read-only setting'],['checkbox','Read-only selection']]) {
+      await navigate('design',id);
+      await openInteractions(id);
+      const specimen=interactions(id);
+      const control=`${specimen} [role="${id}"][aria-readonly="true"]`;
+      assert.equal(await evaluate(`document.querySelectorAll(${JSON.stringify(control)}).length`),1,`${id} read-only control`);
+      assert.equal(await evaluate(`${q(control)}.getAttribute('aria-checked')`),'true');
+      assert.equal(await evaluate(`${q(control)}.closest('label')?.textContent.trim()`),label);
+      await click(q(control));
+      assert.equal(await evaluate(`${q(control)}.getAttribute('aria-checked')`),'true',`${id} pointer click must not toggle`);
+      await evaluate(`${q(control)}.focus({preventScroll:true})`);
+      assert.equal(await evaluate(`document.activeElement===${q(control)}`),true,`${id} should be keyboard focusable`);
+      for(const [name,code] of [[' ','Space'],['Enter','Enter']]) {
+        await key(name,code);
+        assert.equal(await evaluate(`${q(control)}.getAttribute('aria-checked')`),'true',`${id} ${code} must not toggle`);
+      }
+      assert.equal(await evaluate(`${q(`${specimen} [role="${id}"][aria-disabled="true"]`)}.getAttribute('aria-checked')`),'true',`${id} disabled checked state`);
+      if(id==='switch') assert.equal(await evaluate(`${q(`${specimen} [role="switch"][aria-invalid="true"]`)}.getAttribute('aria-checked')`),'false','switch error state');
+      else {
+        assert.equal(await evaluate(`${q(`${specimen} [aria-checked="mixed"]`)}.closest('[data-size]').dataset.size`),'lg','large indeterminate checkbox');
+        assert.ok(await evaluate(`${q(`${specimen} [aria-checked="mixed"]`)}.getAttribute('aria-describedby')`));
+        assert.equal(await evaluate(`${q(`${specimen} [role="checkbox"][aria-invalid="true"]`)}.getAttribute('aria-required')`),'true');
+      }
+    }
+    await navigate('design','input');
+    await openInteractions('input');
+    const email=`${interactions('input')} input[type="email"]`;
+    assert.equal(await evaluate(`${q(email)}.required && !${q(email)}.checkValidity()`),true,'empty required email');
+    await fill(email,'not-an-email');
+    assert.equal(await evaluate(`${q(email)}.validity.typeMismatch && !${q(email)}.checkValidity()`),true,'invalid email');
+    assert.equal(await evaluate(`${q(`${interactions('input')} input[type="url"][aria-invalid="true"]`)}.value`),'studio','URL error example');
+    assert.ok(await evaluate(`!!${q(`${interactions('input')} input[type="url"] + [aria-hidden="true"]`)}`),'URL end icon');
+    assert.equal(await evaluate(`${q(`${interactions('input')} input:disabled`)}.closest('[data-size]').dataset.size`),'lg');
+    await fill(email,'');
+    await navigate('design','card');
+    await openInteractions('card');
+    assert.equal(await evaluate(`document.querySelectorAll('${interactions('card')} article:not([data-instance-specimen])').length`),3,'all three real Card variants remain available');
+    assert.ok(await evaluate(`!!${q(`${interactions('card')} article[data-variant="elevated"][data-size="lg"] [data-component-part="content"]`)}`));
+    await navigate('design','badge');
+    await openInteractions('badge');
+    assert.ok(await evaluate(`!!${q(`${interactions('badge')} [data-variant="outline"][data-tone="info"] [aria-hidden="true"]`)}`),'info outline badge start icon');
+    await navigate('design','text');
+    for(const [tone,size] of [['primary','lg'],['info','sm'],['danger','lg']]) assert.ok(await evaluate(`!!${q(recipePart('text',`paragraph.${tone}.${size}`,'root'))}`),`Text ${tone}/${size}`);
+    await navigate('design','button');
   });
   await check('loading action keeps focus and blocks repeated activation',async()=>{
     await navigate('design','button');
     await stableCamera();
-    const demo='[data-save-demo]';
+    await openInteractions('button');
+    const demo=`${interactions('button')} [data-save-demo]`;
     await click(q(`${demo} button`));
     await wait(`${q(`${demo} button`)}.getAttribute('aria-busy') === 'true'`);
     assert.equal(await evaluate(`${q(demo)}.dataset.saveCount`),'1');
@@ -527,7 +832,7 @@ try {
     await select('#font-family-preset','mono');
     await wait(`${q('[data-ds-theme="light"]')}.style.getPropertyValue('--ds-font-family').includes('Menlo')`);
     for(const mode of ['light','dark']) assert.equal((await stored()).themes[mode].fontFamily,'mono');
-    assert.ok((await evaluate(`getComputedStyle(${q('[data-specimen="text"] [data-variant="paragraph"]')}).fontFamily`)).includes('Menlo'));
+    assert.ok((await evaluate(`getComputedStyle(${q(recipePart('text','paragraph.neutral.md','root'))}).fontFamily`)).includes('Menlo'));
     assert.equal(await evaluate(`getComputedStyle(${q('[aria-label="Canvas zoom"]')}).fontFamily`),await evaluate('getComputedStyle(document.body).fontFamily'),'canvas tools must not inherit the specimen font');
     await click(q('[aria-label="Export tokens"]'));
     assert.ok((await evaluate(`${q('[aria-label="Exported tokens"]')}.textContent`)).includes('--ds-font-family: ui-monospace'));
@@ -539,7 +844,7 @@ try {
       await select('#font-family-preset',preset);
       await wait(`${q('[data-ds-theme="light"]')}.style.getPropertyValue('--ds-font-family').includes(${JSON.stringify(firstFont)})`);
       for(const mode of ['light','dark']) assert.equal((await stored()).themes[mode].fontFamily,preset);
-      assert.ok((await evaluate(`getComputedStyle(${q('[data-specimen="text"] [data-variant="paragraph"]')}).fontFamily`)).includes(firstFont));
+      assert.ok((await evaluate(`getComputedStyle(${q(recipePart('text','paragraph.neutral.md','root'))}).fontFamily`)).includes(firstFont));
       assert.ok((await evaluate(`getComputedStyle(${q('#font-family-tokens p[style]')}).fontFamily`)).includes(firstFont));
     }
     await send('Fetch.enable',{patterns:[{urlPattern:'https://fonts.googleapis.com/*',requestStage:'Request'}]});
@@ -564,7 +869,7 @@ try {
     assert.equal((await stored()).themes.light.typography.heading.fontSize,42);
     assert.equal((await stored()).themes.dark.typography.heading.fontSize,42);
     assert.deepEqual((await stored()).themes.dark.global,before.themes.dark.global);
-    assert.equal(await evaluate(`getComputedStyle(${q('[data-specimen="text"] [data-variant="heading"][data-size="md"]')}).fontSize`),'42px');
+    assert.equal(await evaluate(`getComputedStyle(${q(recipePart('text','heading.neutral.md','root'))}).fontSize`),'42px');
     await click(q('[aria-label="Export tokens"]'));
     const css=await evaluate(`${q('[aria-label="Exported tokens"]')}.textContent`);
     assert.ok(css.includes('--ds-typography-heading-font-size: 42px;'));
@@ -576,7 +881,7 @@ try {
     assert.equal((await stored()).themes.dark.typography.heading.fontSize,42);
     assert.deepEqual((await stored()).themes.dark.global,before.themes.dark.global);
     await navigate('design','text');
-    assert.equal(await evaluate(`getComputedStyle(${q('[data-specimen="text"] [data-variant="heading"][data-size="md"]')}).fontSize`),'42px');
+    assert.equal(await evaluate(`getComputedStyle(${q(recipePart('text','heading.neutral.md','root'))}).fontSize`),'42px');
   });
   await check('H1–H6 typography controls independently update the single Text canvas unit and Develop',async()=>{
     await navigate('design','text');
@@ -586,12 +891,13 @@ try {
       await wait(`!!${q(`#typography-${variant}-fontSize`)}`);
       assert.equal(await evaluate(`document.querySelectorAll('.typography-control').length`),4,'only the selected style is editable at once');
       await fill(`#typography-${variant}-fontSize`,String(size));
-      assert.equal(await evaluate(`getComputedStyle(${q(`[data-specimen="text"] [data-variant="${variant}"]`)}).fontSize`),`${size}px`);
+      assert.equal(await evaluate(`getComputedStyle(${q(recipePart('text',`${variant}.neutral.md`,'root'))}).fontSize`),`${size}px`);
       for(const mode of ['light','dark']) assert.equal((await stored()).themes[mode].typography[variant].fontSize,size);
       assert.equal(await evaluate(`${q('[data-ds-theme="light"]')}.style.getPropertyValue('--ds-typography-${variant}-font-size').trim()`),`${size}px`);
     }
-    assert.equal(await evaluate(`${q('[data-foundation="text"] h2 a')}.getAttribute('aria-current')`),'page');
-    assert.notEqual(await evaluate(`getComputedStyle(${q('[data-foundation="text"] h2 a')}).backgroundColor`),'rgba(0, 0, 0, 0)');
+    assert.equal(await evaluate(`${q(`${matrix('text')} h2`)}.textContent`),'Text');
+    assert.equal(await evaluate(`${q('.studio-sidebar a[href="/text"]')}.getAttribute('aria-current')`),'page');
+    assert.equal(await evaluate(`!!${q('[data-foundation="text"]')}`),false);
     await capture('studio-text');
     await navigate('develop','text');
     for(const variant of ['h1','h2','h3','h4','h5','h6']) assert.ok(await evaluate(`${q('.workspace-panel--develop')}.textContent.includes('--ds-typography-${variant}-font-size')`));
@@ -599,17 +905,20 @@ try {
     assert.equal((await stored()).themes.dark.typography.h1.fontSize,54);
     await navigate('design','text');
   });
-  await check('Text color applies to every canvas style, not only paragraph',async()=>{
+  await check('Text base color applies to every neutral style, not only paragraph, without overriding semantic tones',async()=>{
     await navigate('design','text');
     const variants=['heading','h1','h2','h3','h4','h5','h6','paragraph','label','caption'];
+    const semanticColors = () => evaluate(`[...document.querySelectorAll('${matrix('text')} [data-ds-component="text"][data-component-part="root"]:not([data-tone="neutral"])')].map(e=>getComputedStyle(e).color)`);
+    const semantic = await semanticColors();
     await fill('#token-foreground','#123456');
-    for(const variant of variants) assert.equal(await evaluate(`getComputedStyle(${q(`[data-specimen="text"] [data-variant="${variant}"]`)}).color`),'rgb(18, 52, 86)',`${variant} should use the component color`);
+    for(const variant of variants) assert.equal(await evaluate(`getComputedStyle(${q(recipePart('text',`${variant}.neutral.md`,'root'))}).color`),'rgb(18, 52, 86)',`${variant} neutral should use the component color`);
+    assert.deepEqual(await semanticColors(),semantic,'semantic tones retain their own ink');
     await click(q('[aria-label="Reset foreground override"]'));
     const original=(await stored()).themes.light.global.foreground;
     await navigate('design','colors');
     await fill('#token-foreground','#345678');
     await navigate('design','text');
-    for(const variant of variants) assert.equal(await evaluate(`getComputedStyle(${q(`[data-specimen="text"] [data-variant="${variant}"]`)}).color`),'rgb(52, 86, 120)',`${variant} should inherit the global color`);
+    for(const variant of variants) assert.equal(await evaluate(`getComputedStyle(${q(recipePart('text',`${variant}.neutral.md`,'root'))}).color`),'rgb(52, 86, 120)',`${variant} neutral should inherit the global color`);
     await navigate('design','colors');
     await fill('#token-foreground',original);
   });
@@ -629,6 +938,7 @@ try {
     assert.equal(await evaluate(`${q('#token-paddingX')}.value`),'27');
     assert.equal((await stored()).themes.light.global.radius,8);
     await navigate('design','text');
+    await select('#typography-variant','heading');
     assert.equal(await evaluate(`${q('#typography-heading-fontSize')}.value`),'42');
     await click(named(themeControl + ' button','Dark'));
     assert.equal(await evaluate(`${q('#typography-heading-fontSize')}.value`),'42');
@@ -673,17 +983,21 @@ try {
       assert.equal((await stored()).themes.dark.global[token],value,`${token} should be shared`);
     }
     assert.equal((await stored()).themes.light.global.gap,18,'legacy gap must remain independent');
-    for(const [size,token,value] of [['sm','spacingSm',6],['md','spacingMd',12],['lg','spacingLg',24]]) {
-      const content=`[data-specimen="card"] [data-size="${size}"]:not([data-page-node]) [class*="cardContent"]`;
-      assert.equal(await evaluate(`getComputedStyle(${q(content)}).gap`),`${value}px`,`${token} must reach Card.Content`);
-      assert.equal(await evaluate(`${q(content)}.children.length`),2,'Card.Content must display multiple items');
-    }
-    assert.equal(await evaluate(`getComputedStyle(${q('[data-specimen="card"] [data-size="md"]')}).gap`),'18px','Card root still uses legacy gap');
     await capture('studio-spacing-live-light');
     await click(named(themeControl + ' button','Dark'));
     for(const [token,value,visual,property] of examples) assert.equal(await evaluate(`getComputedStyle(${q(`[data-spacing-token="${token}"] ${visual}`)})[${JSON.stringify(property)}]`),`${value}px`);
     await capture('studio-spacing-live-dark');
-    assert.equal(await evaluate(`getComputedStyle(${q('[data-specimen="card"] [data-size="lg"] [class*="cardContent"]')}).gap`),'24px');
+    await navigate('design','card');
+    for(const mode of ['Light','Dark']) {
+      await click(named(themeControl + ' button',mode));
+      for(const [size,value] of [['sm',6],['md',12],['lg',24]]) {
+        assert.equal(await evaluate(`getComputedStyle(${q(recipePart('card',`outlined.${size}`,'content'))}).gap`),`${value}px`,`shared spacing reaches ${size} Card.Content in ${mode}`);
+      }
+      assert.equal(await evaluate(`getComputedStyle(${q(recipePart('card','outlined.md','root'))}).gap`),'18px','Card root still uses legacy gap');
+    }
+    await openInteractions('card');
+    for(const size of ['sm','md','lg']) assert.equal(await evaluate(`${q(`${interactions('card')} article[data-size="${size}"]:not([data-instance-specimen]) [data-component-part="content"]`)}.children.length`),2,'interaction Card.Content still demonstrates multi-item spacing');
+    await navigate('design','spacing');
     await click(named(themeControl + ' button','Light'));
     for(const [token] of examples) await fill(`#token-${token}`,String(original.themes.light.global[token]));
   });
@@ -765,6 +1079,45 @@ try {
     await wait(`location.pathname==='/colors' && document.activeElement?.id==='token-background' && !!${q('#token-background')}.closest('[data-highlighted]')`);
     await reload();
   });
+  await check('contrast actions distinguish legacy shared layers from exact recipe text scopes',async()=>{
+    await navigate('design','card');
+    const before = await stored();
+    await componentTab('Styles');
+    await select('[aria-label="Shared default layer"]','title');
+    const shared = '[id="system-shared-card-title-color"]';
+    await fill(shared,'#123456'); await key('Enter');
+    await wait(`JSON.parse(localStorage.getItem('bambiui.design-system.v1')).themes[document.documentElement.dataset.studioTheme].componentStyles?.card?.title?.color==='#123456'`);
+    await select('[aria-label="Shared default layer"]','description');
+    await componentTab('Parameters');
+    await navigate('design','colors');
+    await click(q('.editor-title-actions button[aria-label*="System color pairs"]'));
+    await click(named('[data-contrast-check="card.outlined.title.text"] button','Edit Card shared title color'));
+    await wait(`location.pathname==='/card' && document.activeElement?.id==='system-shared-card-title-color'`);
+    assert.equal(await evaluate(`${q('[aria-label="Shared default layer"]')}.value`),'title','audit navigation must restore the addressed legacy sharedPart');
+    assert.equal(await evaluate(`${q('[data-system-shared-defaults]')}.open && ${q(shared)}.checkVisibility()`),true);
+    assert.equal(await evaluate(`!!${q('[data-system-recipe-controls]')}`),false,'a shared part must not masquerade as a recipe');
+    await select('[aria-label="Shared default layer"]','description');
+    assert.equal(await evaluate(`!!${q(shared)}`),false,'manually choosing another shared layer unmounts the title field');
+    await click(q('.editor-title-actions button[aria-label*="Card color pairs"]'));
+    await click(named('[data-contrast-check="card.outlined.title.text"] button','Edit Card shared title color'));
+    await wait(`document.activeElement?.id==='system-shared-card-title-color' && ${q('[aria-label="Shared default layer"]')}.value==='title'`);
+    assert.equal(await evaluate(`${q('[data-system-shared-defaults]')}.open && ${q(shared)}.checkVisibility()`),true,'repeat audit navigation restores the actual shared part without remounting the component route');
+    assert.equal(await evaluate(`${q(shared)}.value`),'#123456');
+    assert.equal(await evaluate(`!!${q('[data-system-recipe-controls]')}`),false);
+    await click(q('[aria-label="Undo change"]'));
+    assert.deepEqual(await stored(),before);
+    await click(q(recipePart('card','outlined.md','title')));
+    await commitRecipe('card','outlined.md','title','text','color','#234567');
+    await click(q(`${example('card','filled.sm')} > button`));
+    await navigate('design','colors');
+    await click(q('.editor-title-actions button[aria-label*="System color pairs"]'));
+    await click(named('[data-contrast-check="card.recipe.outlined.md.title/text"] button','Edit Card / outlined md / title text color'));
+    await wait(`location.pathname==='/card' && document.activeElement?.id==='system-recipe-card-outlined.md-title-text-color'`);
+    await assertRecipeSelection('card','outlined.md','title','text');
+    assert.equal(await evaluate(`${q(recipeField('card','outlined.md','title','text','color'))}.checkVisibility()`),true);
+    await click(q('[aria-label="Undo change"]'));
+    assert.deepEqual(await stored(),before);
+  });
   await check('component state colors, border widths and shadows stay aligned with CSS, export and history',async()=>{
     await navigate('design','input');
     const mode=await evaluate(`document.documentElement.dataset.studioTheme`);
@@ -782,7 +1135,7 @@ try {
       assert.equal(customized.themes[theme].variantColors.input.invalid.borderWidth,2.5);
       assert.equal(customized.themes[theme].variantColors.input.invalid.shadow,'lg');
     }
-    assert.equal(await evaluate(`getComputedStyle(document.querySelector('[data-specimen="input"] input[aria-invalid="true"]')).getPropertyValue('--input-state-border-width').trim()`),'2.5px','invalid Input CSS consumes the fractional state border width');
+    assert.equal(await evaluate(`getComputedStyle(${q(`${example('input','invalid.md')} input`)}).getPropertyValue('--input-state-border-width').trim()`),'2.5px','invalid Input CSS consumes the fractional state border width');
     await click(q('[aria-label="Export tokens"]'));
     await click(named('[aria-label="Export format"] button','JSON'));
     const exported=JSON.parse(await evaluate(`${q('[aria-label="Exported tokens"]')}.textContent`));
@@ -797,57 +1150,52 @@ try {
     await click(q('[aria-label="Redo change"]'));
     assert.deepEqual(await stored(),customized);
   });
-  await check('same expanded demo tree survives theme, routes and history in the persistent layout',async()=>{
-    await navigate('design','button');
-    await stableCamera();
-    await click(named(themeControl + ' button','Light'));
-    await click(named('[data-specimen="button"] button','Get started'));
+  await check('selected demo survives theme/view changes; component navigation replaces the board but preserves shell/history',async()=>{
     await navigate('design','input');
-    await delay(500);
-    await fill('[data-specimen="input"] input[type="email"]:not([data-page-node])','retained@example.com');
-    await route('design','input');
-    await navigate('design','button');
-    await evaluate(`window.__specimens=[...document.querySelectorAll('[data-specimen]')];window.__pane=${q('.theme-pane')};window.__layout=${q('.studio-sidebar')};window.__origin=performance.timeOrigin`);
-    const retained = async () => {
-      assert.equal(await evaluate(`window.__origin===performance.timeOrigin && window.__layout===${q('.studio-sidebar')} && window.__pane===${q('.theme-pane')} && window.__specimens.every(e=>e.isConnected && e===document.querySelector('[data-specimen="'+e.dataset.specimen+'"]'))`),true);
-      assert.equal(await evaluate(`${q('[data-specimen="input"] input[type="email"]:not([data-page-node])')}.value`),'retained@example.com');
-      assert.ok(await evaluate(`${q('[data-specimen="button"]')}.textContent.includes('successfully (1)')`));
+    await click(named(themeControl + ' button','Light'));
+    await openInteractions('input');
+    const email=`${interactions('input')} input[type="email"]`;
+    await fill(email,'retained@example.com');
+    const before=await stored();
+    await evaluate(`window.__board=${q('[data-specimen="input"]')};window.__pane=${q('.theme-pane')};window.__layout=${q('.studio-sidebar')};window.__origin=performance.timeOrigin`);
+    const retainedShell = async () => {
+      assert.equal(await evaluate(`window.__origin===performance.timeOrigin && window.__layout===${q('.studio-sidebar')} && window.__pane===${q('.theme-pane')}`),true);
       assert.equal(await evaluate(`document.querySelectorAll('.theme-pane').length`),1);
-      assert.equal(await evaluate(`document.querySelectorAll('[data-specimen="card"] article:not([data-instance-specimen]):not([data-page-node])').length`),3,'all three interactive system Card variants remain mounted');
-      assert.equal(await evaluate(`document.querySelectorAll('[data-system-starter="card"] article[data-page-node]').length`),1,'the populated starting Card remains separate from the interactive specimens');
-      assert.equal(await evaluate(`document.querySelectorAll('[data-specimen="card"] article[data-instance-specimen="card"]').length`),1,'the added local-appearance specimen remains mounted too');
-      assert.ok(await evaluate(`${q('[data-specimen="text"]')}.isConnected`));
-      assert.ok(await evaluate(`!!${q('[data-specimen="input"] input[readonly]')} && !!${q('[data-specimen="button"] [aria-busy="true"]')} && !!${q('[data-specimen="checkbox"] [aria-checked="mixed"]')}`));
       assert.equal(await evaluate(`${q('.theme-pane [data-ds-theme]')}.dataset.dsTheme`),'dark');
+      assert.deepEqual(await stored(),before);
+    };
+    const retainedInput = async () => {
+      await retainedShell();
+      assert.equal(await evaluate(`window.__board===${q('[data-specimen="input"]')} && window.__board.isConnected`),true);
+      assert.equal(await evaluate(`${q(email)}.value`),'retained@example.com');
+      assert.equal(await evaluate(`${q(interactions('input'))}.open`),true);
     };
     await click(named(themeControl + ' button','Dark'));
-    await retained();
-    await navigate('develop','button');
-    await navigate('develop','input');
-    await navigate('design','input');
-    await retained();
-    for (const [direction,view,id] of [['back','develop','input'],['back','develop','button'],['back','design','button'],['forward','develop','button'],['forward','develop','input'],['forward','design','input']]) {
+    await retainedInput();
+    await navigate('develop','input'); await retainedInput();
+    await navigate('design','input'); await retainedInput();
+    await navigate('design','button');
+    assert.equal(await evaluate('window.__board.isConnected'),false,'unselected components must unmount rather than keep every specimen alive');
+    for(const [direction,view,id] of [['back','design','input'],['back','develop','input'],['forward','design','input'],['forward','design','button']]) {
       await evaluate(`history.${direction}()`);
-      await route(view,id);
-      await retained();
+      await route(view,id); await retainedShell();
     }
-    await navigate('design');
-    await retained();
+    await navigate('design','colors'); await retainedShell();
     await navigate('design','button');
   });
-  await check('route selection animates camera unless reduced motion is requested',async()=>{
+  await check('foundation route selection animates camera unless reduced motion is requested',async()=>{
     try {
       await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
-      await navigate('design','button');
+      await navigate('design','colors');
       const start=await stableCamera();
-      await navigate('design','checkbox');
+      await navigate('design','spacing');
       const first=await evaluate(cameraState);
       const end=await stableCamera();
-      assert.ok(moved(start,end)>80,'component navigation should move the camera');
+      assert.ok(moved(start,end)>80,'foundation navigation should frame the selected unit');
       assert.ok(moved(first,end)>2,'camera should animate rather than jump to its final destination');
       await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
-      await navigate('design','button');
-      await wait(`${q('[data-specimen="button"]')}.getBoundingClientRect().bottom > ${q(canvas)}.getBoundingClientRect().top && ${q('[data-specimen="button"]')}.getBoundingClientRect().top < ${q(canvas)}.getBoundingClientRect().bottom`);
+      await navigate('design','colors');
+      await wait(`(()=>{const h=${q('[data-foundation="colors"] h2')}.getBoundingClientRect(),v=${q(canvas)}.getBoundingClientRect();return h.top>=v.top+60 && h.bottom<v.bottom})()`);
       const immediate=await evaluate(cameraState);
       const settled=await stableCamera();
       assert.ok(moved(immediate,settled)<2,'reduced motion should position the camera without animation');
@@ -883,8 +1231,10 @@ try {
     const before=await evaluate(cameraState);
     await send('Input.dispatchMouseEvent',{type:'mousePressed',...point,button:'left',clickCount:1});
     assert.ok(!await evaluate(`${q(canvas)}.hasAttribute('data-dragging')`),'press alone must leave sections clickable');
-    await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x+130,y:point.y+110,button:'left',buttons:1});
+    // Cross the drag threshold inside the viewport before travelling beyond its edge.
+    await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x+6,y:point.y+6,button:'left',buttons:1});
     await wait(`${q(canvas)}.dataset.dragging==='true'`);
+    await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x+130,y:point.y+110,button:'left',buttons:1});
     await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:point.x+130,y:point.y+110,button:'left',clickCount:1});
     const dragged=await evaluate(cameraState);
     assert.ok(dragged.x>before.x+100 && dragged.y>before.y+80,'pointer drag must pan in both directions');
@@ -930,25 +1280,23 @@ try {
     assert.equal(await evaluate(`(()=>{const e=new WheelEvent('wheel',{bubbles:true,cancelable:true,ctrlKey:true,deltaY:-80});${q('.studio-sidebar')}.dispatchEvent(e);return e.defaultPrevented})()`),false,'modified wheel outside canvas must remain available to browser zoom');
     assert.equal(await evaluate(`${q(canvas)}.scrollLeft===0 && ${q(canvas)}.scrollTop===0`),true);
     await navigate('design','button');
-    await evaluate(`(${named('[data-specimen="button"] button','All set')}).focus()`);
-    assert.equal(await evaluate(`document.activeElement===(${named('[data-specimen="button"] button','All set')})`),true);
+    await openInteractions('button');
+    const action=named(`${interactions('button')} button`,'Get started');
+    await positionCanvas(action);
+    await evaluate(`(${action}).focus({preventScroll:true})`);
+    assert.equal(await evaluate(`document.activeElement===(${action})`),true);
     await key('Enter');
-    await wait(`${q('[data-specimen="button"]')}.textContent.includes('successfully (2)')`);
+    await wait(`${q(interactions('button'))}.textContent.includes('successfully (1)')`);
     await navigate('design','input');
-    await delay(500);
-    // The populated starter changes specimen height. Pan by measured geometry,
-    // keeping the real demo input interactive rather than clicking the starter.
-    const inputOffset = await evaluate(`(()=>{const r=${q('[data-specimen="input"] input[type="email"]:not([data-page-node])')}.getBoundingClientRect(),v=${q(canvas)}.getBoundingClientRect();return {x:r.x+r.width/2-v.x-v.width/2,y:r.y+r.height/2-v.y-v.height/2}})()`);
-    await wheel(await canvasBackground(),inputOffset.x,inputOffset.y);
-    await wait(`(()=>{const e=${q('[data-specimen="input"] input[type="email"]:not([data-page-node])')},r=e.getBoundingClientRect();return e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))})()`);
-    await click(q('[data-specimen="input"] input[type="email"]:not([data-page-node])'));
-    await fill('[data-specimen="input"] input[type="email"]:not([data-page-node])','camera-input@example.com');
-    assert.equal(await evaluate(`${q('[data-specimen="input"] input[type="email"]:not([data-page-node])')}.value`),'camera-input@example.com');
+    await openInteractions('input');
+    const email=`${interactions('input')} input[type="email"]`;
+    await fill(email,'camera-input@example.com');
+    assert.equal(await evaluate(`${q(email)}.value`),'camera-input@example.com');
     assert.ok(!await evaluate(`${q(canvas)}.hasAttribute('data-dragging')`),'input activation must not start a camera drag');
-    await fill('[data-specimen="input"] input[type="email"]:not([data-page-node])','retained@example.com');
+    await fill(email,'');
     await capture('studio-canvas');
   });
-  await check('hover outlines sections and clicking their empty areas selects tokens',async()=>{
+  await check('foundation hover/empty-area selection and precise matrix-layer hover remain discoverable',async()=>{
     await navigate('design');
     await delay(500);
     await click(named('[aria-label="Canvas zoom"] button','Fit'));
@@ -975,11 +1323,11 @@ try {
     await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
     assert.equal(await evaluate(`getComputedStyle(${q('[data-canvas-selection-hint]')}).transitionDuration`),'0s');
     await send('Emulation.setEmulatedMedia',{features:[]});
-    await navigate('design');
-    await click(named('[aria-label="Canvas zoom"] button','Fit'));
-    await delay(500);
-    const specimen = '[data-specimen="button"]';
-    const specimenPoint = await evaluate(`(()=>{const r=${q(specimen+' header')}.getBoundingClientRect();return {x:r.right-24,y:r.top+r.height/2}})()`);
+    await navigate('design','button');
+    await stableCamera();
+    const specimen = recipePart('button','primary.md','text');
+    await positionCanvas(q(specimen));
+    const specimenPoint = await evaluate(`(()=>{const r=${q(specimen)}.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
     await send('Input.dispatchMouseEvent',{type:'mouseMoved',...specimenPoint,button:'none'});
     assert.equal(await evaluate(`getComputedStyle(${q(specimen)}).outlineStyle`),'solid');
     await wait(`${q('[data-canvas-selection-hint]')}?.textContent.includes('Button · Click to edit tokens')`);
@@ -996,6 +1344,7 @@ try {
     await send('Input.dispatchMouseEvent',{type:'mousePressed',...specimenPoint,button:'left',clickCount:1});
     await send('Input.dispatchMouseEvent',{type:'mouseReleased',...specimenPoint,button:'left',clickCount:1});
     await route('design','button');
+    await assertRecipeSelection('button','primary.md','text','text');
   });
   await check('Design canvas units route to their own inspectors and Develop references',async()=>{
     await navigate('design');
@@ -1020,22 +1369,21 @@ try {
     await capture('studio-spacing');
     await navigate('design','text');
     await delay(450);
-    assert.ok(await evaluate(`(()=>{const heading=${q('[data-foundation="text"] h2')}.getBoundingClientRect(),view=${q(canvas)}.getBoundingClientRect();return heading.top>=view.top+60})()`),'selected headings must stay below the floating tools');
-    await click(q('[data-foundation="text"] h2 a'));
+    assert.ok(await evaluate(`(()=>{const heading=${q(`${matrix('text')} h2`)}.getBoundingClientRect(),view=${q(canvas)}.getBoundingClientRect();return heading.top>=view.top+60})()`),'selected matrix headings must stay below the floating tools');
+    await click(q(`${example('text','heading.neutral.md')} > button`));
+    await assertRecipeSelection('text','heading.neutral.md','root','text');
     await route('design','text');
     await click(named(viewNav + ' a','Develop'));
     await route('develop','text');
     await click(named(viewNav + ' a','Design'));
     await route('design','text');
     assert.ok(await evaluate(`!!${q('#typography-heading-fontSize')}`));
-    await click(named('[aria-label="Canvas zoom"] button','Fit'));
-    await delay(450);
-    await click(q('[data-specimen="card"] header a'));
-    await route('design','card');
-    assert.equal(await evaluate(`${q('[data-specimen="card"] header a')}.getAttribute('aria-current')`),'page');
-    await click(named('[aria-label="Canvas zoom"] button','Fit'));
-    await delay(450);
-    await click(q('[data-specimen="input"] input[type="email"]:not([data-page-node])'));
+    await navigate('design','card');
+    await click(q(`${example('card','outlined.md')} > button`));
+    await assertRecipeSelection('card','outlined.md','root','frame');
+    await navigate('design','input');
+    await click(q(`${example('input','default.md')} input`));
+    await assertRecipeSelection('input','default.md','control','text');
     await route('design','input');
     await evaluate(`history.back()`);
     await route('design','card');
@@ -1190,8 +1538,10 @@ try {
     const form='[data-form-demo]';
     assert.ok(await evaluate(`!!${q(form)}`));
 
-    const disclosure='[data-specimen="input"] details';
-    await evaluate(`${q(`${disclosure} summary`)}.focus({preventScroll:true})`);
+    await openInteractions('input');
+    const disclosure=`${interactions('input')} details`;
+    await positionCanvas(q(`${disclosure} > summary`));
+    await evaluate(`${q(`${disclosure} > summary`)}.focus({preventScroll:true})`);
     await key('Enter');
     await wait(`${q(disclosure)}.open`);
     assert.equal(await evaluate(`${q(form)}.checkValidity()`),false,'required form cannot submit while empty');

@@ -2,6 +2,8 @@ import type { ComponentProps } from "react";
 import { cx } from "../cx";
 import { hasAppearanceBox, mergeAppearanceStyle, type AppearanceProps } from "./appearance";
 import type { Radius, Size } from "./types";
+import { componentRecipeKey } from "./recipes";
+import { cardSlotRecipeStyle, componentRecipeMarkers, mergeRecipeStyle } from "./recipe-runtime";
 import styles from "./components.module.css";
 
 export type CardProps = ComponentProps<"article"> & AppearanceProps & {
@@ -22,10 +24,13 @@ function CardRoot({
   style,
   ...props
 }: CardProps) {
+  const recipe = componentRecipeKey("card", { variant, size });
   return (
     <article
       {...props}
-      style={mergeAppearanceStyle(style, appearance)}
+      style={mergeRecipeStyle("card", recipe, style, appearance)}
+      {...componentRecipeMarkers("card", "root")}
+      data-component-recipe={recipe}
       className={cx(styles.card, className)}
       data-variant={variant}
       data-size={size}
@@ -41,6 +46,7 @@ function CardIcon({ className, appearance, style, ...props }: ComponentProps<"sp
       aria-hidden="true"
       {...props}
       style={mergeAppearanceStyle(style, appearance)}
+      {...componentRecipeMarkers("card", "icon")}
       className={cx(styles.cardIcon, className)}
     />
   );
@@ -48,24 +54,24 @@ function CardIcon({ className, appearance, style, ...props }: ComponentProps<"sp
 
 /** Groups the title and description. */
 function CardHeader({ className, appearance, style, ...props }: ComponentProps<"div"> & AppearanceProps) {
-  return <div {...props} style={mergeAppearanceStyle(style, appearance)} className={cx(styles.cardHeader, className)} />;
+  return <div {...props} {...componentRecipeMarkers("card", "header")} style={mergeAppearanceStyle(style, appearance)} className={cx(styles.cardHeader, className)} />;
 }
 
 function CardTitle({ className, appearance, style, ...props }: ComponentProps<"strong"> & AppearanceProps) {
-  return <strong {...props} style={mergeAppearanceStyle(style, appearance)} data-appearance-box={hasAppearanceBox(appearance) || undefined} className={cx(styles.cardTitle, className)} />;
+  return <strong {...props} {...componentRecipeMarkers("card", "title")} style={mergeAppearanceStyle(style, appearance)} data-appearance-box={hasAppearanceBox(appearance) || undefined} className={cx(styles.cardTitle, className)} />;
 }
 
 function CardDescription({ className, appearance, style, ...props }: ComponentProps<"p"> & AppearanceProps) {
-  return <p {...props} style={mergeAppearanceStyle(style, appearance)} className={cx(styles.cardDescription, className)} />;
+  return <p {...props} {...componentRecipeMarkers("card", "description")} style={mergeAppearanceStyle(style, appearance)} className={cx(styles.cardDescription, className)} />;
 }
 
 function CardContent({ className, appearance, style, ...props }: ComponentProps<"div"> & AppearanceProps) {
-  return <div {...props} style={mergeAppearanceStyle(style, appearance)} className={cx(styles.cardContent, className)} />;
+  return <div {...props} {...componentRecipeMarkers("card", "content")} style={cardSlotRecipeStyle("content", style, appearance)} className={cx(styles.cardContent, className)} />;
 }
 
 /** Actions or metadata aligned at the end of the card. */
 function CardFooter({ className, appearance, style, ...props }: ComponentProps<"div"> & AppearanceProps) {
-  return <div {...props} style={mergeAppearanceStyle(style, appearance)} className={cx(styles.cardFooter, className)} />;
+  return <div {...props} {...componentRecipeMarkers("card", "footer")} style={cardSlotRecipeStyle("footer", style, appearance)} className={cx(styles.cardFooter, className)} />;
 }
 
 export const Card = Object.assign(CardRoot, {

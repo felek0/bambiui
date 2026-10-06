@@ -13,6 +13,7 @@ export { colorScaleRoles, colorScaleStops } from "./color-engine.ts";
 export type { ColorScaleRole, ColorScaleStop } from "./color-engine.ts";
 import { brandColor } from "./brand.ts";
 import { componentStyleVariables, parseComponentStyles, shareComponentStyles, type ComponentStyles } from "./component-styles.ts";
+import { componentRecipeVariables, parseComponentRecipes, shareComponentRecipes, type ComponentRecipes } from "./component-recipes.ts";
 import { parseComponentDefaults, type ComponentDefaults } from "./component-defaults.ts";
 
 export const componentIds = [
@@ -203,6 +204,8 @@ export type ThemeTokens = {
   variantColors?: ComponentVariantColors;
   /** Part colors are theme-specific; part geometry and effects are shared. */
   componentStyles?: ComponentStyles;
+  /** Exact recipe colors are theme-specific; geometry, typography and effects are shared. */
+  componentRecipes?: ComponentRecipes;
 };
 
 export function resolveColorScale(
@@ -265,6 +268,7 @@ export function shareNonColorTokens(system: DesignSystem, from: PaletteMode = "l
     ...system,
     themes: { ...system.themes, [other]: { ...target, global, components, fontFamily: source.fontFamily, typography: structuredClone(source.typography), variantColors,
       ...(source.componentStyles || target.componentStyles ? { componentStyles: shareComponentStyles(source.componentStyles, target.componentStyles) } : {}),
+      ...(source.componentRecipes || target.componentRecipes ? { componentRecipes: shareComponentRecipes(source.componentRecipes, target.componentRecipes) } : {}),
     } },
   };
 }
@@ -664,7 +668,7 @@ export function toCSSVariables(
   }
   variables["--card-description"] = descriptionColor(card.foreground, card.background);
   variables["--card-filled-description"] = variables["--card-variant-filled-description"];
-  Object.assign(variables, componentStyleVariables(theme.componentStyles));
+  Object.assign(variables, componentStyleVariables(theme.componentStyles), componentRecipeVariables(theme.componentRecipes));
   return variables;
 }
 
@@ -673,14 +677,17 @@ export function exportCSS(workspace: Pick<DesignSystem, "themes">): string {
     .map((mode) => googleFontUrl(workspace.themes[mode].fontFamily))
     .filter((url): url is string => url !== null))];
   const prelude = imports.map((url) => `@import url("${url}");`).join("\n");
-  // Sparse colors and their helpers must not inherit from an enclosing other theme.
-  const partKeys = new Set((["light", "dark"] as const).flatMap(mode => Object.keys(componentStyleVariables(workspace.themes[mode].componentStyles))));
-  const partResets = Object.fromEntries([...partKeys].map(key => [key, "initial"]));
+  // Sparse overrides and their helpers must not inherit from an enclosing other theme.
+  const sparseKeys = new Set((["light", "dark"] as const).flatMap(mode => [
+    ...Object.keys(componentStyleVariables(workspace.themes[mode].componentStyles)),
+    ...Object.keys(componentRecipeVariables(workspace.themes[mode].componentRecipes)),
+  ]));
+  const sparseResets = Object.fromEntries([...sparseKeys].map(key => [key, "initial"]));
   return (prelude ? `${prelude}\n\n` : "") + (["light", "dark"] as const).map((mode) => {
     const selector = mode === "light"
       ? ':root, [data-ds-theme="light"]'
       : '[data-ds-theme="dark"]';
-    const declarations = Object.entries({ ...partResets, ...toCSSVariables(workspace.themes[mode], mode) })
+    const declarations = Object.entries({ ...sparseResets, ...toCSSVariables(workspace.themes[mode], mode) })
       .map(([key, value]) => `  ${key}: ${value};`)
       .join("\n");
     return `${selector} {\n  color-scheme: ${mode};\n${declarations}\n}\n`;
@@ -757,8 +764,9 @@ export function parseDesignSystem(text: string): DesignSystem {
       const theme = value.themes[mode];
       const path = `themes.${mode}`;
       requireObject(theme, path);
-      requireKnownKeys(theme, ["source", "fontFamily", "global", "components", "colorScales", "typography", "variantColors", "componentStyles"], path);
+      requireKnownKeys(theme, ["source", "fontFamily", "global", "components", "colorScales", "typography", "variantColors", "componentStyles", "componentRecipes"], path);
       if (Object.hasOwn(theme, "componentStyles")) theme.componentStyles = parseComponentStyles(theme.componentStyles);
+      if (Object.hasOwn(theme, "componentRecipes")) theme.componentRecipes = parseComponentRecipes(theme.componentRecipes);
       if (theme.fontFamily === undefined && !Object.hasOwn(theme, "fontFamily")) theme.fontFamily = "system";
       if (!fontFamilyPresets.includes(theme.fontFamily as FontFamilyPreset)) {
         throw new Error(`${path}.fontFamily must be one of: ${fontFamilyPresets.join(", ")}`);

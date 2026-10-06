@@ -5,6 +5,9 @@ import { runInNewContext } from "node:vm";
 import ts from "typescript";
 import * as appearance from "./components/appearance.ts";
 import {
+  componentRecipeOptions, componentRecipeParts, componentRecipeFields, componentRecipeVariables,
+} from "./component-recipes.ts";
+import {
   componentIds, componentTokenKeys, componentEditableTokenKeys, componentVariantKeys, defaultSystem, exportCSS, isComponentKey,
   parseDesignSystem, resolveColorScale, resolveComponent, resolveTypography, shareNonColorTokens, STORAGE_KEY, systemConstants,
   toCSSVariables, tokenFields, colorScaleRoles, colorScaleStops, typographyVariants, typographyFields, defaultTypography,
@@ -99,6 +102,358 @@ test("new v3 extensions reject unsafe, misplaced and unsupported data", () => {
   assert.equal(Object.hasOwn(old, "componentDefaults"), false);
   assert.equal(Object.hasOwn(old.themes.light, "componentStyles"), false);
   assert.equal(Object.hasOwn(old.themes.dark, "componentStyles"), false);
+});
+
+test("every exact component recipe and supported field round-trips without rounding or recoloring", () => {
+  const system = fresh();
+  for (const mode of modes) {
+    system.themes[mode].componentRecipes = Object.fromEntries(componentIds.map((id) => [id,
+      Object.fromEntries(componentRecipeOptions(id).map(({ key: recipe }) => [recipe,
+        Object.fromEntries(componentRecipeParts(id, recipe).map(({ key: part }) => [part,
+          Object.fromEntries([...componentRecipeFields(id, part, "frame", recipe), ...componentRecipeFields(id, part, "text", recipe)].map((field) => [field.key,
+            field.type === "color" ? mode === "light" ? "#12AbCd" : "#FEDcba"
+              : field.type === "select" ? field.options.at(-1)
+                : ({ width: "hug", height: "fill", maxWidth: "fill", fontWeight: 637, lineHeight: 1.375, letterSpacing: -0.125, opacity: 0.625 }[field.key] ?? 17.251),
+          ])),
+        ])),
+      ])),
+    ]));
+  }
+  const before = structuredClone(system);
+  deepFreeze(system);
+  const parsed = parse(system);
+  assert.deepEqual(parsed, before);
+  assert.deepEqual(parse(parsed), parsed);
+  for (const mode of modes) {
+    const baseline = toCSSVariables(defaultSystem.themes[mode], mode);
+    assert.deepEqual(toCSSVariables(parsed.themes[mode], mode), { ...baseline, ...componentRecipeVariables(system.themes[mode].componentRecipes) });
+  }
+  parsed.themes.light.componentRecipes.button["primary.md"].root.paddingLeft = 42;
+  assert.equal(parsed.themes.dark.componentRecipes.button["primary.md"].root.paddingLeft, 17.251);
+  assert.deepEqual(system, before);
+});
+
+test("recipe imports normalize non-colors and omissions from Light while preserving each theme's paint", () => {
+  const system = fresh();
+  system.themes.light.componentRecipes = {
+    button: { "primary.md": {
+      root: { height: "hug", paddingLeft: 17.251, borderWidth: 0, shadow: "none", background: "#12AbCd" },
+      text: { fontSize: 23.125, fontWeight: 637, lineHeight: 1.375, letterSpacing: -0.125, textAlign: "right", color: "#123456" },
+    } },
+    card: { "elevated.sm": { content: { gap: 7.25, opacity: 0.625, background: "#654321" } } },
+  };
+  system.themes.dark.componentRecipes = {
+    button: {
+      "primary.md": {
+        root: { width: 99, height: 40, paddingLeft: 88, borderWidth: 6, shadow: "lg", background: "#abcdef", borderColor: "transparent" },
+        text: { fontSize: 45, textAlign: "left", color: "#FEDCBA" },
+      },
+      "secondary.lg": { root: { width: 100, background: "transparent" }, text: { fontSize: 30 } },
+    },
+    input: { "readonly.sm": { control: { paddingTop: 5 } } },
+    text: { "caption.info.lg": { root: { fontSize: 12, color: "#112233" } } },
+  };
+  const before = structuredClone(system);
+  deepFreeze(system);
+  const parsed = parse(system);
+  assert.deepEqual(parsed.themes.light.componentRecipes, system.themes.light.componentRecipes);
+  assert.deepEqual(parsed.themes.dark.componentRecipes, {
+    button: {
+      "primary.md": {
+        root: { height: "hug", paddingLeft: 17.251, borderWidth: 0, shadow: "none", background: "#abcdef", borderColor: "transparent" },
+        text: { fontSize: 23.125, fontWeight: 637, lineHeight: 1.375, letterSpacing: -0.125, textAlign: "right", color: "#FEDCBA" },
+      },
+      "secondary.lg": { root: { background: "transparent" } },
+    },
+    card: { "elevated.sm": { content: { gap: 7.25, opacity: 0.625 } } },
+    text: { "caption.info.lg": { root: { color: "#112233" } } },
+  });
+  for (const mode of modes) {
+    const { componentRecipes, ...theme } = parsed.themes[mode];
+    assert.ok(componentRecipes);
+    assert.deepEqual(theme, defaultSystem.themes[mode]);
+  }
+  assert.deepEqual(parse(parsed), parsed);
+  assert.deepEqual(system, before);
+});
+
+for (const from of modes) {
+  test(`${from}: recipe edits share non-colors, including deletions, without sharing colors or mutable records`, () => {
+    const other = from === "light" ? "dark" : "light";
+    const system = fresh();
+    system.themes[from].componentRecipes = {
+      button: { "secondary.sm": { root: { height: 20.25, borderWidth: 0, shadow: "none", background: "#123456" }, text: { fontSize: 22.125, lineHeight: 1.375 } } },
+      badge: { "solid.info.lg": { text: { color: "#001122" } } },
+    };
+    system.themes[other].componentRecipes = {
+      button: {
+        "secondary.sm": { root: { paddingLeft: 2.5, borderWidth: 6, shadow: "lg", background: "#abcdef", borderColor: "transparent" }, text: { fontSize: 44, color: "#FEDCBA" } },
+        "primary.md": { root: { width: 100 } },
+      },
+      card: { "filled.md": { content: { fontSize: 30, color: "#112233" } } },
+    };
+    const before = structuredClone(system);
+    deepFreeze(system);
+    const shared = shareNonColorTokens(system, from);
+    assert.deepEqual(shared.themes[from], system.themes[from]);
+    assert.deepEqual(shared.themes[other].componentRecipes, {
+      button: { "secondary.sm": {
+        root: { height: 20.25, borderWidth: 0, shadow: "none", background: "#abcdef", borderColor: "transparent" },
+        text: { fontSize: 22.125, lineHeight: 1.375, color: "#FEDCBA" },
+      } },
+      card: { "filled.md": { content: { color: "#112233" } } },
+    });
+    assert.deepEqual(shareNonColorTokens(shared, from), shared);
+    assert.deepEqual(parse(shared), shared);
+    assert.notEqual(shared.themes[other].componentRecipes.button["secondary.sm"].root, system.themes[other].componentRecipes.button["secondary.sm"].root);
+    shared.themes[other].componentRecipes.button["secondary.sm"].root.height = 99;
+    assert.equal(shared.themes[from].componentRecipes.button["secondary.sm"].root.height, 20.25);
+    assert.deepEqual(system, before);
+  });
+
+  test(`${from}: resetting recipe fields, parts, scopes and the whole optional record restores sparse inheritance`, () => {
+    const other = from === "light" ? "dark" : "light";
+    const baseline = fresh();
+    for (const mode of modes) {
+      baseline.themes[mode].components.button.paddingX = 11.25;
+      baseline.themes[mode].componentStyles = { button: { root: { width: 80.5, fontSize: 16.25 } } };
+      baseline.themes[mode].variantColors = { button: { primary: { background: mode === "light" ? "#123456" : "#abcdef", borderWidth: 1.5, shadow: "sm" } } };
+    }
+    const recipes = { button: { "primary.md": { root: { height: 20.25, borderWidth: 0 }, text: { fontSize: 22.125, textAlign: "center" } } } };
+    for (const [path, remaining] of [
+      [["button", "primary.md", "root", "height"], { button: { "primary.md": { root: { borderWidth: 0 }, text: recipes.button["primary.md"].text } } }],
+      [["button", "primary.md", "root"], { button: { "primary.md": { text: recipes.button["primary.md"].text } } }],
+      [["button", "primary.md"], {}], [["button"], {}], [[], {}],
+    ]) {
+      const system = structuredClone(baseline);
+      for (const mode of modes) system.themes[mode].componentRecipes = structuredClone(recipes);
+      if (path.length) delete path.slice(0, -1).reduce((value, key) => value[key], system.themes[from].componentRecipes)[path.at(-1)];
+      else delete system.themes[from].componentRecipes;
+      const shared = shareNonColorTokens(system, from);
+      assert.deepEqual(shared.themes[other].componentRecipes, remaining);
+      for (const mode of modes) {
+        assert.deepEqual(toCSSVariables(shared.themes[mode], mode), { ...toCSSVariables(baseline.themes[mode], mode), ...componentRecipeVariables(remaining) });
+      }
+      assert.deepEqual(parse(shared), parse(parse(shared)));
+    }
+    const system = structuredClone(baseline);
+    for (const mode of modes) system.themes[mode].componentRecipes = { button: { "primary.md": { root: { background: "#aBcDeF" }, text: { color: "#123456" } } } };
+    delete system.themes[from].componentRecipes;
+    const reset = shareNonColorTokens(system, from);
+    assert.deepEqual(reset.themes[other].componentRecipes, system.themes[other].componentRecipes, "a theme's color reset must not erase the other theme's paint");
+    assert.deepEqual(toCSSVariables(reset.themes[from], from), toCSSVariables(baseline.themes[from], from));
+    delete reset.themes[other].componentRecipes;
+    assert.deepEqual(parse(reset), baseline);
+    assert.equal(exportCSS(reset), exportCSS(baseline));
+  });
+}
+
+test("omitted and empty recipe records remain optional and imports never acquire Dark-only non-colors", () => {
+  for (const source of [undefined, {}, { button: { "primary.md": { root: {}, text: {} } }, card: {} }]) {
+    const system = fresh();
+    if (source !== undefined) system.themes.light.componentRecipes = source;
+    system.themes.dark.componentRecipes = {
+      button: { "primary.md": { root: { paddingLeft: 17.251, shadow: "lg", background: "#123456" }, text: { fontSize: 24, color: "#abcdef" } } },
+      card: { "filled.lg": { content: { gap: 3.25 } } },
+    };
+    const parsed = parse(system);
+    assert.equal(Object.hasOwn(parsed.themes.light, "componentRecipes"), source !== undefined);
+    if (source !== undefined) assert.deepEqual(parsed.themes.light.componentRecipes, {});
+    assert.deepEqual(parsed.themes.dark.componentRecipes, { button: { "primary.md": { root: { background: "#123456" }, text: { color: "#abcdef" } } } });
+    assert.deepEqual(toCSSVariables(parsed.themes.light), toCSSVariables(defaultSystem.themes.light));
+    assert.deepEqual(parse(parsed), parsed);
+  }
+  const system = fresh();
+  system.themes.light.componentRecipes = { button: { "primary.md": { root: { background: "#123456" }, text: { fontSize: 21.25, color: "#abcdef" } } } };
+  const parsed = parse(system);
+  assert.deepEqual(parsed.themes.dark.componentRecipes, { button: { "primary.md": { text: { fontSize: 21.25 } } } });
+  assert.deepEqual(Object.keys(toCSSVariables(parsed.themes.dark, "dark")).filter((key) => key.includes("-recipe-")), ["--button-recipe-primary-md-text-font-size"]);
+});
+
+test("recipe CSS variables are appended sparsely with exact units, zero values and conditional helpers", () => {
+  const theme = fresh().themes.light;
+  const baseline = toCSSVariables(theme);
+  theme.componentRecipes = {
+    button: { "primary.sm": { text: { fontSize: 21.25, textAlign: "center", color: "#aBcDeF" } } },
+    badge: { "outline.success.lg": { text: { textAlign: "right" } } },
+    input: { "readonly.lg": { control: { height: 23.25, paddingTop: 1.25, paddingBottom: 0, borderWidth: 0, shadow: "sm", opacity: 0 } } },
+    switch: { "invalidChecked.md": { control: { width: 40.25, borderWidth: 2.25, borderColor: "transparent" } } },
+    checkbox: { "invalidUnchecked.sm": { control: { background: "transparent" } } },
+    card: { "elevated.sm": { title: { width: "hug" }, content: { maxWidth: "fill" } } },
+    text: { "h1.info.lg": { root: { height: "hug", fontWeight: 637, lineHeight: 1.375, letterSpacing: -0.125 } } },
+  };
+  const variables = toCSSVariables(theme);
+  assert.deepEqual(variables, { ...baseline, ...componentRecipeVariables(theme.componentRecipes) });
+  for (const [key, value] of Object.entries({
+    "--button-recipe-primary-sm-text-font-size": "21.25px",
+    "--button-recipe-primary-sm-text-color": "#aBcDeF",
+    "--button-recipe-primary-sm-text-content-display": "block",
+    "--badge-recipe-outline-success-lg-text-content-display": "block",
+    "--input-recipe-readonly-lg-control-box-sizing": "border-box",
+    "--input-recipe-readonly-lg-control-height": "23.25px",
+    "--input-recipe-readonly-lg-control-min-height": "0px",
+    "--input-recipe-readonly-lg-control-inner-padding-top": "0px",
+    "--input-recipe-readonly-lg-control-inner-padding-bottom": "0px",
+    "--input-recipe-readonly-lg-control-border-width": "0px",
+    "--input-recipe-readonly-lg-control-border-style": "solid",
+    "--input-recipe-readonly-lg-control-shadow": "var(--ds-shadow-sm)",
+    "--input-recipe-readonly-lg-control-opacity": "0",
+    "--switch-recipe-invalid-checked-md-control-thumb-transform": "none",
+    "--switch-recipe-invalid-checked-md-control-thumb-margin": "auto",
+    "--switch-recipe-invalid-checked-md-control-border-width": "2.25px",
+    "--switch-recipe-invalid-checked-md-control-border-color": "transparent",
+    "--checkbox-recipe-invalid-unchecked-sm-control-background": "transparent",
+    "--card-recipe-elevated-sm-title-width": "fit-content",
+    "--card-recipe-elevated-sm-title-box-display": "inline-block",
+    "--card-recipe-elevated-sm-content-max-width": "100%",
+    "--text-recipe-h1-info-lg-root-height": "auto",
+    "--text-recipe-h1-info-lg-root-box-display": "inline-block",
+    "--text-recipe-h1-info-lg-root-font-weight": "637",
+    "--text-recipe-h1-info-lg-root-line-height": "1.375",
+    "--text-recipe-h1-info-lg-root-letter-spacing": "-0.125px",
+  })) assert.equal(variables[key], value, key);
+  assert.equal(variables["--button-recipe-primary-sm-text-box-sizing"], undefined, "text-only edits must not change layout");
+  assert.equal(variables["--button-recipe-primary-md-text-font-size"], undefined, "another size must still inherit");
+  assert.equal(variables["--badge-recipe-outline-neutral-lg-text-content-display"], undefined, "another tone must still inherit");
+});
+
+test("CSS export resets the union of sparse recipe and part keys in BOTH scopes, including every helper", () => {
+  const system = fresh();
+  system.themes.light.componentStyles = { card: { title: { color: "#123456" } } };
+  system.themes.dark.componentStyles = { input: { error: { background: "#654321" } } };
+  system.themes.light.componentRecipes = {
+    button: { "primary.md": { root: { background: "#abcdef", height: 20.25, borderWidth: 0 }, text: { textAlign: "center" } } },
+    card: { "filled.lg": { title: { width: "hug" } } },
+    switch: { "checked.sm": { control: { width: 30.25 } } },
+  };
+  system.themes.dark.componentRecipes = {
+    button: { "primary.md": { root: { background: "#123456" } } },
+    badge: { "solid.info.md": { text: { color: "#aBcDeF", textAlign: "right" } } },
+    input: { "invalid.lg": { control: { paddingTop: 0, paddingBottom: 2.5 } } },
+    text: { "caption.neutral.sm": { root: { width: "fill" } } },
+  };
+  const before = structuredClone(system);
+  deepFreeze(system);
+  const maps = modes.map((mode) => toCSSVariables(system.themes[mode], mode));
+  const sparseKeys = [...new Set(maps.flatMap((map) => Object.keys(map).filter((key) => /-(?:part|recipe)-/.test(key))))];
+  const output = exportCSS(system);
+  const blocks = output.split('[data-ds-theme="dark"]');
+  for (const [index, block] of blocks.entries()) {
+    const declarations = [...block.matchAll(/^  (--[\w-]+): (.+);$/gm)].map(([, key, value]) => [key, value]);
+    assert.equal(declarations.length, new Set(declarations.map(([key]) => key)).size, "each variable is declared once per scope");
+    const variables = Object.fromEntries(declarations);
+    assert.deepEqual(variables, { ...Object.fromEntries(sparseKeys.map((key) => [key, "initial"])), ...maps[index] });
+    for (const suffix of ["min-height", "border-style", "box-display", "content-display", "thumb-transform", "thumb-margin", "inner-padding-top", "inner-padding-bottom", "box-sizing"]) {
+      const missing = sparseKeys.filter((key) => key.includes("-recipe-") && key.endsWith(`-${suffix}`) && !Object.hasOwn(maps[index], key));
+      for (const key of missing) assert.equal(variables[key], "initial", `${modes[index]} resets ${key}`);
+    }
+    assert.equal(variables["--button-recipe-primary-md-root-background"], index === 0 ? "#abcdef" : "#123456");
+    assert.equal(variables["--badge-recipe-solid-info-md-text-color"], index === 0 ? "initial" : "#aBcDeF");
+    assert.equal(variables["--card-recipe-filled-lg-title-width"], index === 0 ? "fit-content" : "initial");
+    assert.equal(variables["--card-part-title-color"], index === 0 ? "#123456" : "initial");
+    assert.equal(variables["--input-part-error-background"], index === 0 ? "initial" : "#654321");
+  }
+  assert.equal(exportCSS(system), output);
+  assert.deepEqual(system, before);
+});
+
+test("old v3 records and empty recipes retain identical JSON data and CSS behavior", () => {
+  const system = fresh();
+  for (const mode of modes) {
+    system.themes[mode].components.button = { radius: 17.251, paddingY: 2.75 };
+    system.themes[mode].componentStyles = { card: { title: { fontSize: 23.125, color: mode === "light" ? "#123456" : "#abcdef" } } };
+    system.themes[mode].variantColors = { card: { filled: { background: "transparent", borderWidth: 1.25, shadow: "md" } } };
+  }
+  const parsed = parse(system);
+  assert.deepEqual(parsed, system);
+  assert.equal(exportCSS(parsed), exportCSS(system));
+  for (const mode of modes) {
+    assert.equal(Object.hasOwn(parsed.themes[mode], "componentRecipes"), false);
+    assert.deepEqual(toCSSVariables(parsed.themes[mode], mode), toCSSVariables(system.themes[mode], mode));
+    parsed.themes[mode].componentRecipes = { card: { "filled.md": { title: {} } } };
+  }
+  const empty = parse(parsed);
+  for (const mode of modes) assert.deepEqual(empty.themes[mode].componentRecipes, {});
+  assert.equal(exportCSS(empty), exportCSS(system));
+  assert.ok(!exportCSS(empty).includes("-recipe-"));
+  assert.ok(!exportCSS(defaultSystem).includes("-recipe-"));
+  for (const from of modes) for (const mode of modes) assert.equal(Object.hasOwn(shareNonColorTokens(system, from).themes[mode], "componentRecipes"), false);
+});
+
+test("recipe imports reject malformed records and unknown/prototype keys at every level in either theme", () => {
+  const paths = [[], ["button"], ["button", "primary.md"], ["button", "primary.md", "root"]];
+  for (const mode of modes) for (const path of paths) {
+    for (const invalid of [null, [], true, 1, "recipes"]) {
+      const system = fresh();
+      system.themes[mode].componentRecipes = path.reduceRight((value, key) => ({ [key]: value }), invalid);
+      assert.throws(() => parse(system), /componentRecipes.*expected plain object/);
+    }
+    for (const key of ["unknown", "__proto__", "constructor", "prototype", "toString"]) {
+      const system = fresh();
+      system.themes[mode].componentRecipes = path.reduceRight((value, part) => ({ [part]: value }), { [key]: {} });
+      assert.throws(() => parse(system), /componentRecipes.*unknown/);
+    }
+  }
+});
+
+test("recipe imports accept only exact variant/state, tone, size, part and field scopes", () => {
+  for (const mode of modes) {
+    for (const [id, keys] of Object.entries({
+      button: ["primary", "primary-sm", "primary.neutral.md", "primary.xl", "disabled.md", "Primary.md"],
+      input: ["hover.md", "default.neutral.md"], switch: ["invalid-checked.md", "checked"],
+      checkbox: ["indeterminate.md"], badge: ["outline.md", "solid.success"],
+      card: ["filled.neutral.md"], text: ["paragraph.md", "h7.neutral.md"],
+    })) for (const key of keys) {
+      const system = fresh();
+      system.themes[mode].componentRecipes = { [id]: { [key]: {} } };
+      assert.throws(() => parse(system), /componentRecipes.*unknown recipe/);
+    }
+    for (const [id, recipe, part, key, value] of [
+      ["button", "primary.md", "frame", "width", 20], ["button", "primary.md", "root", "fontSize", 20],
+      ["button", "primary.md", "root", "color", "#123456"], ["button", "primary.md", "text", "background", "#123456"],
+      ["input", "default.md", "row", "width", 20], ["switch", "checked.md", "control", "fontSize", 20],
+      ["card", "filled.md", "root", "outline", "none"], ["text", "h1.info.md", "root", "gap", 20],
+      ["input", "invalid.md", "control", "boxSizing", "border-box"],
+      ["input", "invalid.md", "control", "innerPaddingTop", 0], ["switch", "checked.md", "control", "thumbTransform", "none"],
+    ]) {
+      const system = fresh();
+      system.themes[mode].componentRecipes = { [id]: { [recipe]: { [part]: { [key]: value } } } };
+      assert.throws(() => parse(system), /componentRecipes.*unknown/);
+    }
+  }
+});
+
+test("recipe imports strictly validate values before sharing, including Dark-only non-colors", () => {
+  for (const mode of modes) for (const field of [...componentRecipeFields("card", "content", "frame"), ...componentRecipeFields("card", "content", "text")]) {
+    const invalids = [null, true, {}, []];
+    if (field.min !== undefined) invalids.push(field.min - 0.01, field.max + 0.01, NaN, Infinity, -Infinity, "12px", "12");
+    if (field.type === "color") invalids.push("#fff", "#12345678", "red", "var(--ds-primary)", "url(https://example.com)", "#123456; color:red");
+    if (field.type === "select") invalids.push("invalid", "var(--ds-shadow-sm)");
+    if (field.key === "fontWeight") invalids.push(637.5);
+    if (field.key === "color") invalids.push("transparent");
+    for (const invalid of invalids) {
+      const system = fresh();
+      system.themes[mode].componentRecipes = { card: { "filled.md": { content: { [field.key]: invalid } } } };
+      assert.throws(() => parse(system), new RegExp(`componentRecipes.card.filled.md.content: invalid ${field.key}`));
+    }
+  }
+});
+
+test("componentRecipes is only a v3 theme field, never a root, token, part-style or legacy field", () => {
+  for (const path of [[], ["themes"], ["themes", "light", "global"], ["themes", "dark", "components"], ["themes", "light", "components", "button"]]) {
+    const system = fresh();
+    path.reduce((value, key) => value[key], system).componentRecipes = {};
+    assert.throws(() => parse(system), /Unknown field.*componentRecipes/);
+  }
+  for (const mode of modes) {
+    const system = fresh();
+    system.themes[mode].componentStyles = { componentRecipes: {} };
+    assert.throws(() => parse(system), /componentStyles: unknown component componentRecipes/);
+  }
+  for (const version of [1, 2]) {
+    const system = { version, name: "Legacy", global: version === 1 ? Object.fromEntries(v1Keys.map((key) => [key, legacyGlobal[key]])) : legacyGlobal, components: fresh().themes.light.components, componentRecipes: {} };
+    assert.throws(() => parse(system), /Unknown field: system.componentRecipes/);
+  }
 });
 
 test("Text exposes only the alias its CSS consumes while retaining legacy export aliases", () => {
@@ -490,6 +845,8 @@ for (const version of [1, 2]) {
       assert.equal(migrated.themes[mode].source, "#AbCdEf");
       assert.deepEqual(migrated.themes[mode].global, { ...global, ...spacingPresets });
       assert.deepEqual(migrated.themes[mode].components, legacy.components);
+      assert.equal(Object.hasOwn(migrated.themes[mode], "componentRecipes"), false);
+      assert.ok(!Object.keys(toCSSVariables(migrated.themes[mode], mode)).some((key) => key.includes("-recipe-")));
     }
     assert.deepEqual(migrated.themes.light.colorScales, {});
     assert.deepEqual(migrated.themes.light.typography, defaultTypography);
@@ -796,19 +1153,24 @@ test("H1–H6 export independent CSS variables and share edited values across th
 
 test("Text variants use their own CSS tokens and default semantic elements", () => {
   const css = readFileSync(new URL("./components/components.module.css", import.meta.url), "utf8");
-  const source = readFileSync(new URL("./components/text.tsx", import.meta.url), "utf8");
-  const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
-  const exports = {};
-  runInNewContext(compiled, {
-    exports,
-    require(id) {
-      if (id === "react/jsx-runtime") return { jsx: (tag, props) => ({ tag, props }) };
-      if (id === "../cx") return { cx: (...names) => names.filter(Boolean).join(" ") };
-      if (id === "./appearance") return appearance;
-      if (id === "./components.module.css") return { __esModule: true, default: { text: "text" } };
-      throw new Error(`Unexpected module: ${id}`);
-    },
-  });
+  const load = (path) => {
+    const source = readFileSync(new URL(path, import.meta.url), "utf8");
+    const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
+    const exports = {};
+    runInNewContext(compiled, {
+      exports,
+      require(id) {
+        if (id === "react/jsx-runtime") return { jsx: (tag, props) => ({ tag, props }) };
+        if (id === "../cx") return { cx: (...names) => names.filter(Boolean).join(" ") };
+        if (id === "./appearance") return appearance;
+        if (id === "./recipes" || id === "./recipe-runtime") return load(`./components/${id.slice(2)}.ts`);
+        if (id === "./components.module.css") return { __esModule: true, default: { text: "text" } };
+        throw new Error(`Unexpected module: ${id}`);
+      },
+    });
+    return exports;
+  };
+  const exports = load("./components/text.tsx");
   for (const variant of typographyVariants) {
     const expected = /^h[1-6]$/.test(variant) ? variant : variant === "heading" ? "h2" : variant === "paragraph" ? "p" : "span";
     const element = exports.Text({ variant, children: "Example" });

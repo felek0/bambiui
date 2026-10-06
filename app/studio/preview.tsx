@@ -8,7 +8,6 @@ import {
   Checkbox,
   Input,
   Switch,
-  Text,
 } from "./components";
 
 import { Icon } from "./icons";
@@ -18,12 +17,10 @@ import type { PaletteMode } from "./color-engine";
 import { previewCopy, type PreviewCopy } from "./preview-copy";
 
 import {
-  componentIds,
   colorScaleRoles,
   colorScaleStops,
   tokenFields,
   resolveColorScale,
-  typographyVariants,
   toCSSVariables,
   type ComponentId,
   type ColorScaleRole,
@@ -31,9 +28,8 @@ import {
   type ThemeTokens,
 } from "./tokens";
 import styles from "./preview.module.css";
-import { ComponentStarterPreview } from "./component-starter-preview";
-import type { ComponentDefaults } from "./component-defaults";
-import type { ComponentStylePart } from "./component-styles";
+import { ComponentMatrix } from "./component-matrix";
+import type { ComponentRecipeSelection } from "./component-recipes";
 
 
 function DemoButton({
@@ -384,52 +380,7 @@ function Specimen({ id, expanded, copy }: { id: ShowcaseId; expanded: boolean; c
   }
 }
 
-function Showcase({
-  id,
-  expanded,
-  copy,
-  selected,
-  onSelect,
-  defaults,
-  part,
-  onSelectPart,
-  onEditParameters,
-}: {
-  id: ShowcaseId;
-  expanded: boolean;
-  copy: PreviewCopy;
-  selected: boolean;
-  onSelect: (id: ComponentId) => void;
-  defaults?: ComponentDefaults;
-  part?: ComponentStylePart;
-  onSelectPart: (component: ComponentId, part: ComponentStylePart) => void;
-  onEditParameters: (component: ComponentId) => void;
-}) {
-  const { name } = copy.components[id];
 
-  return (
-    <section
-      className={styles.showcase}
-      data-specimen={id}
-      data-canvas-unit={id}
-      data-selected={selected || undefined}
-      aria-label={copy.showcase.preview(name)}
-      onClickCapture={() => onSelect(id)}
-      onKeyDownCapture={(event) => {
-        if (event.key !== "Tab" && !event.altKey && !event.metaKey && !event.ctrlKey) onSelect(id);
-      }}
-    >
-      <header className={styles.showcaseHeader}>
-        <h2><Link href={`/${id}`} aria-current={selected ? "page" : undefined}>{name}</Link></h2>
-      </header>
-      <ComponentStarterPreview component={id} defaults={defaults} part={selected ? part : undefined} onSelectPart={onSelectPart} onEditParameters={() => onEditParameters(id)} />
-      <div className={`${styles.specimen} ${expanded ? styles.expanded : ""}`}>
-        <Specimen id={id} expanded={expanded} copy={copy} />
-      </div>
-
-    </section>
-  );
-}
 
 function ThemePane({ theme, mode, children, copy }: {
   theme: ThemeTokens;
@@ -451,16 +402,15 @@ function ThemePane({ theme, mode, children, copy }: {
   );
 }
 
-export function Preview({ selected, system, mode, active = true, onSelectColorRole, onEditToken, selectedPart, onSelectPart, onEditParameters }: {
+export function Preview({ selected, system, mode, active = true, onSelectColorRole, onEditToken, recipeSelection, onSelectRecipe }: {
   selected: "colors" | "spacing" | ComponentId;
   system: DesignSystem;
   mode: PaletteMode;
   active?: boolean;
   onSelectColorRole?: (role: ColorScaleRole) => void;
   onEditToken?: (selection: "colors" | "spacing", inputId: string) => void;
-  selectedPart?: ComponentStylePart;
-  onSelectPart: (component: ComponentId, part: ComponentStylePart) => void;
-  onEditParameters: (component: ComponentId) => void;
+  recipeSelection: ComponentRecipeSelection | null;
+  onSelectRecipe: (selection: ComponentRecipeSelection) => void;
 }) {
   const copy = previewCopy;
   const router = useRouter();
@@ -482,9 +432,7 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
     hoveredUnitRef.current = next;
     setHoveredUnit(next);
   };
-  const selectSpecimen = (id: ComponentId) => {
-    if (active && selected !== id) router.push(`/${id}`, { scroll: false });
-  };
+
   const selectFoundation = (id: "colors" | "spacing") => {
     if (active && selected !== id) router.push(`/${id}`, { scroll: false });
   };
@@ -627,12 +575,14 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
     return () => view.removeEventListener("wheel", wheel);
   }, [active, queueWheelCamera, stopAnimation, zoomAt]);
 
+  const selectedRecipe = recipeSelection?.component === selected ? recipeSelection.recipe : null;
   useEffect(() => {
     if (!active) return;
     const frame = requestAnimationFrame(() => {
       const view = viewport.current;
       const element = canvas.current;
-      const target = element?.querySelector<HTMLElement>(`[data-canvas-unit="${selected}"]`);
+      const unit = element?.querySelector<HTMLElement>(`[data-canvas-unit="${selected}"]`);
+      const target = selectedRecipe ? unit?.querySelector<HTMLElement>(`[data-recipe-example="${selectedRecipe}"]`) : unit;
       if (!view || !element || !target || !view.clientWidth) return;
       if (naturalLayout()) {
         target.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
@@ -640,8 +590,10 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
         const bounds = target.getBoundingClientRect();
         const box = view.getBoundingClientRect();
         const current = camera.current;
-        // A previous Fit should not leave a newly selected unit too small to edit.
-        const zoom = Math.max(current.zoom, 1);
+        // Fit the three size columns, not the whole tall matrix; keep text legible.
+        const overviewZoom = Math.min(1, Math.max(0.2, (view.clientWidth - 64) / element.offsetWidth));
+        const zoom = selectedRecipe ? Math.max(current.zoom, overviewZoom) : overviewZoom;
+        if (selectedRecipe && bounds.left >= box.left + 24 && bounds.right <= box.right - 24 && bounds.top >= box.top + 72 && bounds.bottom <= box.bottom - 76) return;
         const worldX = (bounds.left - box.left + bounds.width / 2 - current.x) / current.zoom;
         const worldY = (bounds.top - box.top + bounds.height / 2 - current.y) / current.zoom;
         const heading = target.querySelector("h2")?.getBoundingClientRect();
@@ -663,7 +615,7 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
       ], { duration: 1400 });
     });
     return () => cancelAnimationFrame(frame);
-  }, [selected, active, moveCamera]);
+  }, [selected, selectedRecipe, active, moveCamera]);
 
   return (
     <ThemePane theme={system.themes[mode]} mode={mode} copy={copy}>
@@ -676,7 +628,7 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
       </div>
       <p className={styles.canvasHelp} aria-hidden="true">Drag or scroll to pan · Ctrl/⌘ + scroll to zoom</p>
       <p className={styles.selectionHint} data-canvas-selection-hint data-visible={hoveredUnit ? true : undefined} aria-hidden="true">{hoveredUnit ? `${hoveredUnit === "colors" ? "Colors" : hoveredUnit === "spacing" ? "Shape & spacing" : hoveredUnit === "text" ? "Text" : copy.components[hoveredUnit as ShowcaseId].name} · Click to edit tokens` : ""}</p>
-      <p id={helpId} className={styles.srOnly}>On desktop, drag empty space or use the mouse wheel to pan without bounds. Hold Control or Command while scrolling to zoom at the pointer; Shift and scroll pans horizontally. Focus the canvas and use arrow keys to pan, or use Fit and zoom buttons. On mobile, scroll the page normally. Hover over a section for a selection outline; click an empty area of that section to edit its tokens. Controls inside specimens remain interactive.</p>
+      <p id={helpId} className={styles.srOnly}>On desktop, drag empty space or use the mouse wheel to pan without bounds. Hold Control or Command while scrolling to zoom at the pointer; Shift and scroll pans horizontally. Focus the canvas and use arrow keys to pan, or use Fit and zoom buttons. On mobile, scroll the page normally. Hover over a section for a selection outline; click an empty area of that section to edit its tokens. Select an example frame or its text to edit that exact combination. Keyboard users can select an example using its size button, then choose a layer in the inspector. Interactive behavior is available in the optional state previews.</p>
       <div
         ref={viewport}
         className={styles.viewport}
@@ -708,8 +660,8 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
         onPointerDown={(event) => {
           dragged.current = false;
           if (naturalLayout() || (event.button !== 0 && event.button !== 1) || event.pointerType === "touch" || !(event.target instanceof Element)) return;
-          // Middle drag pans anywhere; left drag leaves interactive specimens usable.
-          if (event.button === 0 && event.target.closest("a, button, input, textarea, select, label, [role='switch'], [role='checkbox'], [contenteditable='true']")) return;
+          // Middle drag pans anywhere; left drag on a design example selects a layer.
+          if (event.button === 0 && event.target.closest("[data-recipe-example], a, button, input, textarea, select, label, summary, [role='switch'], [role='checkbox'], [contenteditable='true']")) return;
           stopAnimation();
           const view = event.currentTarget;
           drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, left: camera.current.x, top: camera.current.y };
@@ -766,7 +718,7 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
         }}
       >
         <div ref={canvas} data-canvas className={styles.canvas}>
-          <div className={styles.foundations}>
+          {(selected === "colors" || selected === "spacing") && <div className={styles.foundations}>
             <section data-foundation="colors" data-canvas-unit="colors" data-selected={selected === "colors" || undefined} aria-labelledby="canvas-colors-title" className={styles.foundation}
               onClickCapture={(event) => { if (!(event.target instanceof Element && event.target.closest("a, button, input, select"))) selectFoundation("colors"); }}>
               <h2 id="canvas-colors-title"><Link href="/colors" aria-current={selected === "colors" ? "page" : undefined}>Colors</Link></h2>
@@ -803,41 +755,15 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
                 </Link>)}
               </div>
             </section>
-            <section data-foundation="text" data-specimen="text" data-canvas-unit="text" data-selected={selected === "text" || undefined} aria-label="Text preview" className={styles.foundation}
-              onClickCapture={() => selectSpecimen("text")}
-              onKeyDownCapture={(event) => { if (event.key !== "Tab" && !event.altKey && !event.metaKey && !event.ctrlKey) selectSpecimen("text"); }}>
-              <h2><Link href="/text" aria-current={selected === "text" ? "page" : undefined}>Text</Link></h2>
-              <p>Independent H1–H6, paragraph, label, caption and legacy heading styles.</p>
-              <ComponentStarterPreview component="text" defaults={system.componentDefaults} part={selected === "text" ? selectedPart : undefined} onSelectPart={onSelectPart} onEditParameters={() => onEditParameters("text")} />
-              <div className={styles.foundationText}>
-                {typographyVariants.map((variant) => <div key={variant}>
-                  <span className={styles.foundationTextLabel}>{variant === "heading" ? "Legacy heading" : variant.toUpperCase()}</span>
-                  <Text variant={variant} as={variant === "paragraph" ? "p" : "span"}>
-                    {variant === "heading" ? "A familiar heading style" : variant === "paragraph" ? "A clear paragraph gives each idea room to breathe." : variant === "label" ? "A helpful label" : variant === "caption" ? "The finer details, thoughtfully placed." : `A ${variant.toUpperCase()} that sets the tone`}
-                  </Text>
-                </div>)}
-                <div>
-                  <span className={styles.foundationTextLabel}>Primary · large</span>
-                  <Text variant="h3" as="span" size="lg" tone="primary">An expressive heading</Text>
-                </div>
-                <div>
-                  <span className={styles.foundationTextLabel}>Info · small</span>
-                  <Text as="span" size="sm" tone="info">A little more context for this idea.</Text>
-                </div>
-                <div>
-                  <span className={styles.foundationTextLabel}>Danger · large</span>
-                  <Text variant="caption" as="span" size="lg" tone="danger">Something needs attention.</Text>
-                </div>
-                <div data-instance-specimen="text">
-                  <span className={styles.foundationTextLabel}>Local instance typography · shared tokens unchanged</span>
-                  <Text appearance={{ width: "fill", fontSize: 18, fontWeight: 500, lineHeight: 1.8, letterSpacing: 0.3, textAlign: "right" }}>Locally aligned text.</Text>
-                </div>
-              </div>
-            </section>
-          </div>
-          <div className={styles.grid}>
-            {componentIds.filter((id): id is ShowcaseId => id !== "text").map((id) => <Showcase key={id} id={id} expanded copy={copy} selected={selected === id} onSelect={selectSpecimen} defaults={system.componentDefaults} part={selectedPart} onSelectPart={onSelectPart} onEditParameters={onEditParameters} />)}
-          </div>
+          </div>}
+          {selected !== "colors" && selected !== "spacing" && <section key={selected} className={styles.componentBoard} data-specimen={selected} data-canvas-unit={selected} data-selected aria-label={`${selected} preview`}>
+            <ComponentMatrix component={selected} defaults={system.componentDefaults} selection={recipeSelection} onSelect={onSelectRecipe} />
+            {selected !== "text" && <details className={styles.interactions} data-interaction-examples>
+              <summary>Interaction & state previews</summary>
+              <p>Try keyboard and pointer behavior here. Disabled, loading and radius examples inherit the same recipes; they are not separate style scopes.</p>
+              <div className={styles.specimen}><Specimen id={selected} expanded copy={copy} /></div>
+            </details>}
+          </section>}
         </div>
       </div>
     </ThemePane>

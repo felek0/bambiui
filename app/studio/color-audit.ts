@@ -3,8 +3,29 @@ import type { PaletteMode } from "./color-engine";
 import { resolveComponent, toCSSVariables } from "./tokens.ts";
 import { contrastRatio } from "./color-engine.ts";
 import type { ComponentStylePart } from "./component-styles.ts";
+import {
+  componentRecipeIds, componentRecipeOptions,
+  type ComponentRecipeOption, type ComponentRecipePart,
+} from "./component-recipes.ts";
 
-export type ColorCheckTarget = { selection: "colors" | ComponentId; key: string; variant?: string; part?: ComponentStylePart; derived?: boolean };
+// Recipe navigation must select the exact combination AND frame/text target before
+// focusing its field. Without recipe, `part` retains the legacy shared-style route.
+export type ColorCheckTarget = { key: string; derived?: boolean } & (
+  { selection: ComponentId; recipe: string; part: ComponentRecipePart; target: "frame" | "text"; variant?: never }
+  | { selection: "colors" | ComponentId; variant?: string; recipe?: undefined; part?: ComponentStylePart; target?: undefined }
+);
+export function colorCheckTargetId(target: ColorCheckTarget): string {
+  return [target.selection, target.recipe ?? "", target.variant ?? "", target.part ?? "", target.target ?? "", target.key].join("/");
+}
+
+export function colorCheckTargetLabel(target: ColorCheckTarget): string {
+  const words = (value: string) => value.replace(/([a-z])([A-Z])/g, "$1 $2").replaceAll(".", " ").toLowerCase();
+  const component = target.selection === "colors" ? "global" : target.selection[0].toUpperCase() + target.selection.slice(1);
+  const scope = target.recipe ? ` / ${words(target.recipe)} / ${target.part} ${target.target}`
+    : target.part ? ` shared ${target.part}` : target.variant ? ` ${words(target.variant)}` : "";
+  return `${component}${scope} ${words(target.key)}`;
+}
+
 type CheckTargets = { ink?: ColorCheckTarget; surface?: ColorCheckTarget };
 type AuditedColor = { value: string; target: ColorCheckTarget };
 
@@ -83,8 +104,9 @@ const roles = [
  * Finite current-CSS diagnostics, not accessibility certification. Models opaque
  * #rrggbb tokens, normal text (4.5), marks and rendered boundaries (3). Components
  * sit on the global background; authored field rows and Card slots resolve their
- * internal surfaces. Text in Card.Content is modeled when shared part paint changes.
- * Offset focus rings also cover muted surroundings and authored choice rows.
+ * internal surfaces. Legacy shared pairs remain stable; recipe checks are added
+ * only for affected paint/borders, including Card Content/Footer nested text.
+ * Offset focus rings also cover muted surroundings and authored field/row surfaces.
  * Ratios use uncomposited colors: opacity, disabled states, local appearance,
  * arbitrary nested/external surfaces, shadows and focus geometry are not certified.
  * Unedited slots reuse existing pairs to preserve the historical default check set.
@@ -280,6 +302,182 @@ export function auditSystemColors(theme: ThemeTokens, mode: PaletteMode = "light
       const foreground = v[`${prefix}-foreground`];
       add(`badge.${tone}.${variant}`, `Badge ${tone} ${variant} text`, foreground, background, 4.5, "badge");
       boundary("badge", `badge.${tone}.${variant}.boundary`, `Badge ${tone} ${variant} border`, v[`${prefix}-border`], variant === "solid" ? undefined : background, Number.parseFloat(v[`${prefix}-border-width`]));
+    }
+  }
+  return checks.concat(auditRecipeColors(theme, v));
+}
+
+type RecipeColor = AuditedColor & { affected?: boolean };
+type RecipePairs = { seen: Set<string>; parent?: ColorCheckTarget; ink?: ColorCheckTarget };
+const recipeSlug = (value: string) => value.replaceAll(".", "-").replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+
+/** Sparse recipe diagnostics are additive; never expand the 150 default pairs by size. */
+function auditRecipeColors(theme: ThemeTokens, variables: Record<string, string>): ContrastCheck[] {
+  const recipes = theme.componentRecipes;
+  if (!recipes) return [];
+  const checks: ContrastCheck[] = [];
+  const global = (key: "background" | "foreground" | "mutedForeground" | "danger"): RecipeColor =>
+    ({ value: theme.global[key], target: { selection: "colors", key } });
+  const canvas = global("background");
+  const focus: RecipeColor = { value: variables["--ds-primary-focus"], target: { selection: "colors", key: "primary", derived: true } };
+  const hasPaint = (component: ComponentId, recipe: string) => Object.values(recipes[component]?.[recipe] ?? {})
+    .some((part) => [part.color, part.background, part.borderColor, part.borderWidth].some((value) => value !== undefined));
+  const hasChildPaint = (["text", "button", "badge"] as const).some((component) =>
+    componentRecipeOptions(component).some(({ key }) => hasPaint(component, key)));
+
+  function variant(component: ComponentId, name: string, key: string): RecipeColor {
+    return { value: variables[`--${component}-variant-${recipeSlug(name)}-${recipeSlug(key)}`], target: {
+      selection: component, variant: name, key: key === "description" ? "foreground" : key,
+      ...(key === "description" && { derived: true }),
+    } };
+  }
+  // An explicit transparent recipe replaces (rather than falls back to) shared
+  // paint. Keep its dependency even though navigation goes to the visible parent.
+  const surface = (paint: RecipeColor, parent: RecipeColor): RecipeColor => paint.value === "transparent"
+    ? { ...parent, affected: paint.affected || parent.affected } : paint;
+  function context(component: ComponentId, option: ComponentRecipeOption) {
+    const authored = recipes?.[component]?.[option.key];
+    const shared = (part: ComponentRecipePart) => part === "text" ? undefined : theme.componentStyles?.[component]?.[part];
+    function color(part: ComponentRecipePart, key: "color" | "background" | "borderColor", fallback: RecipeColor): RecipeColor {
+      const value = authored?.[part]?.[key];
+      if (value !== undefined) return { value, affected: true, target: {
+        selection: component, recipe: option.key, part, target: key === "color" ? "text" : "frame", key,
+      } };
+      const inherited = shared(part)?.[key];
+      return inherited === undefined || part === "text" ? fallback
+        : { value: inherited, target: { selection: component, part, key } };
+    }
+    return {
+      component, option, color,
+      background: (part: ComponentRecipePart, parent: RecipeColor, fallback = parent) => surface(color(part, "background", fallback), parent),
+      width: (part: ComponentRecipePart, fallback: number) => authored?.[part]?.borderWidth ?? shared(part)?.borderWidth ?? fallback,
+      authoredWidth: (part: ComponentRecipePart) => authored?.[part]?.borderWidth !== undefined,
+      // Only exact Card recipes enter the descendant scope, NOT shared slot ink.
+      scope: (part: "content" | "footer") => authored?.[part]?.color === undefined ? undefined : color(part, "color", global("foreground")),
+    };
+  }
+  type Context = ReturnType<typeof context>;
+  function add(id: string, label: string, component: ComponentId, ink: RecipeColor, background: RecipeColor, minimum = 4.5, widthChanged = false, pairs?: RecipePairs) {
+    if (!ink.affected && !background.affected && !widthChanged) return;
+    // A child's opaque pair independent of its Card is already checked standalone.
+    if (pairs?.parent && ink.target !== pairs.ink && background.target !== pairs.parent) return;
+    // Nested unedited type/size combinations with identical paint share a pair.
+    const signature = JSON.stringify([id.split("/").at(-1), ink.value, ink.target, background.value, background.target, minimum]);
+    if (pairs?.seen.has(signature)) return;
+    pairs?.seen.add(signature);
+    const ratio = contrastRatio(ink.value, background.value);
+    checks.push({ id, label, component, foreground: ink.value, background: background.value,
+      ratio, minimum, passes: ratio >= minimum, inkTarget: ink.target, surfaceTarget: background.target });
+  }
+  function border(ctx: Context, part: ComponentRecipePart, id: string, label: string, ink: RecipeColor, inside: RecipeColor, outside: RecipeColor,
+    fallbackWidth = 0, fallbackStroke = ink, checkInside = true, owner = ctx.component, pairs?: RecipePairs) {
+    const stroke = ctx.color(part, "borderColor", fallbackStroke);
+    if (ctx.width(part, fallbackWidth) <= 0 || stroke.value === "transparent") return;
+    add(`${id}/boundary`, `${label} border on parent surface`, owner, stroke, outside, 3, ctx.authoredWidth(part), pairs);
+    if (checkInside) add(`${id}/boundary.inside`, `${label} border on interior surface`, owner, stroke, inside, 3, ctx.authoredWidth(part), pairs);
+  }
+  function variantWidth(component: ComponentId, name: string) {
+    return Number.parseFloat(variables[`--${component}-variant-${recipeSlug(name)}-border-width`]);
+  }
+  const textInk = (tone: string): RecipeColor => tone === "neutral"
+    ? { value: resolveComponent(theme, "text").foreground, target: { selection: "text", key: "foreground" } }
+    : { value: variables[`--ds-${tone}-on-subtle`], target: { selection: "colors", key: tone, derived: true } };
+
+  function leaf(ctx: Context, parent: RecipeColor, id: string, label: string, scope?: RecipeColor, owner = ctx.component, pairs?: RecipePairs) {
+    const { component, option } = ctx;
+    const name = option.tone ? `${option.variant}.${option.tone}` : option.variant;
+    const isText = component === "text";
+    const baseInk = isText ? ctx.color("root", "color", textInk(option.tone!)) : variant(component, name, "foreground");
+    const ink = scope ?? (isText ? baseInk : ctx.color("text", "color", baseInk));
+    const fill = ctx.background("root", parent, isText ? parent : variant(component, name, "background"));
+    add(`${id}/text`, `${label} text`, owner, ink, fill, 4.5, false, pairs);
+    if (component === "button") for (const state of ["hover", "active"] as const) {
+      // Recipe ink persists, but recipe resting background does not mask feedback.
+      const stateFill = surface(variant(component, name, `${state}Background`), parent);
+      add(`${id}/${state}`, `${label} ${state} text`, owner, ink, stateFill, 4.5, false, pairs);
+    }
+    border(ctx, "root", id, label, isText ? ink : baseInk, fill, parent,
+      isText ? 0 : variantWidth(component, name), isText ? ink : variant(component, name, "border"),
+      isText || component === "badge" && option.variant !== "solid", owner, pairs);
+    if (component === "button") add(`${id}/focus`, `${label} offset focus ring on parent surface`, owner, focus, parent, 3, false, pairs);
+  }
+
+  for (const component of componentRecipeIds) for (const option of componentRecipeOptions(component)) {
+    // Unedited Card sizes share the md context for authored nested child paint.
+    if (!hasPaint(component, option.key) && !(component === "card" && option.size === "md" && hasChildPaint)) continue;
+    const ctx = context(component, option);
+    const id = `${component}.recipe.${option.key}`;
+    const label = `${component} ${option.label}`;
+    if (component === "text" || component === "button" || component === "badge") {
+      leaf(ctx, canvas, id, label);
+      continue;
+    }
+    if (component === "card") {
+      const ink = variant(component, option.variant, "foreground");
+      const fill = ctx.background("root", canvas, variant(component, option.variant, "background"));
+      const directPairs: RecipePairs = { seen: new Set() };
+      add(`${id}.root/text`, `${label} inherited text`, component, ink, fill, 4.5, false, directPairs);
+      border(ctx, "root", `${id}.root`, label, ink, fill, canvas, variantWidth(component, option.variant), variant(component, option.variant, "border"));
+      const headerFill = ctx.background("header", fill);
+      const headerInk = ctx.color("header", "color", ink);
+      for (const part of ["header", "title", "description", "content", "footer", "icon"] as const) {
+        const parent = part === "title" || part === "description" ? headerFill : fill;
+        const fallbackInk = part === "description" ? variant(component, option.variant, "description") : part === "title" ? headerInk : ink;
+        const partInk = ctx.color(part, "color", fallbackInk);
+        const partFill = ctx.background(part, parent);
+        const partId = `${id}.${part}`;
+        const partLabel = `${label} ${part}`;
+        add(`${partId}/text`, `${partLabel} ${part === "icon" ? "mark" : "inherited text"}`, component, partInk, partFill, part === "icon" ? 3 : 4.5, false, directPairs);
+        border(ctx, part, partId, partLabel, partInk, partFill, parent, part === "icon" ? Number.parseFloat(variables["--ds-card-icon-border-width"]) : 0);
+        if (part !== "content" && part !== "footer") continue;
+        const scopedInk = ctx.scope(part);
+        if (!partFill.affected && !scopedInk && !(option.size === "md" && hasChildPaint)) continue;
+        for (const child of ["text", "button", "badge"] as const) {
+          const pairs: RecipePairs = { seen: new Set(), parent: partFill.target, ink: scopedInk?.target };
+          // Prefer conventional md/paragraph representatives for equivalent paint.
+          const options = [...componentRecipeOptions(child)].sort((a, b) =>
+            Number(b.size === "md") - Number(a.size === "md") || Number(b.variant === "paragraph") - Number(a.variant === "paragraph"));
+          for (const childOption of options) {
+            leaf(context(child, childOption), partFill, `${partId}.${child}.${childOption.key}`, `${child} ${childOption.label} in ${partLabel}`, scopedInk, component, pairs);
+          }
+        }
+      }
+      continue;
+    }
+    const root = ctx.background("root", canvas);
+    const row = component === "input" ? root : ctx.background("row", root);
+    const rowInk = component === "input" ? global("foreground") : ctx.color("row", "color", global("foreground"));
+    border(ctx, "root", `${id}.root`, `${label} field`, global("foreground"), root, canvas);
+    if (component !== "input") border(ctx, "row", `${id}.row`, `${label} row`, rowInk, row, root);
+    for (const part of ["label", "description", "error"] as const) {
+      const parent = part === "label" ? row : root;
+      const ink = ctx.color(part, "color", part === "label" ? rowInk : global(part === "description" ? "mutedForeground" : "danger"));
+      const fill = ctx.background(part, parent);
+      add(`${id}.${part}/text`, `${label} ${part}`, component, ink, fill);
+      border(ctx, part, `${id}.${part}`, `${label} ${part}`, ink, fill, parent);
+    }
+    add(`${id}/focus`, `${label} offset focus ring on field surroundings`, component, focus, row, 3);
+    const states = component === "input" && option.variant === "default" ? ["default", "hover"] : [option.variant];
+    for (const state of states) {
+      const controlId = `${id}.control.${state}`;
+      const controlLabel = `${label} ${state} control`;
+      const ink = ctx.color("control", "color", variant(component, state, "foreground"));
+      const hover = component === "input" && state === "hover";
+      const fill = hover ? surface(variant(component, state, "background"), row) : ctx.background("control", row, variant(component, state, "background"));
+      const unchecked = state === "unchecked" || state === "invalidUnchecked";
+      // Checkbox's unchecked indicator is hidden, not a newly certified mark.
+      if (component !== "checkbox" || !unchecked) add(`${controlId}/text`, `${controlLabel} ${component === "input" ? "text" : component === "switch" ? "thumb" : "mark"}`, component, ink, fill, component === "input" ? 4.5 : 3);
+      if (component === "input") add(`${controlId}/placeholder`, `${controlLabel} placeholder`, component, global("mutedForeground"), fill);
+      if (hover) {
+        // Hover replaces default recipe stroke/fill but retains its border width.
+        if (ctx.width("control", variantWidth(component, state)) > 0) {
+          const stroke = variant(component, state, "border");
+          if (stroke.value !== "transparent") {
+            add(`${controlId}/boundary`, `${controlLabel} border on parent surface`, component, stroke, row, 3, ctx.authoredWidth("control"));
+            add(`${controlId}/boundary.inside`, `${controlLabel} border on interior surface`, component, stroke, fill, 3, ctx.authoredWidth("control"));
+          }
+        }
+      } else border(ctx, "control", controlId, controlLabel, ink, fill, row, variantWidth(component, state), variant(component, state, "border"), component === "input" || unchecked);
     }
   }
   return checks;

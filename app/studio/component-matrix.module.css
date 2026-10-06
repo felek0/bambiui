@@ -1,0 +1,30 @@
+.matrix { min-width: 0; }
+.heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 32px; font-family: var(--studio-font-family); }
+.heading h2 { font-size: 24px; font-weight: 600; letter-spacing: -0.03em; }
+.heading p { margin-top: 6px; color: var(--ds-muted-foreground); font-size: 12px; }
+.heading > span { flex: none; padding-top: 10px; color: var(--ds-muted-foreground); font-size: 11px; }
+.columns, .row { display: grid; grid-template-columns: 100px repeat(3, minmax(0, 1fr)); gap: 24px; }
+.columns { margin-bottom: 16px; color: var(--ds-muted-foreground); font: 11px/1.5 var(--studio-font-family); }
+.rows { display: grid; gap: 32px; }
+.row { align-items: start; padding-block: 12px 20px; border-top: 1px solid var(--ds-border); }
+.row > h3 { padding-top: 35px; color: var(--ds-muted-foreground); font: 500 11px/1.6 var(--studio-font-family); overflow-wrap: anywhere; }
+.example { min-width: 0; }
+.exampleLabel { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 28px; margin-bottom: 12px; padding: 4px 6px; border: 1px solid transparent; border-radius: 4px; color: var(--ds-muted-foreground); font: 11px/1.5 var(--studio-font-family); text-align: left; cursor: pointer; }
+.exampleLabel > span { opacity: 0; }
+.exampleLabel:hover, .example[data-selected] .exampleLabel { border-color: var(--studio-color-selection-border); background: var(--studio-color-selection); color: var(--studio-color-on-selection); }
+.exampleLabel:hover > span, .example[data-selected] .exampleLabel > span { opacity: 1; }
+.exampleLabel:focus-visible { outline: var(--studio-focus-ring); outline-offset: 2px; }
+.body { position: relative; min-width: 0; min-height: 48px; padding: 4px; overflow-wrap: anywhere; cursor: default; }
+.body * { cursor: default !important; user-select: none; }
+.body [data-component-part]:hover { outline: 1px solid var(--studio-color-selection-border); outline-offset: 2px; }
+.body [data-component-part]:has([data-component-part]:hover) { outline: none; }
+.body [data-system-selected-part] { outline: var(--canvas-selection-stroke, 2px) solid var(--studio-color-selection-border) !important; outline-offset: 3px; }
+@media (max-width: 760px) {
+  .heading { gap: 12px; margin-bottom: 20px; }
+  .heading h2 { font-size: 20px; }
+  .heading > span { max-width: 90px; text-align: right; }
+  .columns { display: none; }
+  .row { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .row > h3 { padding-top: 0; font-size: 13px; }
+  .body { padding: 6px; }
+}

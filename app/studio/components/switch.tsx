@@ -3,6 +3,7 @@ import { Switch as BaseSwitch } from "@base-ui/react/switch";
 import { FieldRoot, labelClassName, type FieldProps } from "./field";
 import styles from "./components.module.css";
 import { appearanceToStyle, hasAppearanceBox, mergeAppearanceStyle } from "./appearance";
+import { componentRecipeMarkers } from "./recipe-runtime";
 
 export type SwitchProps = Omit<
   BaseSwitch.Root.Props,
@@ -45,6 +46,7 @@ export function Switch({
       className={className}
     >
       <Field.Label
+        {...componentRecipeMarkers("switch", "row")}
         data-appearance-part="row"
         className={styles.choice}
         style={appearanceToStyle(parts?.row)}
@@ -52,6 +54,7 @@ export function Switch({
       >
         <BaseSwitch.Root
           {...props}
+          {...componentRecipeMarkers("switch", "control")}
           data-appearance-part="control"
           disabled={disabled}
           className={styles.switch}
@@ -60,7 +63,7 @@ export function Switch({
         >
           <BaseSwitch.Thumb className={styles.thumb} />
         </BaseSwitch.Root>
-        <span data-appearance-part="label" data-hide-label={hideLabel || undefined} className={labelClassName(hideLabel)} style={hideLabel ? undefined : appearanceToStyle(parts?.label)}>
+        <span {...componentRecipeMarkers("switch", "label")} data-appearance-part="label" data-hide-label={hideLabel || undefined} className={labelClassName(hideLabel)} style={hideLabel ? undefined : appearanceToStyle(parts?.label)}>
           {hideLabel && parts?.label ? <span style={appearanceToStyle(parts.label)}>{label}</span> : label}
         </span>
       </Field.Label>

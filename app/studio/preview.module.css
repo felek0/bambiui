@@ -240,6 +240,13 @@
   }
 }
 
+.componentBoard { min-width: 0; }
+.interactions { margin-top: 40px; padding: 16px 0; border-top: 1px solid var(--ds-border); }
+.interactions > summary { color: var(--ds-muted-foreground); font: 12px/1.5 var(--studio-font-family); cursor: pointer; }
+.interactions > summary:focus-visible { outline: var(--studio-focus-ring); outline-offset: 3px; }
+.interactions > p { margin-block: 12px; color: var(--ds-muted-foreground); font: 11px/1.6 var(--studio-font-family); }
+.interactions .specimen { max-width: 680px; margin-inline: auto; }
+
 .foundations {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -695,7 +702,7 @@
   .canvas {
     position: relative;
     width: 100%;
-    padding: 68px 0 8px;
+    padding: 68px 16px 24px;
     transform: none !important;
     will-change: auto;
   }

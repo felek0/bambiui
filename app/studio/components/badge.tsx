@@ -1,6 +1,8 @@
 import type { ComponentProps, ReactNode } from "react";
 import { cx } from "../cx";
-import { mergeAppearanceStyle, type AppearanceProps } from "./appearance";
+import type { AppearanceProps } from "./appearance";
+import { componentRecipeKey } from "./recipes";
+import { componentRecipeMarkers, mergeRecipeStyle } from "./recipe-runtime";
 import type { Radius, Size, Tone } from "./types";
 import styles from "./components.module.css";
 
@@ -32,10 +34,13 @@ export function Badge({
   style,
   ...props
 }: BadgeProps) {
+  const recipe = componentRecipeKey("badge", { variant, size, tone });
   return (
     <span
       {...props}
-      style={mergeAppearanceStyle(style, appearance)}
+      style={mergeRecipeStyle("badge", recipe, style, appearance)}
+      {...componentRecipeMarkers("badge", "root")}
+      data-component-recipe={recipe}
       className={cx(styles.badge, className)}
       data-variant={variant}
       data-tone={tone}
@@ -46,7 +51,7 @@ export function Badge({
       {startIcon && (
         <span className={styles.decorativeIcon} aria-hidden="true">{startIcon}</span>
       )}
-      {appearance?.textAlign ? <span className={styles.alignedContent}>{children}</span> : <span className={styles.badgeContent}>{children}</span>}
+      <span {...componentRecipeMarkers("badge", "text")} className={cx(styles.badgeContent, appearance?.textAlign && styles.alignedContent)}>{children}</span>
     </span>
   );
 }

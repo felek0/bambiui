@@ -1,6 +1,8 @@
 import type { ComponentPropsWithoutRef } from "react";
 import { cx } from "../cx";
-import { hasAppearanceBox, mergeAppearanceStyle, type AppearanceProps } from "./appearance";
+import { hasAppearanceBox, type AppearanceProps } from "./appearance";
+import { componentRecipeKey } from "./recipes";
+import { componentRecipeMarkers, mergeRecipeStyle } from "./recipe-runtime";
 import type { Size, Tone } from "./types";
 import styles from "./components.module.css";
 
@@ -28,12 +30,15 @@ export function Text<T extends TextElement = "p">({
   style,
   ...props
 }: TextProps<T>) {
+  const recipe = componentRecipeKey("text", { variant, size, tone });
   const Element: TextElement = as ?? (variant === "heading" ? "h2" : /^h[1-6]$/.test(variant) ? variant as TextElement : variant === "paragraph" ? "p" : "span");
 
   return (
     <Element
       {...props}
-      style={mergeAppearanceStyle(style, appearance)}
+      style={mergeRecipeStyle("text", recipe, style, appearance)}
+      {...componentRecipeMarkers("text", "root")}
+      data-component-recipe={recipe}
       data-appearance-box={hasAppearanceBox(appearance) || undefined}
       className={cx(styles.text, className)}
       data-variant={variant}

@@ -7,8 +7,8 @@ import {
   type NodeAppearance,
 } from "./components/appearance.ts";
 
-export type SharedComponentId = "button" | "input" | "switch" | "checkbox" | "badge" | "card" | "text";
-export type ComponentStylePart = "root" | "control" | "row" | "label" | "description" | "error" | "header" | "title" | "content" | "footer" | "icon";
+import type { SharedComponentId, ComponentStylePart } from "./components/types.ts";
+export type { SharedComponentId, ComponentStylePart } from "./components/types.ts";
 export type ComponentStyles = Partial<Record<SharedComponentId, Partial<Record<ComponentStylePart, NodeAppearance>>>>;
 
 type Part = { key: ComponentStylePart; label: string; fields: readonly AppearanceField[] };

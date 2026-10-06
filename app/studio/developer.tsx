@@ -28,6 +28,7 @@ import type { PaletteMode } from "./color-engine";
 import { appearanceFieldsFor, appearanceParts } from "./page-document/appearance";
 import { componentStyleFields, componentStyleParts, componentStyleVariable } from "./component-styles";
 import { componentDefaultFields, resolveComponentDefaults, type ComponentDefaultSlot } from "./component-defaults";
+import { componentRecipeFields, componentRecipeOptions, componentRecipeParts, componentRecipeVariable } from "./component-recipes";
 
 
 export type DeveloperViewProps = {
@@ -39,7 +40,7 @@ export type DeveloperViewProps = {
 };
 
 const instanceNotes = {
-  appearance: "Theme-independent instance values on the painted element. Supplied values win over shared System Styles; omitted values inherit. These are not new CSS tokens.",
+  appearance: "Theme-independent instance values on the painted element. Supplied values win over native style, exact recipes and shared System Styles; omitted values inherit. These are not new CSS tokens.",
   parts: "Independent root, label, control, description and error appearance; choices also support row. Control part values take precedence over appearance.",
   errorPosition: "Place the error before the label/control group or after the description. DOM order matches visual order.",
   errorIcon: "Fixed decorative, aria-hidden glyph; never a replacement for the textual error.",
@@ -393,7 +394,7 @@ function SharedPartStyles({ selected, theme, mode, variables }: {
 }) {
   return <details className={styles.reference} data-component-styles-reference>
     <summary>Shared component part styles</summary>
-    <p>System Styles applies these sparse overrides to linked existing components as well as new insertions. Colors belong to the {mode} theme; dimensions, typography, spacing, border widths, opacity and shadow presets are shared across Light and Dark. Local <code>appearance</code> and field <code>parts</code> still win for the properties they supply.</p>
+    <p>Legacy shared part styles apply across combinations to linked existing components as well as new insertions. Exact matrix recipes override these defaults per field. Colors belong to the {mode} theme; dimensions, typography, spacing, border widths, opacity and shadow presets are shared across Light and Dark. Local <code>appearance</code> and field <code>parts</code> still win for the properties they supply.</p>
     <p>Only consumed, editable metadata fields are listed. An unset variable uses the component CSS default, which can depend on variant, state, size, tone and parent inheritance; it is not a materialized token value. Generated box/alignment helpers are implementation details, not editable styles. Root/control variant paint stays in the separate variant and state reference.</p>
     {componentStyleParts(selected).map(({ key: part, label }) => <div key={part}>
       <h3>{label} <code>{part}</code></h3>
@@ -418,7 +419,44 @@ function SharedPartStyles({ selected, theme, mode, variables }: {
       </ScrollRegion>
     </div>)}
     <p>Reset removes an authored key to restore its CSS fallback, not a fixed copy of today’s value. Lengths use px; fontWeight, lineHeight and opacity are unitless. CSS export resets omitted Dark variables to <code>initial</code> where necessary, so Light’s sparse overrides cannot leak into Dark.</p>
-    <p>The contrast audit models opaque field-part, Card-slot and Text colors, including Text in Card.Content when shared paint changes. It does not certify local appearance, opacity compositing, arbitrary nested/external surfaces, shadows or focus geometry. Review the rendered composition in both themes.</p>
+    <p>The contrast audit models opaque field-part, Card-slot and Text colors. Legacy shared Card Content/Footer typography styles the slot itself, not nested Text or Button/Badge labels; exact Card recipes have the descendant scope described above. The audit does not certify local appearance, opacity compositing, arbitrary nested/external surfaces, shadows or focus geometry. Review the rendered composition in both themes.</p>
+  </details>;
+}
+
+function RecipeStyles({ selected, theme, mode, variables }: {
+  selected: ComponentId; theme: ThemeTokens; mode: PaletteMode; variables: Record<string, string>;
+}) {
+  const options = componentRecipeOptions(selected);
+  const rows = options.flatMap((recipe) => componentRecipeParts(selected, recipe.key).flatMap((part) =>
+    (["frame", "text"] as const).flatMap((target) => componentRecipeFields(selected, part.key, target, recipe.key)
+      .filter(({ key }) => theme.componentRecipes?.[selected]?.[recipe.key]?.[part.key]?.[key] !== undefined)
+      .map((field) => ({ recipe, part, target, field, name: componentRecipeVariable(selected, recipe.key, part.key, field.key) })))));
+  return <details className={styles.reference} data-component-recipes-reference>
+    <summary>Exact component recipes — authored fields</summary>
+    <p>System Styles edits a matrix combination and layer, not insertion Parameters. This component has {options.length} exact recipes; the full catalog has 294. A recipe applies to every linked instance with matching variant/state, tone where supported, and size. Other combinations and parts are unchanged. Parameters only seed new insertions; they do not select the matrix edit scope or rewrite existing instances.</p>
+    <p>Frame edits geometry, spacing, fill, decorative border and effects; Text edits typography and ink. They share a part record but never an editable field. Only authored, CSS-consumed fields in the {mode} theme are listed below, not unset fields or generated box/state helpers.</p>
+    <p>Per property: local <code>appearance</code> / field <code>parts</code> → native <code>style</code> → exact recipe → legacy shared part style → component variant/state, theme tokens and parent inheritance. Reset removes the recipe key to restore that fallback, not a snapshot. A transparent recipe surface reveals its parent rather than the older fill. No recipe can replace the global accessible focus outline.</p>
+    {(selected === "button" || selected === "badge") && <p>The <code>root</code> frame paints the surface; <code>text</code> styles the inner label, not root icons or a Badge dot. Unset label typography inherits the root, including legacy shared root styles. Local root typography still wins on the label. A surrounding Card Content/Footer recipe can override label typography before this component’s own recipe.</p>}
+    {selected === "button" && <p>Recipe fill is the resting surface. Hover and active retain variant feedback fills; recipe label ink and decorative borders persist. Local inline paint keeps its existing precedence.</p>}
+    {selected === "input" && <p>Keys are <code>default.size</code>, <code>invalid.size</code> and <code>readonly.size</code>; readonly wins over invalid. The control is the Input shell, whose typography reaches the native input. Placeholder ink stays global mutedForeground. Default hover uses the hover state fill and border color, while recipe ink and border width persist; invalid/readonly select their own recipes. Error fields are available only in invalid and readonly recipes, never default.</p>}
+    {(selected === "switch" || selected === "checkbox") && <p>Keys are <code>checked.size</code>, <code>unchecked.size</code>, <code>invalidChecked.size</code> and <code>invalidUnchecked.size</code>. Base UI’s live control state selects the recipe; indeterminate uses the checked recipe. Root is the Field, row wraps the label/control, and description/error sit outside the row. Control Text exposes only thumb/mark ink, not fonts. Unchecked Checkbox marks are hidden. Error fields belong only to invalidChecked and invalidUnchecked recipes.</p>}
+    {selected === "card" && <p>Root, Header, Title, Description, Content, Footer and Icon use the enclosing Card’s exact variant/size. Title inherits Header ink; Description retains variant-derived ink unless overridden. Content/Footer Text recipes scope all six typography/ink fields to nested Text and Button/Badge labels, ahead of those children’s own recipes and shared styles. Legacy shared slot typography does not enter that scope. Child local typography wins over slot-local typography, then the Card slot recipe; a nested Card starts a new scope. Slot backgrounds remain behind child surfaces; a Button’s own fill is still its text background. Icon Text exposes only mark ink.</p>}
+    {selected === "text" && <p>Each key is <code>variant.tone.size</code>, including the separate legacy heading and h1–h6 styles. Root supports both Frame and Text. Exact ink overrides the shared all-tone root ink, then neutral component foreground or semantic on-subtle ink. In Card Content/Footer, scoped slot typography wins over this recipe; local appearance still wins. The semantic <code>as</code> element does not change the recipe.</p>}
+    <p>Part scopes: {componentRecipeParts(selected).map(({ key, label }, index) => <span key={key}>{index > 0 && "; "}<code>{key}</code> ({label}) — {(["frame", "text"] as const).filter((target) => componentRecipeFields(selected, key, target).length).join(" + ")}</span>)}.</p>
+    {rows.length === 0 ? <p>No authored recipe fields in this theme — component CSS fallbacks remain active.</p> : <ScrollRegion label={`${reference[selected].name} authored recipe fields`}>
+      <table className={styles.table}>
+        <caption>{reference[selected].name} exact recipe declarations</caption>
+        <thead><tr><th scope="col">Recipe / part / target</th><th scope="col">Field / CSS variable</th><th scope="col">Scope</th><th scope="col">CSS declaration</th></tr></thead>
+        <tbody>{rows.map(({ recipe, part, target, field, name }) => <tr key={name} data-recipe-field={`${selected}.${recipe.key}.${part.key}.${target}.${field.key}`}>
+          <th scope="row">{recipe.label}<br /><code>{recipe.key}</code> · {part.label} <code>{part.key}</code> · {target}</th>
+          <td>{field.label}<br /><code>{name}</code><CopyToken value={name} /></td>
+          <td>{field.type === "color" ? `${mode} theme color` : target === "text" ? "Shared typography" : ["borderWidth", "shadow", "opacity"].includes(field.key) ? "Shared effect" : "Shared geometry / spacing"}</td>
+          <td><code>{variables[name]}</code><CopyToken value={variables[name]} /></td>
+        </tr>)}</tbody>
+      </table>
+    </ScrollRegion>}
+    <p>Lengths use px; fontWeight, lineHeight and opacity are unitless; shadows reference the shared presets. Non-color fields are shared across Light and Dark, normalized from Light on import including omissions. Colors remain theme-specific. CSS export clears omitted Dark declarations so sparse Light colors do not leak.</p>
+    <p>Unedited defaults retain 150 modeled contrast pairs per theme. Recipe diagnostics add only affected opaque text, marks, painted borders and parent-surface focus pairs, including modeled Card Content/Footer children. Geometry/type-only edits do not expand the audit; opacity, local overrides and arbitrary nesting are not certified. Passing these pairs is not a blanket WCAG claim.</p>
   </details>;
 }
 
@@ -444,6 +482,7 @@ export function DeveloperView({ selected, system, mode, cssOutput }: DeveloperVi
     : [];
   const derived = Object.entries(variables).filter(([name]) => name.startsWith(prefix) && !editableNames.has(name)
     && !name.startsWith(`${prefix}part-`)
+    && !name.startsWith(`${prefix}recipe-`)
     && !(selected === "text" && name.startsWith("--text-"))
     && !(variantComponent && name.startsWith(variantPrefix)));
 
@@ -478,6 +517,7 @@ export function DeveloperView({ selected, system, mode, cssOutput }: DeveloperVi
             <p>{copy.componentNotes[selected]}</p>
           </details>
           <InsertionParameters selected={selected} system={system} />
+          <RecipeStyles selected={selected} theme={theme} mode={mode} variables={variables} />
           <SharedPartStyles selected={selected} theme={theme} mode={mode} variables={variables} />
           <details className={styles.reference} data-instance-appearance-reference>
             <summary>Local instance appearance (not tokens)</summary>
@@ -505,7 +545,7 @@ export function DeveloperView({ selected, system, mode, cssOutput }: DeveloperVi
             : copy.globalTokensDescription}
         </p>
         {selected === "badge" && <p>Neutral outline uses <code>--badge-neutral-outline</code>, derived from Badge colors unless the border is overridden. <code>--badge-border</code> is exported for compatibility but not painted by the current Badge variants.</p>}
-        {selected === "text" && <p>Among legacy aliases, only <code>--text-foreground</code> affects Text (neutral tone). Other tones use <code>--ds-*-on-subtle</code>; <code>--text-part-root-color</code>, when authored, overrides every tone. Typography inherits shared <code>--ds-typography-*</code> defaults unless a shared part or local appearance value overrides it. Unused legacy aliases remain in CSS/JSON backups.</p>}
+        {selected === "text" && <p>Among legacy aliases, only <code>--text-foreground</code> affects Text (neutral tone). Other tones use <code>--ds-*-on-subtle</code>; <code>--text-part-root-color</code>, when authored, overrides every tone. Typography inherits shared <code>--ds-typography-*</code> defaults beneath shared part styles, exact recipes, scoped Card Content/Footer typography and local appearance. Unused legacy aliases remain in CSS/JSON backups.</p>}
         <ScrollRegion label={component ? copy.tokensRegion(component.name) : copy.globalTokenReference}>
           <table className={styles.table}>
             <caption>{component ? `${component.name} ${copy.baseTokenAliases}` : copy.globalCSSVariables}</caption>
