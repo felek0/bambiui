@@ -139,6 +139,12 @@ async function assertRecipeSelection(id, recipe, part, target) {
   const expected = target==='text' ? (['switch','checkbox'].includes(id) && part==='control' || id==='card' && part==='icon' ? ['color'] : textFields) : frameFields.filter(field=>field!=='gap' || gap);
   assert.deepEqual(await evaluate(`[...${q(controls)}.querySelectorAll('input,select,textarea')].map(e=>e.id.startsWith(${JSON.stringify(prefix)}) ? e.id.slice(${prefix.length}) : e.id).sort()`),[...expected].sort(),'only controls consumed by this exact frame/text layer');
 }
+async function assertMeasuredRecipe(id, recipe, part, target, keys, elementSelector = recipePart(id,recipe,part,target)) {
+  const fields = keys.map(key => ({key, selector:recipeField(id,recipe,part,target,key)}));
+  const differences = `(()=>{const element=${q(elementSelector)};if(!element)return ['missing preview'];const style=getComputedStyle(element);return ${JSON.stringify(fields)}.flatMap(({key,selector})=>{const input=document.querySelector(selector);if(!input)return [key+': missing field'];const value=input.tagName==='SELECT' ? input.selectedOptions[0]?.textContent : input.value;let expected=style[key==='background' ? 'backgroundColor' : key==='shadow' ? 'boxShadow' : key];if(key==='lineHeight' && expected.endsWith('px'))expected=String(Number((parseFloat(expected)/parseFloat(style.fontSize)).toFixed(6)));else if(['letterSpacing','gap'].includes(key)&&expected==='normal')expected='0';else if(key==='textAlign'&&['start','end'].includes(expected))expected=(expected==='start')!==(style.direction==='rtl') ? 'left' : 'right';else if(expected.endsWith('px')&&!expected.includes(' '))expected=String(parseFloat(expected));if(['color','background','borderColor'].includes(key)){const rgb=expected.match(/^rgb\\((\\d+),\\s*(\\d+),\\s*(\\d+)\\)$/);if(rgb)expected='#'+rgb.slice(1).map(channel=>Number(channel).toString(16).padStart(2,'0')).join('');if(expected==='rgba(0, 0, 0, 0)')expected='transparent';}return value===expected ? [] : [{key,value,expected}];});})()`;
+  await wait(`(${differences}).length===0`);
+  assert.deepEqual(await evaluate(differences),[],`${id}/${recipe}/${part}/${target} shows rendered values`);
+}
 async function commitRecipe(id, recipe, part, target, field, value) {
   await fill(recipeField(id,recipe,part,target,field),String(value));
   await key('Enter');
@@ -447,7 +453,53 @@ try {
     await click(q(recipePart('card','outlined.md','title')));
     await assertRecipeSelection('card','outlined.md','title','text');
   });
+  await check('System values reflect the selected layer, theme and zoom without authoring overrides',async()=>{
+    const bytes = () => evaluate(`localStorage.getItem('bambiui.design-system.v1')`);
+    const before = await bytes();
+    const historyState = () => evaluate(`[...document.querySelectorAll('.canvas-history button')].map(e=>({label:e.getAttribute('aria-label'),disabled:e.disabled}))`);
+    const history = await historyState();
+    await navigate('design','card');
+    await click(q(recipePart('card','outlined.md','title')));
+    await assertMeasuredRecipe('card','outlined.md','title','text',textFields);
+    const input = recipeField('card','outlined.md','title','text','fontSize');
+    const current = await evaluate(`${q(input)}.value`);
+    await click(q(input)); await key('Enter'); await key('Tab');
+    for(const value of [current,Number(current).toFixed(3),'']) { await fill(input,value); await key('Enter'); await key('Tab'); }
+    await assertMeasuredRecipe('card','outlined.md','title','text',textFields);
+    for(const label of ['Dark','Light']) {
+      await click(named(themeControl+' button',label));
+      await assertMeasuredRecipe('card','outlined.md','title','text',textFields);
+    }
+    for(const [part,child] of [['content','[data-ds-component="text"][data-component-target="text"]'],['footer','[data-ds-component="button"][data-component-part="text"]']]) {
+      const childSelector = `${recipePart('card','outlined.md',part)} ${child}`;
+      await click(q(childSelector));
+      await assertMeasuredRecipe('card','outlined.md',part,'text',textFields,childSelector);
+    }
+    await click(q(`${example('card','outlined.md')} > button`));
+    const geometry = ['width','height','paddingTop','paddingRight','paddingBottom','paddingLeft','borderTopLeftRadius','borderTopRightRadius','borderBottomRightRadius','borderBottomLeftRadius','background','borderColor','borderWidth','shadow','gap'];
+    await assertMeasuredRecipe('card','outlined.md','root','frame',geometry);
+    await click(q('[aria-label="Zoom in"]'));
+    await assertMeasuredRecipe('card','outlined.md','root','frame',geometry);
+    await click(q('[aria-label="Zoom out"]'));
+    await select('[aria-label="Shared default layer"]','root');
+    await wait(`${q('[id="system-shared-card-root-paddingLeft"]')}.value==='Mixed'`);
+    await fill('[id="system-shared-card-root-paddingLeft"]','Mixed'); await key('Enter'); await key('Tab');
+    assert.doesNotMatch(await evaluate(`[...document.querySelectorAll('[data-system-recipe-controls],[data-system-shared-defaults],.variant-token-input')].map(e=>e.textContent).join(' ')`),/\bInherited\b/);
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('#token-editor input')].filter(e=>/Inherited/.test(e.placeholder)).map(e=>e.id)`),[]);
+    await click(q('[data-system-shared-defaults] > summary'));
+    await navigate('design','input');
+    await click(q(`${example('input','invalid.md')} > button`));
+    for(const [part,target] of [['error','text'],['control','text'],['control','frame']]) {
+      await click(q(`[data-system-recipe-controls] [aria-label="Select ${part==='error'?'Error':'Control'} ${target}"]`));
+      await assertMeasuredRecipe('input','invalid.md',part,target,target==='text'?textFields:['paddingTop','paddingRight','paddingBottom','paddingLeft','background','borderColor','shadow']);
+    }
+    await navigate('design','card'); await click(q(recipePart('card','outlined.md','title')));
+    assert.equal(await bytes(),before,'reading, focusing, retyping and changing theme/selection never writes System tokens');
+    assert.deepEqual(await historyState(),history,'no-op edits do not create history');
+    await capture('studio-effective-card-title');
+  });
   await check('Card outlined.md title font size/weight affect only that combination and title, with undo/reset/export',async()=>{
+    await navigate('design','card'); await click(q(recipePart('card','outlined.md','title')));
     // A pristine workspace intentionally has no persisted system until its first edit.
     await click(q('[aria-label="Export tokens"]'));
     await click(named('[aria-label="Export format"] button','JSON'));
@@ -486,6 +538,16 @@ try {
     for(const mode of ['light','dark']) reset.themes[mode].componentRecipes ??= {};
     assert.deepEqual(await stored(),reset,'reset prunes the authored entries without materializing inherited values');
     assert.deepEqual(await snapshot(),original);
+    await assertMeasuredRecipe('card','outlined.md','title','text',textFields);
+    const beforeInspection = await stored();
+    await click(q(recipeField('card','outlined.md','title','text','fontSize'))); await key('Enter'); await key('Tab');
+    assert.deepEqual(await stored(),beforeInspection);
+    assert.equal(await evaluate(`${q('[aria-label="Undo change"]')}.disabled`),false);
+    await click(q('[aria-label="Undo change"]'));
+    assert.deepEqual(await stored(),customized,'untouched inspection after reset did not add another undo entry');
+    await click(q('[aria-label="Redo change"]'));
+    assert.deepEqual(await stored(),reset);
+    await assertMeasuredRecipe('card','outlined.md','title','text',textFields);
   });
   await check('keyboard example label selects a recipe, then inspector layers select frame/text without native activation',async()=>{
     await navigate('design','card');
@@ -641,7 +703,8 @@ try {
     assert.deepEqual((await stored()).themes.dark,before.themes.dark);
     await click(named(themeControl + ' button','Dark'));
     await assertRecipeSelection('card','outlined.md','title','text');
-    assert.equal(await evaluate(`${q(recipeField('card','outlined.md','title','text','color'))}.value`),'');
+    await assertMeasuredRecipe('card','outlined.md','title','text',['color']);
+    assert.equal((await stored()).themes.dark.componentRecipes?.card?.['outlined.md']?.title?.color,undefined);
     assert.equal(await evaluate(`${q('[data-ds-theme]')}.style.getPropertyValue('--card-recipe-outlined-md-title-color')`),'');
     assert.notEqual(await evaluate(`getComputedStyle(${q(recipePart('card','outlined.md','title'))}).color`),'rgb(18, 52, 86)');
     await commitRecipe('card','outlined.md','title','text','color','#abcdef');

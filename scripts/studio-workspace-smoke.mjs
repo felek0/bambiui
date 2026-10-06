@@ -520,6 +520,76 @@ try {
   });
 
   if (!shellOnly) {
+    await check('Frame resolved values: read-only inspection, real history, clear/reset and theme refresh', async () => {
+      await chooseLayer(); await wait(visible(q('[aria-label="Frame settings"]')));
+      const before = await record(), systems = await systemBytes(), painted = q(nodeSelector(rootId));
+      const input = q('#project-inspector [data-appearance-key="paddingTop"]');
+      const shadow = q('#project-inspector [data-appearance-key="shadow"]');
+      const color = q('#project-inspector [data-appearance-key="color"]');
+      const matchesPadding = `${painted} && ${input}?.value===String(parseFloat(getComputedStyle(${painted}).paddingTop))`;
+      const matchesShadow = `${painted} && ${shadow}?.querySelector('option[value=""]')?.textContent===getComputedStyle(${painted}).boxShadow`;
+      const historyState = `[...document.querySelectorAll('[aria-label="Project history"] button')].map(e=>({label:e.getAttribute('aria-label'),disabled:e.disabled}))`;
+      noLocalStyles(await node(rootId));
+      for (const key of ['paddingTop', 'paddingLeft', 'fontSize', 'borderTopLeftRadius']) {
+        const property = q(`#project-inspector [data-appearance-key="${key}"]`);
+        await wait(`${property}?.value===String(parseFloat(getComputedStyle(${painted})[${JSON.stringify(key)}]))`, `Frame ${key} displays its rendered value`);
+        assert.equal(await evaluate(`${property}.value`), String(parseFloat((await computed(nodeSelector(rootId), [key]))[key])));
+      }
+      assert.doesNotMatch(await evaluate(`${q('#project-inspector [aria-label="Local appearance"]')}.textContent`), /\binherited\b/i);
+      assert.deepEqual(await evaluate(`[...document.querySelectorAll('#project-inspector [data-appearance-key]')].filter(e=>/inherited/i.test((e.getAttribute('placeholder')??'')+' '+e.value)).map(e=>e.dataset.appearanceKey)`), [], 'Property controls never substitute Inherited for their values');
+      await wait(matchesShadow, 'Shadow default label matches boxShadow, not an unsupported shadow CSS property');
+      assert.equal(await evaluate(`${shadow}.value`), '');
+      assert.deepEqual(await evaluate(`[...${shadow}.options].map(option=>option.value)`), ['', 'none', 'sm', 'md', 'lg'], 'Rendered shadows are display-only, not preset values');
+
+      const display = await evaluate(`${input}.value`), editedValue = Number(display) + 7.25;
+      await appearance('Frame', 'paddingTop', editedValue); await press('Tab');
+      assert.equal((await record()).revision, before.revision + 1, 'Changed Enter followed by blur persists exactly once');
+      const edited = await project();
+      await history('Undo', before.document); await wait(matchesPadding, 'Undo restores the effective default value');
+      const untouched = await record(), historyBefore = await evaluate(historyState);
+      assert.equal(await evaluate(`${q('[aria-label="Redo project edit"]')}.disabled`), false, 'A real redo entry guards against accidental no-op history');
+      await reveal(input); await click(input); await press('Enter'); await press('Tab');
+      assert.deepEqual(await record(), untouched, 'Untouched focus/Enter/blur cannot write the Project');
+      await fill(input, display, 'enter'); await press('Tab');
+      assert.deepEqual(await record(), untouched, 'Retyping the displayed value cannot materialize an override');
+      await fill(input, `${display}${display.includes('.') ? '0' : '.0'}`, 'enter'); await press('Tab');
+      assert.deepEqual(await record(), untouched, 'Equivalent numeric text also stays linked');
+      await fill(input, '', 'enter'); await press('Tab'); await wait(matchesPadding);
+      assert.deepEqual(await record(), untouched, 'Clearing an unset property cannot write the Project');
+      assert.deepEqual(await evaluate(historyState), historyBefore, 'No-op edits preserve Undo/Redo availability');
+      noLocalStyles(await node(rootId));
+
+      const originalTheme = await evaluate(`${q('[aria-label="Frame theme"]')}.value`), colors = {};
+      for (const mode of [originalTheme === 'light' ? 'dark' : 'light', originalTheme]) {
+        await select('[aria-label="Frame theme"]', mode);
+        await wait(`${q(`[data-frame-id="${frameId}"] [data-frame-surface]`)}.dataset.dsTheme===${JSON.stringify(mode)}`);
+        colors[mode] = (await computed(nodeSelector(rootId), ['color'])).color;
+        await wait(`(()=>{const value=${color}?.value;return /^#[0-9a-f]{6}$/i.test(value??'') && 'rgb('+value.slice(1).match(/../g).map(channel=>parseInt(channel,16)).join(', ')+')'===${JSON.stringify(colors[mode])}})()`, `${mode} Frame color refreshes from the rendered theme`);
+        assert.equal(rgb(await evaluate(`${color}.value`)), colors[mode]);
+        await wait(matchesPadding); await wait(matchesShadow);
+        assert.deepEqual(await record(), untouched, 'Theme measurement is read-only');
+      }
+      assert.notEqual(colors.light, colors.dark, 'The theme changed the actual inherited color');
+      assert.deepEqual(await evaluate(historyState), historyBefore);
+      await history('Redo', edited);
+      await wait(`${input}.value===${JSON.stringify(String(editedValue))}`, 'Redo restores the authored value');
+      await appearance('Frame', 'paddingTop', ''); await press('Tab'); await wait(matchesPadding);
+      assert.deepEqual(await project(), before.document, 'Clearing removes the override rather than storing the measured value');
+      noLocalStyles(await node(rootId));
+      assert.equal(await evaluate(`!!${q('[aria-label="Reset Frame Padding top"]')}`), false);
+
+      await history('Undo', edited);
+      await wait(`${input}.value===${JSON.stringify(String(editedValue))}`);
+      const beforeReset = (await record()).revision;
+      await click(q('[aria-label="Reset Frame Padding top"]')); await press('Tab');
+      await wait(`${stored()}.revision===${beforeReset + 1}`, 'Reset persists exactly once');
+      await wait(matchesPadding); await wait(matchesShadow);
+      assert.deepEqual(await project(), before.document, 'Reset restores the linked value without an authored override');
+      noLocalStyles(await node(rootId));
+      assert.equal(await evaluate(`!!${q('[aria-label="Reset Frame Padding top"]')}`), false);
+      assert.equal(await systemBytes(), systems, 'Frame inspection and local edits never author System values');
+      evidence('frame-resolved-values', { defaultPadding: display, editedValue, shadow: (await computed(nodeSelector(rootId), ['boxShadow'])).boxShadow, colors, noOpWrites: 0, redoPreserved: true, localOverridesRemoved: true });
+    });
     await check('selected frame only: generic root appearance commits by Enter and blur', async () => {
       await chooseLayer(); await wait(visible(q('[aria-label="Frame settings"]')));
       assert.equal(await evaluate(visible(q('[aria-label="Instance settings"]'))), false);
@@ -596,7 +666,10 @@ try {
       await fill(input, '31px', 'enter');
       assert.equal(await evaluate(`${input}.getAttribute('aria-invalid')`), 'true');
       assert.deepEqual(await system(), before, 'Rejected style drafts cannot mutate any recipe');
-      await press('Escape'); assert.equal(await evaluate(`${input}.value`), '');
+      await press('Escape');
+      await wait(`${input}.value===String(parseFloat(getComputedStyle(${q(matrixTitle)}).fontSize))`, 'Escape restores the rendered Card title font size');
+      assert.equal(await evaluate(`${input}.value`), String(parseFloat((await computed(matrixTitle, ['fontSize'])).fontSize)));
+      assert.deepEqual(await system(), before, 'Escape discards the draft without authoring a title typography override');
       await recipeStyle('card', cardRecipe, 'title', 'text', 'fontSize', 31); const after = await system();
       await styleIs(matrixTitle, { ...titleFrameCSS, fontSize: '31px' });
       await matrixUnchangedExcept('card', baseline, cardRecipe, ['title']);
@@ -732,10 +805,16 @@ try {
       const geometry = structuredClone(parts); delete geometry.label.color; delete geometry.error.color;
       assert.deepEqual((await system()).themes.dark.componentRecipes.input, { [inputRecipe]: geometry });
       await matrixUnchangedExcept('input', baseline, inputRecipe);
+      const beforeOtherSizes = await systemBytes();
       for (const size of ['sm', 'lg']) {
         await matrixClick('input', `invalid.${size}`, 'error', 'text');
-        assert.equal(await evaluate(`${q(recipeInput('input', `invalid.${size}`, 'error', 'text', 'fontSize'))}.value`), '', 'Other sizes still inherit their error typography');
+        const input = q(recipeInput('input', `invalid.${size}`, 'error', 'text', 'fontSize'));
+        const errorPart = matrixPart('input', `invalid.${size}`, 'error', 'text');
+        await wait(`${input}.value===String(parseFloat(getComputedStyle(${q(errorPart)}).fontSize))`, `Other-size ${size} error typography displays its rendered value`);
+        assert.equal(await evaluate(`${input}.value`), String(parseFloat((await computed(errorPart, ['fontSize'])).fontSize)));
+        for (const mode of ['light', 'dark']) assert.equal(Object.hasOwn((await system()).themes[mode].componentRecipes.input, `invalid.${size}`), false, 'Displaying another size never authors its inherited error typography');
       }
+      assert.equal(await systemBytes(), beforeOtherSizes, 'Reading other-size values leaves all recipe storage unchanged');
       await matrixInputs('Contact email', helper, 'Insertion error');
       await projectWorkspace(); assert.deepEqual(await record(), before);
       for (const [part, values] of Object.entries(parts)) await styleIs(partSelector(part), Object.fromEntries(Object.entries(values).map(([key, value]) => [key, key === 'color' ? rgb(value) : `${value}px`])));

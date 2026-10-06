@@ -162,7 +162,7 @@ function TokenControl({
         {overridden === false && (
           <span className="inherit-button" title={t.inheritedTip}>
             <Icon name="link" size={11} />
-            {!compact && t.inherited}
+
           </span>
         )}
         {compact && overridden !== undefined && <span className="sr-only" id={`source-${field.key}`}>{overridden ? "Component override" : t.inheritedTip}</span>}
@@ -255,7 +255,7 @@ function VariantColorControl({ id, label, value, overridden, highlighted, allowT
         onChange={(event) => { const next = event.target.value; setDraft(next); if (/^#[\da-f]{6}$/i.test(next) || (allowTransparent && next === "transparent")) onChange(next); }}
         onBlur={() => setDraft(null)} />
       {overridden && <button type="button" aria-label={`Reset ${label} override`} onClick={() => { setDraft(null); onReset(); }}>Reset</button>}
-      {!overridden && <span>Inherited</span>}
+
     </div>
   </div>;
 }
@@ -275,7 +275,7 @@ function VariantNumberControl({ id, value, overridden, onChange, onReset }: {
       <input id={id} type="number" min="0" max="6" step="0.5" value={displayed}
         onChange={(event) => { const next = event.target.value; setDraft(next); const number = Number(next); if (next !== "" && Number.isFinite(number) && number >= 0 && number <= 6) onChange(number); }}
         onBlur={() => setDraft(null)} />
-      {overridden ? <button type="button" aria-label="Reset border width override" onClick={() => { setDraft(null); onReset(); }}>Reset</button> : <span>Inherited</span>}
+      {overridden && <button type="button" aria-label="Reset border width override" onClick={() => { setDraft(null); onReset(); }}>Reset</button>}
     </div>
   </div>;
 }
@@ -1116,10 +1116,10 @@ export default function Studio() {
               <select id={`variant-style-${variantComponent}-${variantSlug}-shadow`}
                 value={variantStyle?.shadow ?? ""}
                 onChange={(event) => updateVariantEffect("shadow", event.target.value ? event.target.value as "none" | "sm" | "md" | "lg" : undefined)}>
-                <option value="">Inherit default ({(() => {
-                  const inherited = toCSSVariables(theme, activeTheme)[`--${variantComponent}-variant-${variantSlug}-shadow`];
-                  return inherited === "none" ? "none" : inherited?.match(/--ds-shadow-(sm|md|lg)/)?.[1] ?? "none";
-                })()})</option>
+                <option value="">{(() => {
+                  const resolved = toCSSVariables(theme, activeTheme)[`--${variantComponent}-variant-${variantSlug}-shadow`];
+                  return resolved === "none" ? "none" : resolved?.match(/--ds-shadow-(sm|md|lg)/)?.[1] ?? "none";
+                })()}</option>
                 {(["none", "sm", "md", "lg"] as const).map((shadow) => <option key={shadow} value={shadow}>{shadow}</option>)}
               </select>
             </div>

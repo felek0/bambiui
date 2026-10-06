@@ -1,11 +1,13 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { Tabs } from "@base-ui/react/tabs";
 import { Button } from "./controls";
 import { componentDefaultFields, parseComponentDefaults, resolveComponentDefaults, type ComponentDefaultField, type ComponentDefaults } from "./component-defaults";
 import { componentStyleFields, componentStyleParts, parseComponentStyles, type ComponentStylePart, type ComponentStyles } from "./component-styles";
 import { componentRecipeFields, componentRecipeOptions, componentRecipeParts, parseComponentRecipes, type ComponentRecipeSelection, type ComponentRecipes } from "./component-recipes";
 import { parseAppearance, type AppearanceField, type AppearancePatch, type NodeAppearance } from "./components/appearance";
-import { resolveComponent, resolveTypography, systemConstants, toCSSVariables, typographyVariants, type ComponentId, type ThemeTokens, type TypographyVariant } from "./tokens";
+import type { ComponentId, ThemeTokens } from "./tokens";
+import type { RenderedAppearance } from "./rendered-appearance";
+import { useCanvasAppearance } from "./use-canvas-appearance";
 import type { PaletteMode } from "./color-engine";
 import fields from "./composer/inspector.module.css";
 import styles from "./system-component-editor.module.css";
@@ -38,40 +40,47 @@ const sizeLabels: Record<string, string> = { sm: "Small", md: "Medium", lg: "Lar
 const title = (value: string) => value.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/(^|[- ])\w/g, letter => letter.toUpperCase());
 const message = (error: unknown) => error instanceof Error ? error.message : "Invalid value";
 type RecipeOption = ReturnType<typeof componentRecipeOptions>[number];
-type InheritedValues = Partial<Record<keyof NodeAppearance, string | number>>;
 
-function DraftControl({ id, label, accessibleLabel, value, options, placeholder, multiline, maxLength, overridden, onCommit, onReset }: {
+function DraftControl({ id, label, accessibleLabel, value, resolvedValue, numeric, options, placeholder, multiline, maxLength, overridden, onCommit, onReset }: {
   id: string; label: string; accessibleLabel: string; value: string; options?: readonly string[];
-  placeholder?: string; multiline?: boolean; maxLength?: number; overridden: boolean;
+  resolvedValue?: string; numeric?: boolean; placeholder?: string; multiline?: boolean; maxLength?: number; overridden: boolean;
   onCommit: (value: string) => void; onReset: () => void;
 }) {
+  const current = overridden ? value : resolvedValue ?? value;
   const [draft, setDraft] = useState<string | null>(null);
-  // Clear synchronously on Enter/Escape/reset so the following blur cannot commit twice.
-  const pending = useRef<string | null>(null);
+  // Keep the pre-edit value through live measurements, and consume Enter before blur.
+  const pending = useRef<{ value: string; baseline: string } | null>(null);
   const [error, setError] = useState("");
   const discard = () => { pending.current = null; setDraft(null); setError(""); };
-  const commit = (next: string) => {
-    try { if (next !== value) onCommit(next); discard(); }
-    catch (error) { pending.current = next; setDraft(next); setError(message(error)); }
+  const same = (left: string, right: string) => left === right || !!numeric
+    && /^-?(?:\d+(?:\.\d*)?|\.\d+)$/.test(left.trim()) && /^-?(?:\d+(?:\.\d*)?|\.\d+)$/.test(right.trim()) && Number(left) === Number(right);
+  const commit = (next: string, baseline = current) => {
+    pending.current = null;
+    try {
+      const emptyDefault = resolvedValue !== undefined && !overridden && !next.trim();
+      if (!emptyDefault && !same(next, value) && !same(next, current) && !same(next, baseline)) onCommit(next);
+      discard();
+    }
+    catch (error) { setDraft(next); setError(message(error)); }
   };
   const accessibility = { id, "aria-label": accessibleLabel, "aria-invalid": !!error, "aria-describedby": error ? `${id}-error` : undefined };
   const inputProps = {
-    ...accessibility, value: draft ?? value, placeholder, maxLength,
-    onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { pending.current = event.target.value; setDraft(event.target.value); setError(""); },
-    onBlur: () => { if (pending.current !== null) commit(pending.current); },
+    ...accessibility, value: draft ?? current, placeholder, maxLength,
+    onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { pending.current = { value: event.target.value, baseline: pending.current?.baseline ?? current }; setDraft(event.target.value); setError(""); },
+    onBlur: () => { if (pending.current !== null) commit(pending.current.value, pending.current.baseline); },
     onKeyDown: (event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       if (event.nativeEvent.isComposing) return;
-      if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.stopPropagation(); if (pending.current !== null) commit(pending.current); }
+      if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.stopPropagation(); if (pending.current !== null) commit(pending.current.value, pending.current.baseline); }
       if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); discard(); }
     },
   };
   return <div className={`${fields.property} ${multiline ? fields.fullWidth : ""}`} data-overridden={overridden || undefined}>
     <label htmlFor={id}>{label}</label>
     <div className={fields.inputRow}>
-      {options ? <select {...accessibility} value={draft ?? value} onChange={event => commit(event.target.value)}>
-        <option value="">{placeholder ?? "Default"}</option>{options.map(option => <option key={option} value={option}>{option === "true" ? "On" : option === "false" ? "Off" : option}</option>)}
+      {options ? <select {...accessibility} value={draft ?? value} title={current || undefined} onChange={event => commit(event.target.value)}>
+        <option value="">{resolvedValue || placeholder || "Default"}</option>{options.map(option => <option key={option} value={option}>{option === "true" ? "On" : option === "false" ? "Off" : option}</option>)}
       </select> : multiline ? <textarea {...inputProps} rows={2} className={styles.textarea} /> : <input {...inputProps} spellCheck={false} />}
-      {overridden && <button type="button" className={fields.reset} title="Reset to inherited value" aria-label={`Reset ${accessibleLabel}`} onPointerDown={event => event.preventDefault()} onClick={() => {
+      {overridden && <button type="button" className={fields.reset} title="Reset to the system default" aria-label={`Reset ${accessibleLabel}`} onPointerDown={event => event.preventDefault()} onClick={() => {
         try { onReset(); discard(); } catch (error) { setError(message(error)); }
       }}>↺</button>}
     </div>
@@ -164,57 +173,9 @@ function updateRecipeFields(recipes: ComponentRecipes | undefined, selection: Co
   return parseComponentRecipes(next);
 }
 
-function inheritedRecipeValues(theme: ThemeTokens, mode: PaletteMode, selection: ComponentRecipeSelection, recipe: RecipeOption): InheritedValues {
-  const { component, part, target } = selection;
-  const sharedPart = componentStyleParts(component).find(entry => entry.key === part)?.key
-    ?? (target === "text" && ["button", "badge", "text"].includes(component) ? "root" : undefined);
-  // Nested Card content/action text inherits from its own component, not the slot's shared styles.
-  const shared = sharedPart && !(component === "card" && target === "text" && ["content", "footer"].includes(part)) ? theme.componentStyles?.[component]?.[sharedPart] : undefined;
-  const tokens = resolveComponent(theme, component);
-  const scale = recipe.size === "sm" ? Number(systemConstants["--ds-size-scale-sm"]) : recipe.size === "lg" ? Number(systemConstants["--ds-size-scale-lg"]) : 1;
-  const inherited: InheritedValues = {};
-  const paintedRoot = ["button", "badge", "card"].includes(component) && part === "root";
-  if (paintedRoot && target === "frame") {
-    for (const edge of ["Top", "Right", "Bottom", "Left"] as const) {
-      inherited[`padding${edge}`] = (edge === "Top" || edge === "Bottom" ? tokens.paddingY : tokens.paddingX) * scale;
-      inherited[`margin${edge}`] = tokens.margin;
-    }
-    for (const corner of ["TopLeft", "TopRight", "BottomRight", "BottomLeft"] as const) inherited[`border${corner}Radius`] = tokens.radius;
-    inherited.gap = tokens.gap * (component === "button" ? 1 : scale);
-    if (component === "button") inherited.minHeight = theme.global[recipe.size === "sm" ? "controlHeightSm" : recipe.size === "lg" ? "controlHeightLg" : "controlHeightMd"];
-    if (component === "button" && recipe.variant === "link") { inherited.paddingLeft = 0; inherited.paddingRight = 0; inherited.minHeight = 0; }
-  }
-  const variables = toCSSVariables(theme, mode);
-  const variantPrefix = `--${component}-variant-${recipe.variant.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`)}${recipe.tone ? `-${recipe.tone}` : ""}`;
-  const paintedControl = ["input", "switch", "checkbox"].includes(component) && part === "control";
-  if (paintedRoot || paintedControl) for (const [key, suffix] of [["background", "background"], ["color", "foreground"], ["borderColor", "border"], ["borderWidth", "border-width"], ["shadow", "shadow"]] as const) {
-    const value = variables[`${variantPrefix}-${suffix}`];
-    if (value !== undefined) inherited[key] = value.replace(/^var\(--ds-shadow-(sm|md|lg)\)$/, "$1");
-  }
-  if (target === "text") {
-    if (component === "text" && typographyVariants.includes(recipe.variant as TypographyVariant)) {
-      Object.assign(inherited, resolveTypography(theme, recipe.variant as TypographyVariant));
-      inherited.fontSize = Number(inherited.fontSize) * scale;
-      inherited.color = recipe.tone && recipe.tone !== "neutral" ? variables[`--ds-${recipe.tone}-on-subtle`] : tokens.foreground;
-    } else if (["button", "badge"].includes(component)) {
-      inherited.fontSize = tokens.fontSize * scale;
-      inherited.lineHeight = systemConstants[component === "button" ? "--ds-button-line-height" : "--ds-badge-line-height"];
-      inherited.color = variables[`${variantPrefix}-foreground`];
-      if (component === "button") inherited.fontWeight = systemConstants["--ds-button-font-weight"];
-    } else if (component === "card" && ["title", "description"].includes(part)) {
-      inherited.fontSize = theme.componentStyles?.card?.header?.fontSize ?? theme.componentStyles?.card?.root?.fontSize ?? tokens.fontSize;
-      inherited.color = part === "description" ? variables[`${variantPrefix}-description`] : theme.componentStyles?.card?.header?.color ?? variables[`${variantPrefix}-foreground`];
-      if (part === "title") { inherited.fontWeight = systemConstants["--ds-card-title-font-weight"]; inherited.letterSpacing = systemConstants["--ds-card-title-letter-spacing"]; }
-      else inherited.lineHeight = systemConstants["--ds-card-description-line-height"];
-    }
-  }
-  // Unknown layout/UA fallbacks remain "Inherited", rather than inventing a pixel value.
-  return { ...inherited, ...shared };
-}
-
-function StyleGroup({ scope, label, group, metadata, values, inherited = {}, text, onChange }: {
+function StyleGroup({ scope, label, group, metadata, values, resolved = {}, text, onChange }: {
   scope: string; label: string; group: AppearanceField["group"]; metadata: readonly AppearanceField[];
-  values: NodeAppearance; inherited?: InheritedValues; text?: boolean; onChange: (patch: AppearancePatch) => void;
+  values: NodeAppearance; resolved?: RenderedAppearance; text?: boolean; onChange: (patch: AppearancePatch) => void;
 }) {
   const [linked, setLinked] = useState(false);
   const linkable = ["padding", "margin", "radius"].includes(group);
@@ -228,7 +189,8 @@ function StyleGroup({ scope, label, group, metadata, values, inherited = {}, tex
     {linkable && <button type="button" className={fields.linkToggle} aria-label={`Link ${group === "radius" ? "corners" : group + " sides"}`} aria-pressed={linked} onClick={() => setLinked(!linked)}>{linked ? "Linked" : "Independent"}</button>}
     <div className={fields.propertyGrid}>{metadata.map(field => <DraftControl key={field.key} id={`${scope}-${field.key}`}
       label={shortLabels[field.key] ?? field.label} accessibleLabel={`${label} ${field.label}`} value={values[field.key] === undefined ? "" : String(values[field.key])}
-      options={field.type === "select" ? field.options : undefined} placeholder={inherited[field.key] === undefined ? "Inherited" : `Inherited · ${inherited[field.key]}`}
+      resolvedValue={resolved[field.key] ?? ""} numeric={field.type === "number" || field.type === "dimension"}
+      options={field.type === "select" ? field.options : undefined} placeholder="Not rendered"
       overridden={values[field.key] !== undefined} onCommit={draft => edit(field, draft)} onReset={() => edit(field, "")} />)}</div>
   </details>;
 }
@@ -264,13 +226,13 @@ function RecipeStyles({ selection, recipe, theme, mode, onSelectionChange, onCha
 }) {
   const [error, setError] = useState("");
   const [draftRevision, setDraftRevision] = useState(0);
-  const metadata = componentRecipeFields(selection.component, selection.part, selection.target, selection.recipe);
+  const metadata = useMemo(() => componentRecipeFields(selection.component, selection.part, selection.target, selection.recipe), [selection.component, selection.part, selection.target, selection.recipe]);
   const values = theme.componentRecipes?.[selection.component]?.[selection.recipe]?.[selection.part] ?? {};
   const part = componentRecipeParts(selection.component).find(entry => entry.key === selection.part)!;
   const combination = [title(selection.component), title(recipe.variant), ...(recipe.tone ? [title(recipe.tone)] : []), sizeLabels[recipe.size] ?? title(recipe.size)].join(" / ");
   const breadcrumb = `${combination} / ${part.label}`;
   const scope = `system-recipe-${selection.component}-${selection.recipe}-${selection.part}-${selection.target}`;
-  const inherited = inheritedRecipeValues(theme, mode, selection, recipe);
+  const resolved = useCanvasAppearance(selection, metadata);
   const groups = [...new Set(metadata.map(field => field.group))];
   function change(patch: AppearancePatch) {
     const next = updateRecipeFields(theme.componentRecipes, selection, patch);
@@ -288,7 +250,7 @@ function RecipeStyles({ selection, recipe, theme, mode, onSelectionChange, onCha
       }}>Reset {selection.target} styles</button>
     </div>
     {error && <p className={fields.error} role="alert">{error}</p>}
-    {groups.map(group => <StyleGroup key={`${group}-${draftRevision}`} scope={scope} label={breadcrumb} group={group} metadata={metadata.filter(field => field.group === group)} values={values} inherited={inherited} text={selection.target === "text"} onChange={change} />)}
+    {groups.map(group => <StyleGroup key={`${group}-${draftRevision}`} scope={scope} label={breadcrumb} group={group} metadata={metadata.filter(field => field.group === group)} values={values} resolved={resolved} text={selection.target === "text"} onChange={change} />)}
   </section>;
 }
 
@@ -296,16 +258,18 @@ function SharedDefaults({ component, theme, initialPart = "root", onPartChange, 
   const [part, setPart] = useState<ComponentStylePart>(initialPart);
   const [error, setError] = useState("");
   const [draftRevision, setDraftRevision] = useState(0);
-  const metadata = componentStyleFields(component, part);
+  const metadata = useMemo(() => componentStyleFields(component, part), [component, part]);
   const values = theme.componentStyles?.[component]?.[part] ?? {};
+  const resolved = useCanvasAppearance({ component, part }, metadata);
   function change(patch: AppearancePatch) {
+    if (Object.entries(patch).every(([key, value]) => values[key as keyof NodeAppearance] === (value === null ? undefined : value))) return;
     const next = structuredClone(theme.componentStyles ?? {});
     patchAppearance((next[component] ??= {})[part] ??= {}, patch);
     onChange(parseComponentStyles(next)); setError("");
   }
   return <details className={fields.group} data-system-shared-defaults>
     <summary>Shared defaults · all variants & sizes</summary>
-    <p className={fields.note}>Base layer styles for every {title(component)}. Combination overrides take precedence.</p>
+    <p className={fields.note}>Base layer styles for every {title(component)}. Combination overrides take precedence. Mixed means the canvas examples use different values.</p>
     <label className={fields.partPicker}>Shared default layer<select aria-label="Shared default layer" value={part} onChange={event => { const next = event.target.value as ComponentStylePart; setPart(next); onPartChange?.(next); setError(""); }}>
       {componentStyleParts(component).map(entry => <option key={entry.key} value={entry.key}>{entry.label}</option>)}
     </select></label>
@@ -314,7 +278,7 @@ function SharedDefaults({ component, theme, initialPart = "root", onPartChange, 
       catch (error) { setError(message(error)); }
     }}>Reset shared layer</button></div>
     {error && <p className={fields.error} role="alert">{error}</p>}
-    {[...new Set(metadata.map(field => field.group))].map(group => <StyleGroup key={`${part}-${group}-${draftRevision}`} scope={`system-shared-${component}-${part}`} label={`Shared ${title(component)} ${part}`} group={group} metadata={metadata.filter(field => field.group === group)} values={values} onChange={change} />)}
+    {[...new Set(metadata.map(field => field.group))].map(group => <StyleGroup key={`${part}-${group}-${draftRevision}`} scope={`system-shared-${component}-${part}`} label={`Shared ${title(component)} ${part}`} group={group} metadata={metadata.filter(field => field.group === group)} values={values} resolved={resolved} onChange={change} />)}
   </details>;
 }
 

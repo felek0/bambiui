@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import test, { after } from "node:test";
 import { readFileSync } from "node:fs";
 import { registerHooks } from "node:module";
-import { createElement as h, isValidElement } from "react";
+import { createElement as h, isValidElement, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { installParityLoader } from "./page-document/parity-loader.mjs";
-import { componentIds, defaultSystem, resolveComponent } from "./tokens.ts";
+import { componentIds, defaultSystem } from "./tokens.ts";
 import { appearanceFields } from "./components/appearance.ts";
 import { componentDefaultFields } from "./component-defaults.ts";
 import { componentRecipeFields, componentRecipeOptions, componentRecipeParts, parseComponentRecipes } from "./component-recipes.ts";
@@ -36,9 +36,15 @@ const recipeProps = (selection, extra = {}) => ({ selection, recipe: componentRe
 const fieldId = (selection, key) => `system-recipe-${selection.component}-${selection.recipe}-${selection.part}-${selection.target}-${key}`;
 
 // SSR probes capture the real callback props. This is not browser/focus-layout coverage.
-function capture(Component, props) {
-  let tree;
-  renderToStaticMarkup(h(function Probe() { tree = Component(props); return null; }));
+function capture(Component, props, steps = []) {
+  let tree, index = 0;
+  renderToStaticMarkup(h(function Probe() {
+    const [, rerender] = useState(0);
+    tree = Component(props);
+    const step = steps[index++];
+    if (step) { step(tree, props); rerender(value => value + 1); }
+    return null;
+  }));
   return tree;
 }
 function nodes(tree) {
@@ -152,7 +158,7 @@ test("every recipe key is addressable without introducing a global part or an in
   }
 });
 
-test("scoped values do not bleed to another size or variant; placeholders show shared/resolved inheritance", () => {
+test("scoped authored values stay separate from measured defaults and never bleed to another recipe", () => {
   const theme = { ...baseTheme, componentStyles: { card: { title: { fontSize: 20.25, color: "#112233" } } }, componentRecipes: {
     card: {
       "outlined.md": { title: { fontSize: 27.25, color: "#123456", paddingLeft: 12.375 } },
@@ -164,18 +170,20 @@ test("scoped values do not bleed to another size or variant; placeholders show s
     const selection = selectionFor("card", recipe, "title", "text");
     const tree = capture(RecipeStyles, recipeProps(selection, { theme }));
     const typography = find(tree, node => node.type?.name === "StyleGroup" && node.props.group === "typography");
-    const fontSize = find(capture(StyleGroup, typography.props), node => node.props.id === fieldId(selection, "fontSize"));
+    const fontSize = find(capture(StyleGroup, { ...typography.props, resolved: { fontSize: "20.25" } }), node => node.props.id === fieldId(selection, "fontSize"));
     assert.equal(fontSize.props.value, value);
-    assert.equal(fontSize.props.placeholder, "Inherited · 20.25");
+    assert.equal(fontSize.props.resolvedValue, "20.25");
     assert.equal(fontSize.props.overridden, value !== "");
+    assert.match(renderToStaticMarkup(fontSize), new RegExp(`value="${value || "20.25"}"`));
   }
   const scoped = scopedMarkup(panel("card", "styles", selectionFor("card", "outlined.md", "title", "text"), { theme }));
   assert.match(scoped, /value="#123456"/);
   assert.doesNotMatch(scoped, /value="12\.375"/);
   const noOverrides = scopedMarkup(panel("card", "styles", selectionFor("card", "outlined.md", "title", "text")));
-  assert.ok(noOverrides.includes(`placeholder="Inherited · ${resolveComponent(baseTheme, "card").fontSize}"`));
+  assert.match(noOverrides, /placeholder="Not rendered"/);
+  assert.doesNotMatch(noOverrides, /Inherited/);
   const nestedTheme = { ...baseTheme, componentStyles: { card: { content: { fontSize: 99 } } } };
-  assert.doesNotMatch(scopedMarkup(panel("card", "styles", selectionFor("card", "outlined.md", "content", "text"), { theme: nestedTheme })), /Inherited · 99/);
+  assert.doesNotMatch(scopedMarkup(panel("card", "styles", selectionFor("card", "outlined.md", "content", "text"), { theme: nestedTheme })), /value="99"/);
 });
 
 test("frame root paint is recipe-scoped and never includes text typography or ink", () => {
@@ -186,16 +194,21 @@ test("frame root paint is recipe-scoped and never includes text typography or in
   }
 });
 
-test("field control paint placeholders resolve the exact state without materializing a recipe override", () => {
+test("measured control paint is displayed without materializing a recipe override", () => {
   const theme = { ...baseTheme, variantColors: { input: { invalid: { background: "#123456" } }, switch: { invalidChecked: { background: "#abcdef" } } } };
   for (const [component, recipe, color] of [["input", "invalid.md", "#123456"], ["switch", "invalidChecked.md", "#abcdef"]]) {
     const selection = selectionFor(component, recipe, "control", "frame");
     const tree = capture(RecipeStyles, recipeProps(selection, { theme }));
     const surface = find(tree, node => node.type?.name === "StyleGroup" && node.props.group === "surface");
-    const background = find(capture(StyleGroup, surface.props), node => node.props.id === fieldId(selection, "background"));
+    const changes = [];
+    const background = find(capture(StyleGroup, { ...surface.props, resolved: { background: color }, onChange: next => changes.push(next) }), node => node.props.id === fieldId(selection, "background"));
     assert.equal(background.props.value, "");
-    assert.equal(background.props.placeholder, `Inherited · ${color}`);
+    assert.equal(background.props.resolvedValue, color);
     assert.equal(background.props.overridden, false);
+    const input = find(capture(DraftControl, background.props), node => node.type === "input").props;
+    assert.equal(input.value, color);
+    input.onBlur(); input.onKeyDown(keyEvent("Enter"));
+    assert.deepEqual(changes, []);
   }
 });
 
@@ -265,9 +278,9 @@ test("draft validation is strict and inline-ready, with no rounding or arbitrary
   assert.match(source, /id=\{`\$\{id\}-error`\} role="alert"/);
 });
 
-function draftInput(extra = {}) {
+function draftInput(extra = {}, steps = []) {
   const commits = [], resets = [];
-  const tree = capture(DraftControl, { id: "draft", label: "Font size", accessibleLabel: "Card Title Font size", value: "20", overridden: true, onCommit: value => commits.push(value), onReset: () => resets.push(true), ...extra });
+  const tree = capture(DraftControl, { id: "draft", label: "Font size", accessibleLabel: "Card Title Font size", value: "20", overridden: true, onCommit: value => commits.push(value), onReset: () => resets.push(true), ...extra }, steps);
   return { commits, resets, tree, input: find(tree, node => node.type === "input" || node.type === "textarea" || node.type === "select").props };
 }
 
@@ -282,6 +295,74 @@ test("typing is local; blur/Enter commit once, Escape cancels, and unchanged val
   assert.deepEqual(commits, ["27.25"]);
   input.onChange({ target: { value: "29.25" } }); input.onBlur(); input.onKeyDown(keyEvent("Enter"));
   assert.deepEqual(commits, ["27.25", "29.25"]);
+});
+
+test("effective values are editable input text; no-op reads and equivalent numeric edits stay linked", () => {
+  for (const resolvedValue of ["16", "1.333333", "0", "Mixed", "normal", "auto", "#123456", "rgba(0, 0, 0, 0.5)"]) {
+    const { tree, input, commits } = draftInput({ value: "", resolvedValue, overridden: false, numeric: true });
+    assert.equal(input.value, resolvedValue);
+    assert.equal(tree.props["data-overridden"], undefined);
+    input.onBlur(); input.onKeyDown(keyEvent("Enter"));
+    for (const next of [resolvedValue, "", "  "]) {
+      input.onChange({ target: { value: next } }); input.onKeyDown(keyEvent("Enter")); input.onBlur();
+    }
+    assert.deepEqual(commits, []);
+  }
+  const sameNumber = draftInput({ value: "", resolvedValue: "16", overridden: false, numeric: true });
+  sameNumber.input.onChange({ target: { value: "16.000" } }); sameNumber.input.onBlur();
+  assert.deepEqual(sameNumber.commits, []);
+  const precise = draftInput({ value: "16.123456789012", resolvedValue: "16.123457" });
+  assert.equal(precise.input.value, "16.123456789012", "measurement rounding never changes authored values");
+});
+
+test("measurements refresh untouched values but preserve drafts and the edit's original baseline", () => {
+  const inputOf = tree => find(tree, node => node.type === "input").props;
+  const result = draftInput({ value: "", resolvedValue: "16", overridden: false, numeric: true }, [
+    (tree, props) => { assert.equal(inputOf(tree).value, "16"); props.resolvedValue = "20"; },
+    tree => { assert.equal(inputOf(tree).value, "20"); inputOf(tree).onChange({ target: { value: "20.00" } }); },
+    (tree, props) => { assert.equal(inputOf(tree).value, "20.00"); props.resolvedValue = "24"; },
+    tree => { assert.equal(inputOf(tree).value, "20.00"); inputOf(tree).onKeyDown(keyEvent("Enter")); inputOf(tree).onBlur(); },
+  ]);
+  assert.equal(result.input.value, "24"); assert.deepEqual(result.commits, []);
+  const changed = draftInput({ value: "", resolvedValue: "16", overridden: false }, [
+    tree => inputOf(tree).onChange({ target: { value: "17." } }),
+    (tree, props) => { assert.equal(inputOf(tree).value, "17."); props.resolvedValue = "24"; },
+    tree => { assert.equal(inputOf(tree).value, "17."); inputOf(tree).onKeyDown(keyEvent("Enter")); inputOf(tree).onBlur(); },
+  ]);
+  assert.deepEqual(changed.commits, ["17."]);
+  const cleared = draftInput({ resolvedValue: "20" }, [
+    tree => inputOf(tree).onChange({ target: { value: "" } }),
+    (tree, props) => { inputOf(tree).onKeyDown(keyEvent("Enter")); inputOf(tree).onBlur(); props.value = ""; props.overridden = false; props.resolvedValue = "16"; },
+  ]);
+  assert.deepEqual(cleared.commits, [""]); assert.equal(cleared.input.value, "16");
+});
+
+test("select default labels display actual alignment and shadow without saving raw CSS", () => {
+  for (const resolvedValue of ["left", "Mixed", "rgba(0, 0, 0, 0.1) 0px 2px 8px 0px"]) {
+    const { tree, input, commits } = draftInput({ value: "", resolvedValue, overridden: false, options: ["none", "sm", "md", "lg"] });
+    assert.equal(input.value, "");
+    assert.equal(find(tree, node => node.type === "option").props.children, resolvedValue);
+    input.onChange({ target: { value: "" } });
+    assert.deepEqual(commits, []);
+    input.onChange({ target: { value: "md" } });
+    assert.deepEqual(commits, ["md"]);
+  }
+  const same = draftInput({ value: "", resolvedValue: "left", overridden: false, options: ["left", "center"] });
+  same.input.onChange({ target: { value: "left" } }); assert.deepEqual(same.commits, []);
+  const explicit = draftInput({ value: "right", resolvedValue: "right", options: ["left", "right"] });
+  explicit.input.onChange({ target: { value: "" } }); assert.deepEqual(explicit.commits, [""]);
+});
+
+test("shared explicit values beat Mixed measurements, and unset shared resets never write", () => {
+  const metadata = appearanceFields.filter(field => field.key === "fontSize");
+  const group = capture(StyleGroup, { scope: "shared", label: "Shared", group: "typography", metadata, values: { fontSize: 17.123456789 }, resolved: { fontSize: "Mixed" }, onChange: noop });
+  const draft = find(group, node => node.type?.name === "DraftControl");
+  assert.equal(draft.props.value, "17.123456789"); assert.equal(draft.props.resolvedValue, "Mixed");
+  assert.match(renderToStaticMarkup(draft), /value="17.123456789"/);
+  const changes = [];
+  const shared = capture(SharedDefaults, { component: "card", theme: baseTheme, onChange: value => changes.push(value) });
+  find(shared, node => node.type?.name === "StyleGroup").props.onChange({ paddingTop: null });
+  assert.deepEqual(changes, []);
 });
 
 test("composition, multiline Shift+Enter, failed validation and reset preserve draft boundaries", () => {
