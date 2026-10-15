@@ -4,8 +4,13 @@
   "private": true,
   "packageManager": "pnpm@10.32.1",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "node scripts/generate-source-catalog.mjs && node scripts/generate-registry.mjs && next dev",
+    "build": "node scripts/generate-source-catalog.mjs && node scripts/generate-registry.mjs && next build",
+    "source:catalog": "node scripts/generate-source-catalog.mjs",
+        "registry:build": "node scripts/generate-registry.mjs",
+        "cli:build": "node scripts/build-cli.mjs",
+        "test:cli": "node scripts/generate-registry.mjs && node scripts/build-cli.mjs && node --test packages/cli/test/*.test.mjs",
+            "check:cli": "node scripts/generate-registry.mjs && node scripts/build-cli.mjs && node scripts/check-cli-source.mjs --browser",
     "start": "next start",
     "lint": "eslint"
   },

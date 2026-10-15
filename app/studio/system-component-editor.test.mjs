@@ -15,8 +15,8 @@ const loader = installParityLoader();
 const { SystemComponentEditor } = await import("./system-component-editor.tsx");
 // Expose implementation helpers in memory only; the public editor API stays small.
 const source = readFileSync(new URL("./system-component-editor.tsx", import.meta.url), "utf8");
-const { DraftControl, DefaultParameters, RecipeStyles, RecipeLayers, StyleGroup, SharedDefaults, styleDraft, updateRecipeFields } = await loader.generated(
-  source.replaceAll('from "./', 'from "../') + "\nexport { DraftControl, DefaultParameters, RecipeStyles, RecipeLayers, StyleGroup, SharedDefaults, styleDraft, updateRecipeFields };\n",
+const { DraftControl, DefaultParameters, RecipeStyles, RecipeLayers, StyleGroup, SharedDefaults, ValueSourceDetails, styleDraft, updateRecipeFields } = await loader.generated(
+  source.replaceAll('from "./', 'from "../') + "\nexport { DraftControl, DefaultParameters, RecipeStyles, RecipeLayers, StyleGroup, SharedDefaults, ValueSourceDetails, styleDraft, updateRecipeFields };\n",
 );
 after(() => { loader.cleanup(); nextResolution.deregister(); });
 const noop = () => {};
@@ -78,6 +78,45 @@ test("Styles comes first; insertion Parameters and shared all-size defaults stay
   assert.equal(panel(null), "<p>Variant paint controls</p>", "foundation workflows pass through unchanged");
 });
 
+test("scope/source details stay opt-in and separate exact, shared, base and insertion effects", () => {
+  const selection = selectionFor("card", "outlined.md", "title", "text");
+  const html = panel("card", "styles", selection);
+  for (const scope of ["recipe", "shared", "base"]) {
+    assert.match(html, new RegExp(`data-system-edit-scope="${scope}"`));
+    const details = html.match(new RegExp(`<details[^>]*data-system-scope-details="${scope}"[^>]*>`));
+    assert.ok(details); assert.doesNotMatch(details[0], /\\bopen=/);
+  }
+  assert.match(html, /This combination · all linked projects/);
+  assert.match(html, /All combinations · all linked projects/);
+  assert.match(html, /Local instance styles can take precedence/);
+  assert.match(html, /Reset removes only this layer&#x27;s exact overrides, not shared defaults or base tokens/);
+  assert.match(html, /does not clear shared layer styles, exact combination styles or local instance styles/);
+  const parameters = panel("card", "parameters", selection);
+  assert.match(parameters, /data-system-edit-scope="parameters"/);
+  assert.match(parameters, /saved snapshots keep their captured values/);
+  assert.doesNotMatch(parameters, /data-system-scope-details=/);
+});
+
+test("source details list only consumed fields and identify authored/reset targets without editing", () => {
+  const scope = selectionFor("card", "outlined.md", "title", "text");
+  const metadata = componentRecipeFields(scope.component, scope.part, scope.target, scope.recipe);
+  const theme = { ...baseTheme, componentRecipes: { card: { "outlined.md": { title: { fontSize: 27.123456789, color: "#123456" } } } }, componentStyles: { card: { title: { fontSize: 20 } } } };
+  const before = structuredClone(theme);
+  const tree = ValueSourceDetails({ scope, metadata, theme, mode: "dark" });
+  assert.equal(tree.type, "details"); assert.equal(tree.props.open, undefined);
+  assert.equal(tree.props.onToggle, undefined, "opening details has no persistence handler");
+  assert.equal(nodes(tree).some(node => ["input", "select", "textarea", "button"].includes(node.type)), false);
+  const rows = nodes(tree).filter(node => node.props["data-style-source-field"]);
+  assert.deepEqual(rows.map(node => node.props["data-style-source-field"]), metadata.map(field => field.key));
+  assert.match(textOf(rows.find(row => row.props["data-style-source-field"] === "fontSize")), /This combination.*Reset → Shared Title.*--card-recipe-outlined-md-title-font-size.*--card-part-title-font-size/);
+  assert.match(textOf(rows.find(row => row.props["data-style-source-field"] === "color")), /Dark/);
+  assert.match(textOf(rows.find(row => row.props["data-style-source-field"] === "fontWeight")), /Both themes/);
+  assert.deepEqual(theme, before);
+  const shared = renderToStaticMarkup(h(ValueSourceDetails, { scope: { component: "card", part: "title" }, metadata, theme, mode: "light" }));
+  assert.match(shared, /Reset removes only this shared layer&#x27;s overrides, not exact combination overrides or base tokens/);
+  assert.match(shared, /Shared authored values are shown even when an exact override masks them/);
+});
+
 test("no selection or a stale/unsupported selection never masquerades as scoped styles", () => {
   const title = selectionFor("card", "outlined.md", "title", "text");
   for (const selection of [null, { ...title, component: "button" }, { ...title, recipe: "outlined.xs" }, { ...title, part: "missing" }, { ...title, part: "root", target: "text" }]) {
@@ -93,7 +132,7 @@ test("breadcrumb includes the exact variant, tone, size and layer; canvas select
   const html = scopedMarkup(panel("card", "styles", title));
   assert.match(html, /<h3>Card \/ Outlined \/ Medium \/ Title<\/h3>/);
   assert.match(html, /data-recipe="outlined.md" data-part="title" data-target="text"/);
-  assert.match(html, /Only this combination and layer, across linked projects/);
+  assert.match(html, /This combination · all linked projects/);
   assert.match(html, /Other variants, sizes and layers stay unchanged/);
   assert.match(html, /Typography · both themes/);
   assert.match(html, /Colors · Light/);
@@ -274,7 +313,7 @@ test("draft validation is strict and inline-ready, with no rounding or arbitrary
   for (const value of ["#abc", "red", "var(--ds-primary)", "transparent"]) assert.throws(() => styleDraft(field("color"), value), /six-digit hex/);
   assert.throws(() => styleDraft(field("fontWeight"), "400.5"), /whole numbers/);
   assert.match(source, /"aria-invalid": !!error/);
-  assert.match(source, /"aria-describedby": error \? `\$\{id\}-error`/);
+  assert.match(source, /"aria-describedby": \[field && `\$\{id\}-hint`, error && `\$\{id\}-error`\]/);
   assert.match(source, /id=\{`\$\{id\}-error`\} role="alert"/);
 });
 
@@ -390,6 +429,45 @@ test("composition, multiline Shift+Enter, failed validation and reset preserve d
   assert.equal(prevented, true); assert.deepEqual(reset.resets, [true]); assert.deepEqual(reset.commits, []);
   const select = draftInput({ options: ["left", "center", "right"], value: "left" });
   select.input.onChange({ target: { value: "center" } }); assert.deepEqual(select.commits, ["center"]);
+});
+
+test("style controls show metadata units, constraints, dimension suggestions and read-only full values", () => {
+  const field = key => appearanceFields.find(field => field.key === key);
+  const font = draftInput({ field: field("fontSize"), numeric: true });
+  assert.equal(font.input.inputMode, "decimal");
+  assert.equal(font.input["aria-describedby"], "draft-hint");
+  assert.match(font.input.title, /20.*1–512 px/);
+  assert.match(renderToStaticMarkup(font.tree), /aria-hidden="true">px<\/small>/);
+  const help = find(font.tree, node => node.type?.name === "AppearanceFieldHelp");
+  assert.equal(help.props.current, "20");
+  assert.equal(help.props.field.key, "fontSize");
+  const width = draftInput({ field: field("width"), numeric: true, value: "hug" });
+  assert.equal(width.input.list, "draft-options");
+  assert.deepEqual(nodes(width.tree).filter(node => node.type === "option").map(node => node.props.value), ["hug", "fill"]);
+  const shadow = draftInput({ field: field("shadow"), value: "", resolvedValue: "rgba(0, 0, 0, 0.1) 0px 2px 8px 0px", overridden: false, options: field("shadow").options });
+  assert.match(shadow.tree.props.className, /fullWidth/);
+  assert.match(shadow.input.title, /rgba.*display-only/);
+  const parameters = draftInput({ value: "Parameter content" });
+  assert.equal(find(parameters.tree, node => node.type?.name === "AppearanceFieldHelp"), undefined, "style help never changes Parameters semantics");
+});
+
+test("invalid style drafts link inline errors to the field; Escape and failed reset never commit pending text", () => {
+  const field = appearanceFields.find(field => field.key === "lineHeight");
+  const inputOf = tree => find(tree, node => node.type === "input").props;
+  const invalid = draftInput({ field, value: "1.5", numeric: true, onCommit: value => styleDraft(field, value) }, [
+    tree => inputOf(tree).onChange({ target: { value: "30%" } }),
+    tree => { inputOf(tree).onKeyDown(keyEvent("Enter")); inputOf(tree).onBlur(); },
+  ]);
+  assert.equal(invalid.input.value, "30%");
+  assert.equal(invalid.input["aria-invalid"], true);
+  assert.equal(invalid.input["aria-describedby"], "draft-hint draft-error");
+  assert.match(textOf(find(invalid.tree, node => node.props.role === "alert")), /unitless multiplier/);
+  const failedReset = draftInput({ onReset() { throw new Error("Reset not saved"); } }, [
+    tree => inputOf(tree).onChange({ target: { value: "27" } }),
+    tree => { find(tree, node => node.type === "button").props.onClick(); inputOf(tree).onBlur(); },
+  ]);
+  assert.deepEqual(failedReset.commits, []);
+  assert.equal(failedReset.input["aria-invalid"], true);
 });
 
 test("layer list selects parent and text/frame parts without changing recipe; arrow/Home/End move focus only", () => {

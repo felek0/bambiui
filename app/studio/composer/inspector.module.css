@@ -12,9 +12,9 @@
 .property input::placeholder { color: var(--studio-color-text-muted); }
 .property input:hover, .property select:hover, .textInput:hover { border-color: var(--studio-color-border); }
 .property input:focus-visible, .property select:focus-visible, .partPicker select:focus-visible, .textInput:focus-visible { outline: var(--studio-focus-ring); outline-offset: -1px; }
-.property input[aria-invalid="true"], .textInput[aria-invalid="true"] { border-color: var(--studio-color-warning); }
+.property input[aria-invalid="true"], .property select[aria-invalid="true"], .textInput[aria-invalid="true"] { border-color: var(--studio-color-warning); }
 .propertyGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 8px; }
-.property { display: grid; min-width: 0; align-content: start; gap: 4px; }
+.property { position: relative; display: grid; min-width: 0; align-content: start; gap: 4px; }
 .property > label { color: var(--studio-color-text-subtle); font-size: 10px; }
 .property[data-overridden] > label::after { display: inline-block; width: 4px; height: 4px; margin-left: 4px; border-radius: 50%; background: var(--studio-color-selection-border); vertical-align: middle; content: ""; }
 .inputRow { display: flex; position: relative; align-items: center; min-width: 0; }
@@ -38,7 +38,7 @@
 .inheritance button { color: var(--studio-color-text); font-size: 9px; }
 .inheritance button:disabled { opacity: .4; }
 .note { margin: 8px 0; color: var(--studio-color-text-subtle); font-size: 10px; line-height: 1.6; }
-.error { margin: 8px 0; padding: 7px; border-radius: 4px; color: var(--studio-color-text); background: var(--studio-color-warning-subtle); font-size: 10px; line-height: 1.5; }
+.error { overflow-wrap: anywhere; min-width: 0; margin: 8px 0; padding: 7px; border-radius: 4px; color: var(--studio-color-text); background: var(--studio-color-warning-subtle); font-size: 10px; line-height: 1.5; }
 .contentGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 8px; }
 .fullWidth { grid-column: 1 / -1; }
 .slotList { display: grid; gap: 4px; margin: 8px 0 12px; }
@@ -51,3 +51,17 @@
 .legacyStyles h4 { margin: 0; font-size: 11px; font-weight: 600; }
 .footer { display: grid; gap: 8px; padding-top: 14px; border-top: 1px solid var(--studio-color-border-subtle); }
 .appearance { min-width: 0; }
+.property[data-has-field-help] > label { padding-right: 22px; }
+.fieldUnit { margin-left: 5px; color: var(--studio-color-text-muted); font-size: 9px; font-weight: 400; white-space: nowrap; }
+.fieldHint { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.fieldInfo { min-width: 0; }
+.property:has(.fieldInfo[open]), .property:has(> .error) { grid-column: 1 / -1; }
+.fieldInfo > summary { position: absolute; top: -3px; right: 0; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 3px; color: var(--studio-color-text-subtle); font: 11px/1 var(--studio-font-family); cursor: pointer; list-style: none; }
+.fieldInfo > summary::-webkit-details-marker { display: none; }
+.fieldInfo > summary:hover, .fieldInfo[open] > summary { background: var(--studio-color-selection); color: var(--studio-color-on-selection); }
+.fieldInfo > summary:focus-visible { outline: var(--studio-focus-ring); outline-offset: 1px; }
+.fieldInfoBody { min-width: 0; padding: 8px; border: 1px solid var(--studio-color-border-subtle); border-radius: 4px; color: var(--studio-color-text-subtle); font: 10px/1.6 var(--studio-font-family); overflow-wrap: anywhere; }
+.fieldInfoBody strong { display: block; color: var(--studio-color-text); font-weight: 500; }
+.fieldInfoBody code { display: block; margin-block: 4px; color: var(--studio-color-text); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.fieldInfoBody p { margin: 0; }
+@media (max-width: 360px) { .propertyGrid, .contentGrid { gap: 10px 6px; } }

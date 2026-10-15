@@ -3,7 +3,18 @@
 Tarih: 2026-10-03
 Durum: **tarihsel uygulama planı; güncel teslimat özeti `roadmap.md` ve README içindedir.**
 
-## Son revizyon — canvas odaklı çalışma alanı
+## Aktif iş sırası — 2026-10-14
+
+Developer/design-system odaklı önerilen M1–M6 planı [roadmap.md](roadmap.md) içinde izlenir. Bu dosya eski görevlere ait uygulama ve doğrulama kaydıdır; C00–C12'yi sıfırdan veya otomatik sırayla tekrar uygulama. Güncel System matrix ve değer gösterimi README/component API'de belgelenir. Mevcut Project canvas, instance Parameters ve snapshot davranışları korunur.
+
+- C02/C10'un kalan lifecycle, taşınabilir backup/import ve kayıt güvenliği işleri → B01–B03.
+- C11'in seçili frame kaynak çıktısı → D01/D03/D04; System komponent kaynak paketi ayrıca D02.
+- C12 → tüm dilimlerin kalite kapısı ve M4 gerçek ekran/görev kabulü.
+- Yeni System-owned component definition işleri → R01–R03; eski project asset'leri linked instance sayma.
+
+Bu eşleme kalan görevleri tamamlandı yapmaz. İlk uygulama önerisi S01 kapsam/kaynak/etki açıklığıdır; veri veya export işlerini yeni bir shell revizyonuna bağlama.
+
+## Tarihsel revizyon — canvas odaklı çalışma alanı
 
 2026-10-03 tarihli yeni kullanıcı isteği doğrultusunda önceki eşzamanlı Components/Pages düzeni yerine Project/System ayrımı, solda Layers/Assets ve sağda yalnız seçimi düzenleyen Design/Project panelleri uygulandı. Frame ölçüleri ve isteğe bağlı auto layout; tüm düğümlerde dört kenar/köşe, boyut, tipografi ve yüzey override'ları; Card alt katmanları; form alanı parçaları ve hata mesajı konumu/ikonu; proje içi kaydedilebilir bileşen şablonları teslim edildi. Mevcut kayıtlar ve token şeması korunur. Kaydedilen şablonlar bağımsız kopyalardır; linked master-instance yayılımı, cross-project kütüphane ve responsive runtime export bu teslimata dahil değildir. Aşağıdaki C00–C12 maddeleri tarihsel kapsamı anlatır; güncel özellik durumunda roadmap özeti önceliklidir.
 

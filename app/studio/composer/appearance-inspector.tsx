@@ -4,6 +4,8 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { appearanceFieldsFor, appearanceParts, type AppearanceField, type AppearancePatch, type NodeAppearance, type NodePart } from "../page-document/appearance";
 import type { PageNode } from "../page-document/model";
 import { readRenderedAppearance } from "../rendered-appearance";
+import { AppearanceFieldHelp } from "../appearance-field-help";
+import { appearanceFieldHint, appearanceFieldUnit, appearanceFieldWide, appearanceSaveError } from "../appearance-field-ui";
 import { appearanceDraft, linkedAppearancePatch } from "./appearance-draft";
 import type { NodeSelection } from "./selection";
 import type { Composer } from "./use-composer";
@@ -34,13 +36,13 @@ function AppearanceInput({ field, value, resolved, disabled, targetLabel, onComm
   // Keep the edit's starting value even if a measurement changes during typing.
   // Consume pending edits synchronously so Enter/Escape/reset cannot also commit on blur.
   const pending = useRef<{ text: string; baseline: string } | null>(null);
-  const [invalid, setInvalid] = useState(false);
-  const discard = () => { pending.current = null; setDraft(null); setInvalid(false); onClearError?.(); };
+  const [error, setError] = useState("");
+  const discard = () => { pending.current = null; setDraft(null); setError(""); onClearError?.(); };
   const save = (next: string) => {
     pending.current = null;
     if (disabled) return;
     const saved = onCommit(next);
-    setInvalid(!saved);
+    setError(saved ? "" : appearanceSaveError(field, next));
     if (saved) setDraft(null);
   };
   const commit = () => {
@@ -52,12 +54,13 @@ function AppearanceInput({ field, value, resolved, disabled, targetLabel, onComm
     save(edit.text);
   };
   const label = `${targetLabel} ${field.label}`;
-  const title = value === undefined ? "Current value. Edit to override; reset to follow the linked system." : "Local override. Clear or reset to follow the linked system.";
-  return <div className={styles.property} data-overridden={value !== undefined || undefined}>
-    <label htmlFor={id}>{shortLabels[field.key] ?? field.label}</label>
+  const title = `${current || "Not rendered"}. ${appearanceFieldHint(field)} ${value === undefined ? "Current value. Edit to override." : "Local override."}`;
+  const description = `${id}-hint${error ? ` ${id}-error` : ""}`;
+  return <div className={`${styles.property} ${appearanceFieldWide(field) ? styles.fullWidth : ""}`} data-overridden={value !== undefined || undefined} data-appearance-field={field.key} data-has-field-help>
+    <label htmlFor={id}>{shortLabels[field.key] ?? field.label}{appearanceFieldUnit(field) && <small className={styles.fieldUnit} aria-hidden="true">{appearanceFieldUnit(field)}</small>}</label>
     <div className={styles.inputRow}>
       {field.type === "color" && <span className={styles.colorChip} style={{ backgroundColor: (draft ?? current) || "transparent" }} aria-hidden="true" />}
-      {field.type === "select" ? <select id={id} value={draft ?? (value === undefined ? "" : String(value))} aria-label={label} disabled={disabled} aria-invalid={invalid || undefined} title={title} data-appearance-key={field.key} onChange={event => {
+      {field.type === "select" ? <select id={id} value={draft ?? (value === undefined ? "" : String(value))} aria-label={label} disabled={disabled} aria-invalid={!!error || undefined} aria-describedby={description} title={title} data-appearance-key={field.key} onChange={event => {
         if (disabled) return;
         const next = event.target.value;
         if (next === (value === undefined ? "" : String(value)) || next && next === current) { discard(); return; }
@@ -65,12 +68,12 @@ function AppearanceInput({ field, value, resolved, disabled, targetLabel, onComm
       }}>
         <option value="">{resolved || "Not rendered"}</option>
         {field.options?.map(option => <option key={option} value={option}>{option}</option>)}
-      </select> : <input id={id} type="text" inputMode={field.type === "number" || field.type === "dimension" ? "decimal" : undefined} aria-label={label} disabled={disabled} aria-invalid={invalid || undefined}
+      </select> : <input id={id} type="text" inputMode={field.type === "number" || field.type === "dimension" ? "decimal" : undefined} aria-label={label} disabled={disabled} aria-invalid={!!error || undefined} aria-describedby={description}
         title={title} data-appearance-key={field.key} value={draft ?? current} placeholder="Not rendered"
         list={field.options?.length ? `${id}-options` : undefined} onChange={event => {
           if (disabled) return;
           pending.current = { text: event.target.value, baseline: pending.current?.baseline ?? current };
-          setDraft(event.target.value); setInvalid(false); onClearError?.();
+          setDraft(event.target.value); setError(""); onClearError?.();
         }} onBlur={commit}
         onKeyDown={event => {
           if (disabled || event.nativeEvent.isComposing) return;
@@ -80,6 +83,8 @@ function AppearanceInput({ field, value, resolved, disabled, targetLabel, onComm
       {field.options?.length && field.type !== "select" ? <datalist id={`${id}-options`}>{field.options.map(option => <option key={option} value={option} />)}</datalist> : null}
       {value !== undefined && <button type="button" className={styles.reset} aria-label={`Reset ${label}`} title="Reset to the linked system" disabled={disabled} onPointerDown={event => event.preventDefault()} onClick={() => save("")}>↺</button>}
     </div>
+    <AppearanceFieldHelp id={id} label={label} field={field} current={current} />
+    {error && <p id={`${id}-error`} role="alert" className={styles.error}>{error}</p>}
   </div>;
 }
 

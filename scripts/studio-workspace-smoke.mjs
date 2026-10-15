@@ -541,6 +541,20 @@ try {
       assert.equal(await evaluate(`${shadow}.value`), '');
       assert.deepEqual(await evaluate(`[...${shadow}.options].map(option=>option.value)`), ['', 'none', 'sm', 'md', 'lg'], 'Rendered shadows are display-only, not preset values');
 
+      const help = q('#project-inspector [data-appearance-help="paddingTop"]');
+      const helpSummary = `${help}.querySelector('summary')`;
+      await click(helpSummary);
+      assert.equal(await evaluate(`${help}.open`), true);
+      assert.ok(await evaluate(`${help}.textContent.includes('0–1000 px')`));
+      assert.equal(await evaluate(`${help}.querySelector('[data-appearance-full-value]').textContent`), await evaluate(`${input}.value`));
+      assert.ok(await evaluate(`${input}.getAttribute('aria-describedby').split(' ').every(id=>!!document.getElementById(id))`));
+      await fill(input, '1001', 'enter');
+      assert.equal(await evaluate(`${input}.getAttribute('aria-invalid')`), 'true');
+      assert.ok(await evaluate(`${input}.getAttribute('aria-describedby').split(' ').some(id=>document.getElementById(id)?.textContent.includes('0–1000 px'))`));
+      assert.deepEqual(await record(), before, 'Invalid Project appearance drafts do not save');
+      await press('Escape'); await press('Tab'); await wait(matchesPadding);
+      await click(helpSummary);
+      assert.deepEqual(await record(), before, 'Opening value/limit help is read-only');
       const display = await evaluate(`${input}.value`), editedValue = Number(display) + 7.25;
       await appearance('Frame', 'paddingTop', editedValue); await press('Tab');
       assert.equal((await record()).revision, before.revision + 1, 'Changed Enter followed by blur persists exactly once');

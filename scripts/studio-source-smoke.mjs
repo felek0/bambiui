@@ -1,0 +1,97 @@
+import assert from "node:assert/strict";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
+import { withSourceBrowser } from "./source-browser-session.mjs";
+import { parseSystemSourceManifest } from "../app/studio/source-manifest.ts";
+
+const root = fileURLToPath(new URL("../", import.meta.url));
+await mkdir(join(root, ".next"), { recursive: true });
+const downloads = await mkdtemp(join(root, ".next/source-download-"));
+let failCatalog = false, catalogRequests = 0, registryRequests = 0;
+function unpack(bytes) {
+  const result = spawnSync("python3", ["-c", 'import io,json,sys,zipfile; z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())); assert z.testzip() is None; print(json.dumps({i.filename:z.read(i).decode("utf-8") for i in z.infolist()}))'], { input: bytes, encoding: "utf8", maxBuffer: 8 * 1024 * 1024 });
+  assert.equal(result.status, 0, result.stderr); return JSON.parse(result.stdout);
+}
+async function downloaded(waitForDownload) {
+  const completion = await waitForDownload();
+  assert.equal(completion.suggestedFilename, "bambiui-system-source.zip");
+  const path = join(downloads, completion.suggestedFilename);
+  const bytes = await readFile(path);
+  assert.equal(bytes.length, completion.totalBytes);
+  const files = unpack(bytes); await rm(path); return files;
+}
+try {
+  await withSourceBrowser({ outDir: join(root, "out"), downloads, beforeRequest: async (path, res) => {
+    if (path.startsWith("/registry/")) registryRequests++;
+    if (path.startsWith("/bambiui-source/")) { catalogRequests++; await delay(500); if (failCatalog) { res.writeHead(503).end("Catalog unavailable"); return false; } }
+  } }, async ({ send, evaluate, wait, click, origin, waitForDownload }) => {
+    await send("Page.navigate", { url: `${origin}/develop/card` });
+    await wait('!!document.querySelector("[data-cli-install] > div button:not(:disabled)")');
+    assert.equal(catalogRequests, 0, "Opening Develop must not fetch source text");
+    assert.equal(registryRequests, 0, "Opening Develop must not fetch registry sources");
+    await send("Browser.grantPermissions", { origin, permissions: ["clipboardReadWrite", "clipboardSanitizedWrite"] });
+    await click('[data-cli-install] > div button');
+    await wait('document.querySelector("[data-cli-copy-status]").textContent.includes("commands copied")');
+    const commands = await evaluate('navigator.clipboard.readText()');
+    assert.ok(commands.includes(`npx bambiui@0.2.0 init --registry "${origin}/registry/index.json" --system ./bambiui-tokens.json`));
+    assert.ok(commands.includes("npx bambiui@0.2.0 add card"));
+    assert.equal(await evaluate('document.querySelector("[data-cli-install] details").open'), false);
+    await click('[data-cli-install] details > summary');
+    console.log("PASS: published npm CLI commands use the served static registry; ZIP fallback stays collapsed.");
+    const indexResponse = await fetch(`${origin}/registry/index.json`);
+    assert.ok(indexResponse.ok);
+    const index = await indexResponse.json();
+    assert.equal(index.format, "bambiui.registry-index");
+    const releaseResponse = await fetch(`${origin}/registry/${index.release.path}`);
+    assert.ok(releaseResponse.ok);
+    const releaseBytes = Buffer.from(await releaseResponse.arrayBuffer());
+    assert.equal(releaseBytes.length, index.release.bytes);
+    assert.equal(createHash("sha256").update(releaseBytes).digest("hex"), index.release.sha256);
+    assert.equal(JSON.parse(releaseBytes).format, "bambiui.registry");
+    console.log("PASS: built static index and immutable CLI release are served with matching hash/bytes.");
+    const before = await evaluate('JSON.stringify({...localStorage})');
+    await click('[data-source-download] button:first-child');
+    await wait('document.querySelector("[data-source-download] button").disabled');
+    await click('.studio-sidebar a[href="/develop/text"]');
+    await wait('location.pathname === "/develop/text"');
+    await wait('document.querySelector("[data-source-status]").textContent.includes("download started")');
+    const card = await downloaded(waitForDownload), manifest = parseSystemSourceManifest(JSON.parse(card["bambiui-source/manifest.json"]));
+    assert.deepEqual(manifest.requestedComponents, ["card"]);
+    assert.deepEqual(manifest.includedComponents, ["button", "card", "text"]);
+    assert.ok(card["bambiui-source/ExampleContent.tsx"].includes("Card.Title"));
+    assert.equal(await evaluate('JSON.stringify({...localStorage})'), before);
+    console.log("PASS: trusted-pointer Card ZIP download, selection change during catalog fetch, standard ZIP integrity and zero localStorage writes.");
+    await click('[data-source-download] button:last-child');
+    await wait('document.querySelector("[data-source-status]").textContent.includes("download started") && !document.querySelector("[data-source-download] button").disabled');
+    const all = await downloaded(waitForDownload);
+    assert.equal(parseSystemSourceManifest(JSON.parse(all["bambiui-source/manifest.json"])).includedComponents.length, 7);
+    assert.equal(await evaluate('JSON.stringify({...localStorage})'), before);
+    console.log("PASS: all-seven System source ZIP download with both themes and unchanged storage.");
+    failCatalog = true;
+    await click('[data-source-download] button:first-child');
+    await wait('document.querySelector("[data-source-status]").getAttribute("role") === "alert"');
+    assert.match(await evaluate('document.querySelector("[data-source-status]").textContent'), /unavailable/);
+    assert.equal(await evaluate('JSON.stringify({...localStorage})'), before);
+    failCatalog = false;
+    await click('[data-source-download] button:first-child');
+    await wait('document.querySelector("[data-source-status]").textContent.includes("download started") && !document.querySelector("[data-source-download] button").disabled');
+    const text = await downloaded(waitForDownload);
+    assert.deepEqual(parseSystemSourceManifest(JSON.parse(text["bambiui-source/manifest.json"])).dependencies, {});
+    console.log("PASS: missing catalog reports inline error, retry downloads minimal Text without Base UI.");
+    await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: false });
+    assert.equal(await evaluate('document.documentElement.scrollWidth <= innerWidth'), true);
+    assert.equal(await evaluate('(()=>{const r=document.querySelector("[data-source-download]").getBoundingClientRect();return r.width <= innerWidth})()'), true);
+    await evaluate('document.querySelector("[data-cli-install]").scrollIntoView({block:"start",behavior:"instant"})');
+    if (process.argv.includes("--screenshots")) {
+      await mkdir(join(root, ".next/color-review"), { recursive: true });
+      const image = await send("Page.captureScreenshot", { format: "png" });
+      await writeFile(join(root, ".next/color-review/studio-source-mobile.png"), Buffer.from(image.data, "base64"));
+    }
+    console.log("PASS: 390px Develop source actions reflow without document overflow.");
+  });
+} catch (error) { console.error("FAIL: Studio source download", error); process.exitCode = 1; }
+finally { await rm(downloads, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); }

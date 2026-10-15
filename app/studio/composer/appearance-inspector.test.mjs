@@ -222,6 +222,37 @@ test("select defaults show the actual value; raw shadows and Mixed are display-o
   assert.equal(failed.input["aria-invalid"], true);
 });
 
+test("Project appearance fields expose correct units, ranges and read-only full-value help", () => {
+  const size = draftInput();
+  assert.match(renderToStaticMarkup(size.tree), /aria-hidden="true">px<\/small>/);
+  assert.match(size.input.title, /16.*1–512 px/);
+  assert.ok(size.input["aria-describedby"].endsWith("-hint"));
+  const help = find(size.tree, node => node.type?.name === "AppearanceFieldHelp");
+  assert.equal(help.props.current, "16");
+  const line = draftInput({ field: field("lineHeight"), resolved: "1.5" });
+  assert.match(line.input.title, /unitless multiplier/);
+  assert.match(renderToStaticMarkup(line.tree), />×<\/small>/);
+  const shadow = draftInput({ field: field("shadow"), resolved: "rgba(0, 0, 0, 0.1) 0px 2px 8px 0px" });
+  assert.match(shadow.tree.props.className, /fullWidth/);
+  assert.match(shadow.input.title, /rgba.*display-only/);
+});
+
+test("Project validation failures have field-linked unit-aware errors; successful retry and Escape clear them", () => {
+  const invalid = draftInput({ field: field("opacity"), resolved: "1", onCommit: () => false }, [
+    tree => inputOf(tree).onChange({ target: { value: "50%" } }),
+    tree => { inputOf(tree).onKeyDown(keyEvent("Enter")); inputOf(tree).onBlur(); },
+  ]);
+  const alert = find(invalid.tree, node => node.props.role === "alert");
+  assert.ok(alert);
+  assert.equal(alert.props.id, `${invalid.input.id}-error`);
+  assert.equal(invalid.input["aria-describedby"], `${invalid.input.id}-hint ${invalid.input.id}-error`);
+  assert.match(alert.props.children, /unitless, not percent/);
+  const reset = draftInput({ value: 18, onCommit: () => false }, [
+    tree => resetOf(tree).props.onClick(),
+  ]);
+  assert.match(find(reset.tree, node => node.props.role === "alert").props.children, /could not be saved/);
+});
+
 test("disabled inputs, selects, and resets cannot commit even through callbacks", () => {
   for (const extra of [{}, { value: 18 }, { field: field("shadow"), value: "md" }]) {
     const { tree, input, commits } = draftInput({ ...extra, disabled: true });
@@ -320,7 +351,7 @@ test("invalid drafts and controller failures surface errors without writing unre
     tree => assert.equal(groupOf(tree, "typography").props.onCommit(field("fontSize"), "not a number"), false),
   ]);
   assert.deepEqual(commands, []);
-  assert.match(find(invalid, node => node.props.role === "alert").props.children, /number in pixels/);
+  assert.match(find(invalid, node => node.props.role === "alert").props.children, /1–512 px.*without units/);
   const failed = capture(AppearanceInspector, { ...props, composer: { controller: { execute: () => false } } }, [
     tree => assert.equal(groupOf(tree, "typography").props.onCommit(field("fontSize"), "20"), false),
   ]);

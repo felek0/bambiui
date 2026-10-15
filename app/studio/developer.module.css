@@ -99,6 +99,53 @@
   margin-top: 32px;
 }
 
+.sourceDownload {
+  padding-block: 16px;
+  margin-bottom: 24px;
+  border-block: 1px solid var(--studio-color-border);
+}
+
+.cliCommands {
+  max-width: 100%;
+  min-width: 0;
+  padding: 12px;
+  margin: 0;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--studio-color-border);
+  border-radius: 6px;
+  background: var(--studio-color-surface);
+  font-size: 12px;
+}
+
+.manualSource > summary {
+  cursor: pointer;
+  padding-block: 8px;
+  font-size: 13px;
+}
+
+.manualSource > summary:focus-visible {
+  outline: var(--studio-focus-ring);
+  outline-offset: var(--studio-focus-ring-offset);
+}
+
+.sourceActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sourceActions > button {
+  white-space: normal;
+  height: auto;
+  min-height: 32px;
+}
+
+.sourceDownload [role="alert"] {
+  color: var(--studio-color-danger);
+}
+
 .scroll {
   width: 100%;
   min-width: 0;

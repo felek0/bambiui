@@ -1,0 +1,24 @@
+bambiui repository license scope
+
+The MIT License in packages/cli/LICENSE applies to:
+
+1. Files in packages/cli/, including its compiled dist/ runtime and package
+   documentation.
+2. Exactly the shared source files enumerated in distribution-license.json.
+   This is an explicit file allowlist, not a license for their parent folders.
+3. Copies of those sources and bambiui-provided integration templates delivered
+   through the CLI, static registry, or manual source package, accompanied by
+   that MIT License and the distribution NOTICE.md.
+
+No license to other repository files is granted by this notice. In particular,
+Studio application/editor/canvas/inspector code outside the explicit allowlist
+is not made open source by the CLI's MIT license. The private Next application
+package is not the npm CLI package.
+
+User-authored designs, token values, project data and content are not relicensed
+by bambiui's software license. Third-party software, fonts and assets remain
+subject to their own licenses. The MIT software license does not grant trademark
+rights in the bambiui name or logos.
+
+The full standard MIT terms and copyright notice are in packages/cli/LICENSE.
+See docs/licensing.md for distribution boundaries and maintenance instructions.

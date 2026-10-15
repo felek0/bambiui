@@ -124,6 +124,30 @@ test("selection marks only its exact example; nested part selection is not a pre
   assert.deepEqual(nodes(root).filter(node => node.type === "button" && node.props["aria-pressed"]).map(node => node.props["aria-label"]), ["Select Card Outlined Medium frame"]);
 });
 
+test("only the selected interactive recipe gets a collapsed sandbox, separate from design hit targets", () => {
+  for (const component of Object.keys(counts)) {
+    const option = componentRecipeOptions(component).find(option => option.size === "md");
+    const selection = { component, recipe: option.key, part: "root", target: "frame" };
+    const tree = capture(component, { selection });
+    const previews = nodes(tree).filter(node => node.type?.name === "InteractionPreview");
+    const interactive = ["button", "input", "switch", "checkbox"].includes(component);
+    assert.equal(previews.length, interactive ? 1 : 0);
+    if (interactive) {
+      assert.equal(previews[0].key, option.key);
+      assert.equal(previews[0].props.option.key, option.key);
+      assert.equal(previews[0].props.onSelect, undefined);
+      const html = markup(component, { selection });
+      assert.equal([...html.matchAll(/data-interaction-preview=/g)].length, 1);
+      assert.equal([...html.matchAll(/data-recipe-example=/g)].length, counts[component]);
+      assert.doesNotMatch(html, /data-live-preview-recipe=/, "closed preview mounts no extra native control");
+      const alternate = capture(component, { selection: { ...selection, part: "label", target: "text" } });
+      assert.equal(nodes(alternate).find(node => node.type?.name === "InteractionPreview").key, previews[0].key, "layer selection preserves this recipe's sandbox session");
+    }
+  }
+  const stale = capture("button", { selection: { component: "input", recipe: "default.md", part: "root", target: "frame" } });
+  assert.equal(nodes(stale).filter(node => node.type?.name === "InteractionPreview").length, 0);
+});
+
 test("matrix design hit areas cancel primary pointer defaults without swallowing middle-button panning", () => {
   for (const component of Object.keys(counts)) {
     const tree = capture(component);

@@ -672,7 +672,8 @@ export function toCSSVariables(
   return variables;
 }
 
-export function exportCSS(workspace: Pick<DesignSystem, "themes">): string {
+export function exportCSS(workspace: Pick<DesignSystem, "themes">, scopeId?: string): string {
+  if (scopeId !== undefined && !/^bambiui-[a-f0-9]{64}$/.test(scopeId)) throw new Error("Invalid source theme scope");
   const imports = [...new Set((["light", "dark"] as const)
     .map((mode) => googleFontUrl(workspace.themes[mode].fontFamily))
     .filter((url): url is string => url !== null))];
@@ -684,9 +685,9 @@ export function exportCSS(workspace: Pick<DesignSystem, "themes">): string {
   ]));
   const sparseResets = Object.fromEntries([...sparseKeys].map(key => [key, "initial"]));
   return (prelude ? `${prelude}\n\n` : "") + (["light", "dark"] as const).map((mode) => {
-    const selector = mode === "light"
-      ? ':root, [data-ds-theme="light"]'
-      : '[data-ds-theme="dark"]';
+    const selector = scopeId
+      ? `[data-bambiui-system="${scopeId}"][data-ds-theme="${mode}"]`
+      : mode === "light" ? ':root, [data-ds-theme="light"]' : '[data-ds-theme="dark"]';
     const declarations = Object.entries({ ...sparseResets, ...toCSSVariables(workspace.themes[mode], mode) })
       .map(([key, value]) => `  ${key}: ${value};`)
       .join("\n");

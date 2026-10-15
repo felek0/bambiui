@@ -1,8 +1,10 @@
 # bambiui · arayüz oluşturucu ve backend planı
 
-Tarih: 2026-10-02 · Durum: ürün yönü ve uygulama planı; ilk layout ve belge prototipi uygulanmıştır, composer henüz yoktur.
+İlk tarih: 2026-10-02 · Durum: **tarihsel ürün/backend planı; aktif görev listesi değildir.**
 
-Önceliklerin ve onay bekleyen K1–K5 kararlarının tek özeti [roadmap.md](roadmap.md) içindedir. Bu belge teknik kapsamı açar; prototip davranışlarını otomatik olarak kalıcı ürün kararı yapmaz. Onaylanan canvas-first yön için küçük görevler, dosya sınırları, karar kapıları ve kabul testleri [studio-composer-execution-plan.md](studio-composer-execution-plan.md) içinde C00–C12 olarak izlenir. Uygulama modeli önce o dosyanın devir defterini ve sıradaki görevi okumalıdır.
+2026-10-14 plan güncellemesi: composer, exact component matrix, System/Project parameter ayrımı ve hesaplanan inspector değerleri artık uygulanmıştır. Aşağıdaki “henüz yoktur” ifadeleri ve Components/Pages navigasyon önerileri yazıldıkları dönemin kayıtlarıdır. Güncel durum ve developer/design-system odaklı M1–M6 sırası [roadmap.md](roadmap.md) içindedir; buradaki eski faz sırasını yeni uygulama talimatı olarak kullanma.
+
+[studio-composer-execution-plan.md](studio-composer-execution-plan.md) C00–C12 teknik geçmişini korur. Kalan C10 işleri güncel B01–B03 taşınabilir yedek/güvenlik dilimine, C11 D01/D03/D04 kaynak teslimatına, C12 bütün dilimlerin kalite kapısına karşılık gelir. Backend sağlayıcısı, cloud veya MCP için uygulama onayı verilmiş değildir; prototip davranışları otomatik kalıcı ürün kararı sayılmaz.
 
 ## 2026-10-03 — Kullanıcının netleştirdiği etkileşim hedefi
 

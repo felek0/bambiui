@@ -6,6 +6,7 @@ import {
   componentRecipeOptions, componentRecipeParts, componentRecipeSelectionFromElement,
   type ComponentRecipeOption, type ComponentRecipeSelection, type SharedComponentId,
 } from "./component-recipes";
+import { hasInteractionPreview, InteractionPreview } from "./interaction-preview";
 import styles from "./component-matrix.module.css";
 
 const title = (value: string) => value.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, letter => letter.toUpperCase());
@@ -70,7 +71,7 @@ export function ComponentMatrix({ component, defaults, selection, onSelect }: {
     if (!region || selection?.component !== component) return;
     const example = Array.from(region.querySelectorAll<HTMLElement>("[data-recipe-example]")).find(element => element.dataset.recipeExample === selection.recipe);
     if (!example) return;
-    const parts = Array.from(example.querySelectorAll<HTMLElement>(`[data-ds-component="${component}"][data-component-part="${selection.part}"]`));
+    const parts = Array.from(example.querySelectorAll<HTMLElement>(`[data-recipe-body] [data-ds-component="${component}"][data-component-part="${selection.part}"]`));
     let element = parts.find(part => part.dataset.componentTarget === selection.target) ?? parts[0];
     if (component === "card" && selection.target === "text" && ["content", "footer"].includes(selection.part)) {
       element = element?.querySelector<HTMLElement>('[data-component-target="text"]') ?? element;
@@ -102,6 +103,7 @@ export function ComponentMatrix({ component, defaults, selection, onSelect }: {
               }}>
               <RecipeExample component={component} option={option} defaults={defaults} showError={selected && selection.part === "error"} />
             </div>
+            {selected && hasInteractionPreview(component) && <InteractionPreview key={option.key} component={component} option={option} defaults={defaults} showError={selection.part === "error"} />}
           </div>;
         })}
       </section>)}

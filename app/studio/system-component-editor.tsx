@@ -4,10 +4,13 @@ import { Button } from "./controls";
 import { componentDefaultFields, parseComponentDefaults, resolveComponentDefaults, type ComponentDefaultField, type ComponentDefaults } from "./component-defaults";
 import { componentStyleFields, componentStyleParts, parseComponentStyles, type ComponentStylePart, type ComponentStyles } from "./component-styles";
 import { componentRecipeFields, componentRecipeOptions, componentRecipeParts, parseComponentRecipes, type ComponentRecipeSelection, type ComponentRecipes } from "./component-recipes";
-import { parseAppearance, type AppearanceField, type AppearancePatch, type NodeAppearance } from "./components/appearance";
+import type { AppearanceField, AppearancePatch, NodeAppearance } from "./components/appearance";
+import { appearanceFieldHint, appearanceFieldUnit, appearanceFieldWide, appearanceStyleDraft } from "./appearance-field-ui";
+import { AppearanceFieldHelp } from "./appearance-field-help";
 import type { ComponentId, ThemeTokens } from "./tokens";
 import type { RenderedAppearance } from "./rendered-appearance";
 import { useCanvasAppearance } from "./use-canvas-appearance";
+import { styleSourceInfo, type StyleSourceScope } from "./style-sources";
 import type { PaletteMode } from "./color-engine";
 import fields from "./composer/inspector.module.css";
 import styles from "./system-component-editor.module.css";
@@ -41,9 +44,9 @@ const title = (value: string) => value.replace(/([a-z])([A-Z])/g, "$1 $2").repla
 const message = (error: unknown) => error instanceof Error ? error.message : "Invalid value";
 type RecipeOption = ReturnType<typeof componentRecipeOptions>[number];
 
-function DraftControl({ id, label, accessibleLabel, value, resolvedValue, numeric, options, placeholder, multiline, maxLength, overridden, onCommit, onReset }: {
+function DraftControl({ id, label, accessibleLabel, value, resolvedValue, numeric, field, options, placeholder, multiline, maxLength, overridden, onCommit, onReset }: {
   id: string; label: string; accessibleLabel: string; value: string; options?: readonly string[];
-  resolvedValue?: string; numeric?: boolean; placeholder?: string; multiline?: boolean; maxLength?: number; overridden: boolean;
+  resolvedValue?: string; numeric?: boolean; field?: AppearanceField; placeholder?: string; multiline?: boolean; maxLength?: number; overridden: boolean;
   onCommit: (value: string) => void; onReset: () => void;
 }) {
   const current = overridden ? value : resolvedValue ?? value;
@@ -63,9 +66,12 @@ function DraftControl({ id, label, accessibleLabel, value, resolvedValue, numeri
     }
     catch (error) { setDraft(next); setError(message(error)); }
   };
-  const accessibility = { id, "aria-label": accessibleLabel, "aria-invalid": !!error, "aria-describedby": error ? `${id}-error` : undefined };
+  const hint = field ? appearanceFieldHint(field) : undefined;
+  const accessibility = { id, "aria-label": accessibleLabel, "aria-invalid": !!error, "aria-describedby": [field && `${id}-hint`, error && `${id}-error`].filter(Boolean).join(" ") || undefined };
   const inputProps = {
-    ...accessibility, value: draft ?? current, placeholder, maxLength,
+    ...accessibility, value: draft ?? current, placeholder, maxLength, title: field ? `${current || "Not rendered"}. ${hint}` : undefined,
+    inputMode: numeric ? "decimal" as const : undefined,
+    list: field?.type === "dimension" && field.options?.length ? `${id}-options` : undefined,
     onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { pending.current = { value: event.target.value, baseline: pending.current?.baseline ?? current }; setDraft(event.target.value); setError(""); },
     onBlur: () => { if (pending.current !== null) commit(pending.current.value, pending.current.baseline); },
     onKeyDown: (event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -74,16 +80,19 @@ function DraftControl({ id, label, accessibleLabel, value, resolvedValue, numeri
       if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); discard(); }
     },
   };
-  return <div className={`${fields.property} ${multiline ? fields.fullWidth : ""}`} data-overridden={overridden || undefined}>
-    <label htmlFor={id}>{label}</label>
+  return <div className={`${fields.property} ${multiline || field && appearanceFieldWide(field) ? fields.fullWidth : ""}`} data-overridden={overridden || undefined} data-appearance-field={field?.key} data-has-field-help={!!field || undefined}>
+    <label htmlFor={id}>{label}{field && appearanceFieldUnit(field) && <small className={fields.fieldUnit} aria-hidden="true">{appearanceFieldUnit(field)}</small>}</label>
     <div className={fields.inputRow}>
-      {options ? <select {...accessibility} value={draft ?? value} title={current || undefined} onChange={event => commit(event.target.value)}>
+      {options ? <select {...accessibility} value={draft ?? value} title={field ? `${current || "Not rendered"}. ${hint}` : current || undefined} onChange={event => commit(event.target.value)}>
         <option value="">{resolvedValue || placeholder || "Default"}</option>{options.map(option => <option key={option} value={option}>{option === "true" ? "On" : option === "false" ? "Off" : option}</option>)}
       </select> : multiline ? <textarea {...inputProps} rows={2} className={styles.textarea} /> : <input {...inputProps} spellCheck={false} />}
       {overridden && <button type="button" className={fields.reset} title="Reset to the system default" aria-label={`Reset ${accessibleLabel}`} onPointerDown={event => event.preventDefault()} onClick={() => {
+        pending.current = null;
         try { onReset(); discard(); } catch (error) { setError(message(error)); }
       }}>↺</button>}
     </div>
+    {field?.type === "dimension" && field.options?.length ? <datalist id={`${id}-options`}>{field.options.map(option => <option key={option} value={option} />)}</datalist> : null}
+    {field && <AppearanceFieldHelp id={id} label={accessibleLabel} field={field} current={current} />}
     {error && <p id={`${id}-error`} role="alert" className={fields.error}>{error}</p>}
   </div>;
 }
@@ -127,7 +136,8 @@ function DefaultParameters({ component, defaults, onChange }: { component: Compo
     })}</div>;
   }
   return <>
-    <p className={fields.note}>Defaults for new instances only. Existing saved work stays unchanged.</p>
+    <p className={styles.scopeLabel} data-system-edit-scope="parameters">New instances only</p>
+    <p className={fields.note}>Defaults for new instances only. Existing saved work stays unchanged. Project Parameters edits existing instance content and options; saved snapshots keep their captured values.</p>
     {content.length > 0 && <section className={styles.section}><h3>Content</h3>{render(content)}</section>}
     {options.length > 0 && <section className={styles.section}><h3>Options</h3>{render(options)}</section>}
     {behavior.length > 0 && <details className={fields.group}><summary>States & behavior</summary>{render(behavior)}</details>}
@@ -139,20 +149,7 @@ function DefaultParameters({ component, defaults, onChange }: { component: Compo
   </>;
 }
 
-function styleDraft(field: AppearanceField, draft: string): AppearancePatch {
-  const text = draft.trim();
-  if (!text) return { [field.key]: null };
-  let value: string | number = text;
-  if (field.type === "number" || field.type === "dimension" && !field.options?.includes(text)) {
-    if (!/^-?(?:\d+(?:\.\d*)?|\.\d+)$/.test(text)) throw new Error("Enter a number, without units.");
-    value = Number(text);
-  }
-  try { return parseAppearance({ [field.key]: value }, [field]); }
-  catch {
-    throw new Error(field.type === "color" ? `Use a six-digit hex color${field.options?.includes("transparent") ? " or transparent" : ""}.`
-      : field.type === "select" ? "Choose a listed value." : `Use ${field.min}–${field.max}${field.key === "fontWeight" ? " (whole numbers)" : ""}.`);
-  }
-}
+const styleDraft = appearanceStyleDraft;
 
 function patchAppearance(values: NodeAppearance, patch: AppearancePatch) {
   for (const key of Object.keys(patch) as (keyof NodeAppearance)[]) {
@@ -189,9 +186,34 @@ function StyleGroup({ scope, label, group, metadata, values, resolved = {}, text
     {linkable && <button type="button" className={fields.linkToggle} aria-label={`Link ${group === "radius" ? "corners" : group + " sides"}`} aria-pressed={linked} onClick={() => setLinked(!linked)}>{linked ? "Linked" : "Independent"}</button>}
     <div className={fields.propertyGrid}>{metadata.map(field => <DraftControl key={field.key} id={`${scope}-${field.key}`}
       label={shortLabels[field.key] ?? field.label} accessibleLabel={`${label} ${field.label}`} value={values[field.key] === undefined ? "" : String(values[field.key])}
-      resolvedValue={resolved[field.key] ?? ""} numeric={field.type === "number" || field.type === "dimension"}
+      resolvedValue={resolved[field.key] ?? ""} numeric={field.type === "number" || field.type === "dimension"} field={field}
       options={field.type === "select" ? field.options : undefined} placeholder="Not rendered"
       overridden={values[field.key] !== undefined} onCommit={draft => edit(field, draft)} onReset={() => edit(field, "")} />)}</div>
+  </details>;
+}
+
+function ValueSourceDetails({ scope, metadata, theme, mode }: { scope: StyleSourceScope; metadata: readonly AppearanceField[]; theme: ThemeTokens; mode: PaletteMode }) {
+  const exact = scope.recipe !== undefined;
+  return <details className={styles.sourceDetails} data-system-scope-details={exact ? "recipe" : "shared"}>
+    <summary>Scope &amp; value sources</summary>
+    <p>Applies to {exact ? "this combination and layer" : "this layer across all combinations"} in every project linked to this system. Local instance styles can take precedence.</p>
+    <p>{exact ? "Reset removes only this layer's exact overrides, not shared defaults or base tokens." : "Reset removes only this shared layer's overrides, not exact combination overrides or base tokens."} Content, parameters and other layers stay unchanged.</p>
+    {!exact && <p>Shared authored values are shown even when an exact override masks them. Mixed means the examples use different rendered values.</p>}
+    <p>Sources below identify direct declarations and the fallback boundary; parent or nested-component defaults may resolve through additional styles. Values remain in the property controls.</p>
+    <ul className={styles.sourceList} aria-label="Style declaration sources">
+      {metadata.map(field => {
+        const source = styleSourceInfo(theme, scope, field);
+        return <li key={field.key} data-style-source-field={field.key} data-style-source={source.current.kind}>
+          <div><strong>{field.label}</strong><span>{source.themeSpecific ? title(mode) : "Both themes"}</span></div>
+          <p>{source.current.label}</p>
+          <small>{source.current.description}</small>
+          <small>Reset → {source.afterReset.label}{!source.overridden && " · no direct override here"}</small>
+          <code title="Variable authored by this control">{source.editVariable}</code>
+          {source.current.variable && source.current.variable !== source.editVariable && <small>Source: <code>{source.current.variable}</code></small>}
+          {source.afterReset.variable && source.afterReset.variable !== source.editVariable && source.afterReset.variable !== source.current.variable && <small>Reset source: <code>{source.afterReset.variable}</code></small>}
+        </li>;
+      })}
+    </ul>
   </details>;
 }
 
@@ -241,7 +263,9 @@ function RecipeStyles({ selection, recipe, theme, mode, onSelectionChange, onCha
   }
   return <section data-system-recipe-controls data-recipe={selection.recipe} data-part={selection.part} data-target={selection.target} aria-label={breadcrumb}>
     <header className={styles.selectionHeading}><h3>{breadcrumb}</h3><span className={styles.target}>{title(selection.target)}</span></header>
-    <p className={fields.note}>Only this combination and layer, across linked projects. Other variants, sizes and layers stay unchanged.</p>
+    <p className={styles.scopeLabel} data-system-edit-scope="recipe">This combination · all linked projects</p>
+    <p className={fields.note}>Other variants, sizes and layers stay unchanged.</p>
+    <ValueSourceDetails scope={selection} metadata={metadata} theme={theme} mode={mode} />
     <RecipeLayers selection={selection} label={combination} onSelect={onSelectionChange} />
     <div className={fields.inheritance}><span>{selection.target === "text" ? "Typography" : "Geometry & effects"} · both themes<br />Colors · {title(mode)}</span>
       <button type="button" disabled={!metadata.some(field => values[field.key] !== undefined)} onPointerDown={event => event.preventDefault()} onClick={() => {
@@ -254,7 +278,7 @@ function RecipeStyles({ selection, recipe, theme, mode, onSelectionChange, onCha
   </section>;
 }
 
-function SharedDefaults({ component, theme, initialPart = "root", onPartChange, onChange }: { component: ComponentId; theme: ThemeTokens; initialPart?: ComponentStylePart; onPartChange?: (part: ComponentStylePart) => void; onChange: (next: ComponentStyles) => void }) {
+function SharedDefaults({ component, theme, mode = "light", initialPart = "root", onPartChange, onChange }: { component: ComponentId; theme: ThemeTokens; mode?: PaletteMode; initialPart?: ComponentStylePart; onPartChange?: (part: ComponentStylePart) => void; onChange: (next: ComponentStyles) => void }) {
   const [part, setPart] = useState<ComponentStylePart>(initialPart);
   const [error, setError] = useState("");
   const [draftRevision, setDraftRevision] = useState(0);
@@ -269,10 +293,12 @@ function SharedDefaults({ component, theme, initialPart = "root", onPartChange, 
   }
   return <details className={fields.group} data-system-shared-defaults>
     <summary>Shared defaults · all variants & sizes</summary>
+    <p className={styles.scopeLabel} data-system-edit-scope="shared">All combinations · all linked projects</p>
     <p className={fields.note}>Base layer styles for every {title(component)}. Combination overrides take precedence. Mixed means the canvas examples use different values.</p>
     <label className={fields.partPicker}>Shared default layer<select aria-label="Shared default layer" value={part} onChange={event => { const next = event.target.value as ComponentStylePart; setPart(next); onPartChange?.(next); setError(""); }}>
       {componentStyleParts(component).map(entry => <option key={entry.key} value={entry.key}>{entry.label}</option>)}
     </select></label>
+    <ValueSourceDetails key={part} scope={{ component, part }} metadata={metadata} theme={theme} mode={mode} />
     <div className={fields.inheritance}><span>All variants & sizes</span><button type="button" disabled={!Object.keys(values).length} onPointerDown={event => event.preventDefault()} onClick={() => {
       try { change(Object.fromEntries(metadata.map(field => [field.key, null])) as AppearancePatch); setDraftRevision(revision => revision + 1); }
       catch (error) { setError(message(error)); }
@@ -294,8 +320,8 @@ export function SystemComponentEditor({ component, theme, mode, defaults, tab, s
       {validSelection && recipe ? <RecipeStyles key={`${component}-${validSelection.recipe}-${validSelection.part}-${validSelection.target}-${mode}`} selection={validSelection} recipe={recipe} theme={theme} mode={mode}
         onSelectionChange={next => { onSelectionChange(next); onTabChange("styles"); }} onChange={onRecipesChange} />
         : <div className={styles.emptySelection}><h3>Select a frame or text</h3><p className={fields.note}>Choose a layer in a canvas example to style that exact variant and size.</p></div>}
-      <SharedDefaults key={`${component}-${mode}-${sharedPart ?? "root"}`} component={component} theme={theme} initialPart={sharedPart} onPartChange={onSharedPartChange} onChange={onStylesChange} />
-      <details className={`${fields.group} ${styles.baseTokens}`} data-system-base-tokens><summary>Base & variant tokens · all sizes</summary><p className={fields.note}>Shared across sizes, not limited to the selection above.</p>{children}</details>
+      <SharedDefaults key={`${component}-${mode}-${sharedPart ?? "root"}`} component={component} theme={theme} mode={mode} initialPart={sharedPart} onPartChange={onSharedPartChange} onChange={onStylesChange} />
+      <details className={`${fields.group} ${styles.baseTokens}`} data-system-base-tokens><summary>Base & variant tokens · all sizes</summary><p className={styles.scopeLabel} data-system-edit-scope="base">Base / variant defaults · all sizes</p><p className={fields.note}>Shared across sizes, not limited to the selection above. Exact combination and shared layer overrides may mask these defaults.</p><details className={styles.sourceDetails} data-system-scope-details="base"><summary>Scope &amp; reset behavior</summary><p>Variant/state tokens affect the selected variant or state across all sizes. Component base tokens supply defaults across combinations. Both affect linked projects where those defaults are consumed.</p><p>Resetting a base or variant token removes only its own override and restores its global or derived default. It does not clear shared layer styles, exact combination styles or local instance styles. Accessible focus outlines remain global.</p></details>{children}</details>
     </Tabs.Panel>
     <Tabs.Panel value="parameters" className={styles.panel}><DefaultParameters key={component} component={component} defaults={defaults} onChange={onDefaultsChange} /></Tabs.Panel>
   </Tabs.Root>;

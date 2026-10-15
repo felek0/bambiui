@@ -59,12 +59,12 @@ function canvasFixture() {
   const shell = part("shell", "frame", { lineHeight: "32px", fontSize: "16px", paddingTop: "0px" });
   const groups = { card: { title: [title], content: [content] }, input: { control: [shell, native] } };
   const matrices = Object.fromEntries(Object.entries(groups).map(([component, parts]) => [component, {
-    querySelectorAll: () => ["outlined.sm", "outlined.md"].map(recipe => ({ dataset: { recipeExample: recipe }, querySelectorAll: selector => parts[/data-component-part="([^"]+)"/.exec(selector)?.[1]] ?? [] })),
+    querySelectorAll: () => ["outlined.sm", "outlined.md"].map(recipe => ({ dataset: { recipeExample: recipe }, querySelectorAll: selector => selector.startsWith('[data-recipe-body] ') ? parts[/data-component-part="([^"]+)"/.exec(selector)?.[1]] ?? [] : [{ dataset: { componentTarget: "text" }, style: { fontSize: "99px", lineHeight: "99px" } }] })),
   }]));
   return { title, nested, content, native, shell, document: { querySelector: selector => matrices[/data-component-matrix="([^"]+)"/.exec(selector)?.[1]] }, getComputedStyle: element => element.style };
 }
 
-test("canvas lookup follows exact recipe, frame/text anatomy and Card-owned descendant typography", () => {
+test("canvas lookup ignores live previews and follows exact recipe/frame/text anatomy and Card-owned descendants", () => {
   const fixture = canvasFixture();
   globals({ document: fixture.document, getComputedStyle: fixture.getComputedStyle }, () => {
     assert.deepEqual(canvasAppearanceElements({ component: "card", recipe: "outlined.md", part: "title", target: "text" }), [fixture.title]);

@@ -26,3 +26,17 @@
 .textarea:focus-visible { outline: var(--studio-focus-ring); outline-offset: -1px; }
 .textarea[aria-invalid="true"] { border-color: var(--studio-color-warning); }
 .baseTokens > section { margin-block: 14px; }
+.scopeLabel { margin: 6px 0; color: var(--studio-color-text-subtle); font-size: 10px; font-weight: 600; line-height: 1.6; overflow-wrap: anywhere; }
+.sourceDetails { margin-block: 8px; border-block: 1px solid var(--studio-color-border-subtle); color: var(--studio-color-text-subtle); font-size: 11px; line-height: 1.6; }
+.sourceDetails > summary { padding-block: 7px; cursor: pointer; color: var(--studio-color-text); font-weight: 500; }
+.sourceDetails > summary:focus-visible { outline: var(--studio-focus-ring); outline-offset: 2px; }
+.sourceDetails > p { margin: 8px 0; overflow-wrap: anywhere; }
+.sourceList { display: grid; gap: 10px; margin: 10px 0; padding: 0; list-style: none; }
+.sourceList li { min-width: 0; padding-top: 10px; border-top: 1px solid var(--studio-color-border-subtle); overflow-wrap: anywhere; }
+.sourceList li > div { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 8px; }
+.sourceList strong { color: var(--studio-color-text); font-size: 11px; }
+.sourceList li > div > span { font-size: 9px; }
+.sourceList p { margin: 2px 0; color: var(--studio-color-text); }
+.sourceList small, .sourceList code { display: block; font-size: 10px; }
+.sourceList small { margin-block: 3px; }
+.sourceList code { white-space: normal; overflow-wrap: anywhere; }

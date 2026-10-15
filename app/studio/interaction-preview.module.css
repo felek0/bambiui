@@ -1,0 +1,14 @@
+.preview { margin-top: 10px; border-top: 1px solid var(--studio-color-border-subtle); }
+.preview > summary, .note, .tools, .recipe, .result { color: var(--studio-color-text); font: 11px/1.6 var(--studio-font-family); }
+.preview > summary { padding-block: 7px; cursor: pointer; font-weight: 500; }
+.preview > summary:focus-visible, .tools button:focus-visible, .tools select:focus-visible { outline: var(--studio-focus-ring); outline-offset: 2px; }
+.note { margin: 8px 0; color: var(--studio-color-text-subtle); overflow-wrap: anywhere; }
+.tools { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px; }
+.tools label { display: grid; gap: 3px; min-width: 0; }
+.tools select, .tools button { min-height: 28px; max-width: 100%; padding: 4px 7px; border: 1px solid var(--studio-color-border-subtle); border-radius: 4px; background: var(--studio-color-surface); color: var(--studio-color-text); font: inherit; }
+.tools button { cursor: pointer; }
+.tools button:disabled { opacity: 0.5; cursor: default; }
+.control { min-width: 0; padding: 10px 4px; }
+.recipe { margin-block: 6px; color: var(--studio-color-text-subtle); overflow-wrap: anywhere; }
+.recipe code { font-size: 10px; }
+.result { display: block; padding-bottom: 8px; color: var(--studio-color-text-subtle); }

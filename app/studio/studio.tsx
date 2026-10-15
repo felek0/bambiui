@@ -1040,7 +1040,7 @@ export default function Studio() {
               </div>
             </section>
             <section hidden={view !== "develop"} aria-label={t.develop} className="workspace-panel workspace-panel--develop">
-              <DeveloperView selected={selection} system={system} mode={activeTheme} cssOutput={cssOutput} />
+              <DeveloperView selected={selection} system={system} mode={activeTheme} cssOutput={cssOutput} ready={ready} />
             </section>
           </div>
         </div>

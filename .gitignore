@@ -17,6 +17,12 @@
 /.next/
 /out/
 
+# generated static source catalog (rebuilt by dev/build)
+/public/bambiui-source/
+/public/registry/
+/packages/cli/dist/
+/packages/cli/*.tgz
+
 # production
 /build
 

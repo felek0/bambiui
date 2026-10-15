@@ -1,0 +1,12 @@
+{
+  "name": "bambiui",
+  "version": "0.2.0",
+  "license": "MIT",
+  "description": "Install editable bambiui React sources from a static registry",
+  "type": "module",
+  "bin": { "bambiui": "bin/bambiui.mjs" },
+  "files": ["bin", "lib", "dist", "README.md", "LICENSE", "NOTICE.md"],
+  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/" },
+  "engines": { "node": ">=22.15.0" },
+  "scripts": { "prepublishOnly": "node lib/check-release.mjs" }
+}

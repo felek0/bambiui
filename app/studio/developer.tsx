@@ -23,6 +23,7 @@ import {
   type DesignSystem,
 } from "./tokens";
 import styles from "./developer.module.css";
+import { SourceDownloadPanel } from "./source-download-panel";
 import { developerCopy, type NoteKey } from "./developer-copy";
 import type { PaletteMode } from "./color-engine";
 import { appearanceFieldsFor, appearanceParts } from "./page-document/appearance";
@@ -36,6 +37,7 @@ export type DeveloperViewProps = {
   system: DesignSystem;
   mode: PaletteMode;
   cssOutput: string;
+  ready: boolean;
 
 };
 
@@ -168,7 +170,7 @@ function ReactUsage({ selected }: { selected: ComponentId }) {
   }
 
   return (
-    <section className={styles.section}>
+    <section className={styles.section} data-react-usage>
       <div className={styles.codeHeading}>
         <h3>{copy.reactUsage}</h3>
         <Button
@@ -460,7 +462,7 @@ function RecipeStyles({ selected, theme, mode, variables }: {
   </details>;
 }
 
-export function DeveloperView({ selected, system, mode, cssOutput }: DeveloperViewProps) {
+export function DeveloperView({ selected, system, mode, cssOutput, ready }: DeveloperViewProps) {
   const copy = developerCopy;
   const component = selected === "colors" || selected === "spacing" ? null : reference[selected];
   const theme = system.themes[mode];
@@ -491,6 +493,8 @@ export function DeveloperView({ selected, system, mode, cssOutput }: DeveloperVi
       <header className={styles.header}>
         <p className={styles.systemName}>{copy.system}: {system.name} · {copy.modeName[mode]} {copy.theme} · {copy.source} {system.themes[mode].source}</p>
       </header>
+
+      <SourceDownloadPanel selected={selected} system={system} ready={ready} />
 
       {selected !== "colors" && selected !== "spacing" && component && (
         <>

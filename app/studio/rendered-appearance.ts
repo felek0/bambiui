@@ -64,7 +64,7 @@ export function readCanvasAppearance(scope: CanvasAppearanceScope, fields: reado
   return values;
 }
 
-/** Use the same frame/text anatomy as canvas hit selection, including Card-owned descendants. */
+/** Measure original design hit anatomy, including Card-owned text, never the live interaction sandbox. */
 export function canvasAppearanceElements(scope: CanvasAppearanceScope): Element[] {
   const matrix = document.querySelector(`[data-component-matrix="${scope.component}"]`);
   if (!matrix) return [];
@@ -72,7 +72,7 @@ export function canvasAppearanceElements(scope: CanvasAppearanceScope): Element[
     ? Array.from(matrix.querySelectorAll<HTMLElement>("[data-recipe-example]")).filter(example => example.dataset.recipeExample === scope.recipe)
     : Array.from(matrix.querySelectorAll<HTMLElement>("[data-recipe-example]"));
   return examples.flatMap(example => {
-    const parts = Array.from(example.querySelectorAll<HTMLElement>(`[data-ds-component="${scope.component}"][data-component-part="${scope.part}"]`));
+    const parts = Array.from(example.querySelectorAll<HTMLElement>(`[data-recipe-body] [data-ds-component="${scope.component}"][data-component-part="${scope.part}"]`));
     const part = parts.find(element => scope.target && element.dataset.componentTarget === scope.target) ?? parts[0];
     if (!part) return [];
     if (scope.component === "card" && scope.target === "text" && ["content", "footer"].includes(scope.part)) {
