@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+// DORMANT: public Project authoring is suspended. No legacy browser pass is claimed.
+const legacyAuthoringNotice = 'DORMANT studio-workspace-smoke: requires historical Project authoring routes, unavailable in the System-only export. Run npm run test:system-only for active route/storage coverage. Composer/page-document model tests remain active. No public bypass is provided.';
+console[process.argv.includes('--help') ? 'log' : 'error'](legacyAuthoringNotice);
+process.exit(process.argv.includes('--help') ? 0 : 2);
+// Historical harness retained below; it is not run against the current public export.
 // No packages, app build, fixture injection, or persistent browser state. Evidence goes to stdout.
 // Run after the parent finishes the static export: node scripts/studio-workspace-smoke.mjs
 import assert from 'node:assert/strict';

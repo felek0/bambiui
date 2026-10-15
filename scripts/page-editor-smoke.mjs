@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+// DORMANT: /examples/page-editor authoring is suspended. No legacy browser pass is claimed.
+const legacyAuthoringNotice = 'DORMANT page-editor-smoke: requires the historical public page editor, unavailable in the System-only export. Run npm run test:system-only for paused-route/recovery coverage. Page-editor/page-document model and storage tests remain active. No public bypass is provided.';
+console[process.argv.includes('--help') ? 'log' : 'error'](legacyAuthoringNotice);
+process.exit(process.argv.includes('--help') ? 0 : 2);
+// Historical harness retained below; it is not run against the current public export.
 // Run after npm run build. Node 22+ and installed Chrome; CHROME_PATH overrides the macOS default.
 // Bounded 120-second smoke; disposable profile/server. No visual or accessibility claims.
 import assert from 'node:assert/strict';

@@ -2,11 +2,19 @@
 
 ## Scope
 
-Current acceptance covers **System exact-combination/layer editing, Project composition and developer handoff**, not only component specimens. Start with [the task-session protocol](studio-acceptance.md): six participant tasks, a separate keyboard/VoiceOver/native-zoom pass, environment records and issue triage. All manual results are still **not run**. Use disposable browser data; Project JSON alone does not back up the linked System.
+**Target scope (2026-10-16):** [The System-first roadmap](roadmap.md) suspends Project authoring. Manual checks below target the planned candidate, not a claim that the new UI is shipped. Agent D validates control names and availability against the SF0 contract and candidate build before testing. A feature not implemented is blocked/not run; do not reopen Project to satisfy an old task.
 
-The detailed specimen checks below remain relevant, but the dated 20-route/125-test baseline is historical evidence, not a description of today's whole application. Project workflows at `/` and `/pages` must be checked separately from System routes such as `/card`. Source SSR checks, static builds, Chromium emulation and accessibility-tree assertions do not prove assistive-technology behavior or complete visual/HTML-semantic parity. See [the roadmap](roadmap.md) for current phase gates.
+Acceptance covers **System exact-combination/layer editing, session-only preview and developer handoff**, not only component specimens. Start with [the task-session protocol](studio-acceptance.md): six participant tasks, separate keyboard/VoiceOver/native-zoom passes, environment records and issue triage. All manual results are still **not run**. Use disposable browser data. Legacy Project read-only recovery/data retention has a separate synthetic-data test; Project authoring is not a requirement.
 
-## Current automated evidence and its limits
+The detailed specimen checks below remain relevant, but the dated 20-route/125-test baseline is historical evidence, not a description of today's whole application. For the new candidate `/` must open System and `/pages[/]` must not expose authoring; SF1 owns those route checks. Source SSR checks, static builds, Chromium emulation and accessibility-tree assertions do not prove assistive-technology behavior or complete visual/HTML-semantic parity. See [the roadmap](roadmap.md) for current phase gates.
+
+## System-only candidate automated evidence · 2026-10-16
+
+- First local candidate: 615 unit/SSR/source, 17 System-only browser, 97 System smoke and 7 source/CLI browser scenario groups passed. Representative Card exact typography, outgoing pointer-draft discard, filter-hidden selection clear and session-preview CSS/JSON/ZIP isolation were observed.
+- Controlled System deletion dialog: Cancel/Escape/focus, repeated accept, valid unrelated reference and a real same-origin second-tab rebind while the dialog is open passed. Legacy recovery/download/privacy/error checks passed without authoring or storage writes.
+- These are automated Chromium checks, not actual VoiceOver, native 200% zoom, IME or participant results. Human records below remain unchecked. Full details and outstanding storage/performance scope are in the roadmap.
+
+## Pre-transition automated evidence and its limits
 
 - Workspace: 23 checks cover Project/page/frame creation, exact Card/Input layer recipes, instance versus insertion-default isolation, history, themes, snapshots and export/reload. Browser process cleanup has five regression tests; three full runs exited cleanly after the cleanup fix. This is not evidence of human discoverability or screen-reader acceptance.
 - `npm run check:cli:clean` uses public npm `bambiui@0.2.1` and the production registry in an isolated host with fresh npm dependencies. React/Vite and then Next builds/browser checks cover Light/Dark, layer typography, fractional edges/corners, Input errors, choice controls and narrow reflow. This is not a full accessibility audit.
@@ -30,23 +38,25 @@ Automated validation (2026-09-29): production build, lint, TypeScript no-emit ch
 
 Record browser/OS, build, assistive technology, scenario, result and issues using [the session record](studio-acceptance.md#session-record) before closing this gate. Keep **not run** distinct from **pass** and record assisted completion explicitly.
 
-### System / Project editing scope
+### System editing and preview scope
 
 - [ ] Reach `outlined.md / Card.Title` without a pointer through available navigation/layer controls; understand selection, effective values and whether an edit affects one recipe or all combinations.
 - [ ] Switch root/text selection, edit independent padding/corners and title typography, and operate reset/Undo/Redo without losing focus or changing unrelated layers.
 - [ ] Reach exact invalid Input error styling, field help and validation feedback by keyboard and VoiceOver; associate announcements with the owning control.
-- [ ] Create Project/page/frame and insert a populated Card by keyboard. Edit local copy without changing shared styles or insertion defaults. Verify linked-system style changes on a matching instance.
-- [ ] Operate Layers expand/collapse/selection, panel toggles, frame menu and System/Project switching; overlays dismiss on Escape and return focus appropriately. No essential task depends on dragging alone.
+- [ ] Change temporary example content without authoring insertion defaults; reset/close/reload follow the documented preview lifecycle. Saved style edits remain; transient content is excluded from exports.
+- [ ] Operate component/layer selection, matrix filters, panel toggles and Design/Develop navigation; overlays dismiss on Escape and return focus appropriately. Hidden/filtered examples have no tabbable descendants. No essential task depends on dragging alone.
+- [ ] Switch component/theme/system or filter with a pending valid/invalid field draft. The old draft never lands on a new target; validation/reset behavior and focus remain understandable.
+- [ ] From a contrast issue, reach the exact layer/control even when a matrix filter previously hid it. Foundations, shared/base controls and effective value sources remain reachable.
 - [ ] Inspect temporary interaction states without mistaking them for saved token/default edits. Selected recipe, live state and theme remain understandable.
 
 ### VoiceOver with Safari and Chrome
 
 - [ ] Navigate landmarks and headings. Skip-to-workspace reaches main; the hidden workspace panel and the inspector in Develop are absent from reading order. There is only one theme pane, not an inactive second preview.
 - [ ] Component and Design/Develop navigation announce links and the current page, not tabs. Tab reaches each link and Enter navigates. Verify all seven component targets, direct opening, Back/Forward, focus placement and route-change announcements.
-- [ ] Light and Dark theme controls announce their selected state in Design and Develop and identify the inspector's editing target in Design; switching retains the same interactive demo state across themes and routes.
+- [ ] Light and Dark theme controls announce their selected state in Design and Develop and identify the inspector's editing target in Design. Preview persistence/reset follows the SF0 lifecycle table; do not assume it persists across every route or System switch.
 - [ ] Explore all seven component matrices, optional interaction previews and the Colors and Text foundation areas. Canvas help, zoom output, Fit and Reset zoom are understandable; focused-canvas arrow panning and zoom controls provide alternatives to pointer dragging. Interactive specimen controls do not initiate panning; check text selection separately in real browsers.
 - [ ] Develop usage, prop references, token tables and local scroll regions are readable and keyboard reachable; Copy React code announces success or failure without moving focus unexpectedly.
-- [ ] Input labels, helper text, required state and errors are announced. Read-only controls stay focusable; disabled controls cannot activate.
+- [ ] In the live preview/consumer, Input labels, helper text, required state and errors are announced. Read-only controls stay focusable; disabled controls cannot activate. The design matrix's noninteractive hit targets instead have keyboard-accessible frame/layer selectors; they need not masquerade as live form inputs.
 - [ ] Switch/Checkbox names and checked/mixed states are announced; decorative icons do not duplicate names.
 - [ ] Busy buttons remain focusable and cannot activate. The studio's interactive Save changes specimen has an action handler and automated focus/repeat-activation checks; also verify its announcements with VoiceOver and in a consuming app.
 - [ ] Contrast warnings and import/copy feedback announce meaningful changes without excessive interruption.

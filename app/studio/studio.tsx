@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import Link from "next/link";
 import { Dialog } from "@base-ui/react/dialog";
 import { usePathname, useRouter } from "next/navigation";
@@ -51,10 +51,8 @@ import {
   type TokenValues,
 } from "./tokens";
 import { loadSystems, saveSystems, SYSTEMS_KEY, type SystemCollection } from "./systems";
-import { useComposer } from "./composer/use-composer";
-import { LayersPanel } from "./composer/layers-panel";
-import { isComposerRoute } from "./composer/workspace-route";
-import { ProjectManager, PageCanvas, ProjectInspector } from "./composer/project-ui";
+import { readLegacyProjectReferences, legacySystemDeletionBlock, type LegacyProjectReferences } from "./legacy-project-recovery";
+import type { ComponentDefaults } from "./component-defaults";
 import shell from "./composer/workspace-shell.module.css";
 import { SystemComponentEditor, type ComponentEditorTab } from "./system-component-editor";
 import type { ComponentStylePart } from "./component-styles";
@@ -335,8 +333,9 @@ export default function Studio() {
   const [system, setSystem] = useState<DesignSystem>(defaultSystem);
   const [ready, setReady] = useState(false);
   const [workspaceRevision, setWorkspaceRevision] = useState(0);
+  const [importRevision, setImportRevision] = useState(0);
   const pathname = usePathname();
-  const pagesActive = pathname === "/" || isComposerRoute(pathname);
+
   const router = useRouter();
   const segments = pathname.split("/").filter(Boolean);
   const view: View = segments[0] === "develop" ? "develop" : "design";
@@ -353,8 +352,7 @@ export default function Studio() {
   const [mobilePanel, setMobilePanel] = useState<"left" | "right" | null>(null);
   const leftVisible = !panelsHidden && (compact ? mobilePanel === "left" : !leftHidden);
   const rightVisible = !panelsHidden && view === "design" && (compact ? mobilePanel === "right" : !rightHidden);
-  const projectManagerRef = useRef<HTMLDetailsElement>(null);
-  const [inspectorView, setInspectorView] = useState<{ context: string; tab: "design" | "project" }>({ context: "", tab: "design" });
+
   function showInspector() {
     setPanelsHidden(false); setRightHidden(false); setMobilePanel("right");
   }
@@ -368,8 +366,21 @@ export default function Studio() {
   const [selectedVariantColor, setSelectedVariantColor] = useState<string>(componentVariantKeys.button[0]);
   const [componentEditorTab, setComponentEditorTab] = useState<ComponentEditorTab>("styles");
   const [recipeSelection, setRecipeSelection] = useState<ComponentRecipeSelection | null>(null);
+  const [previewDefaults, setPreviewDefaults] = useState<ComponentDefaults | undefined>(undefined);
+  const [sampleComponent, setSampleComponent] = useState(selection);
+  // Reset in the render that changes context; an outgoing sample must never reach a new component.
+  if (sampleComponent !== selection) {
+    setSampleComponent(selection);
+    if (recipeSelection?.component !== selection) setRecipeSelection(null);
+    setPreviewDefaults(undefined);
+  }
+  function clearRecipeSelection() {
+    setRecipeSelection(null);
+    setPreviewDefaults(undefined);
+  }
   const [sharedStyleTarget, setSharedStyleTarget] = useState<{ component: ComponentId; part: ComponentStylePart } | null>(null);
   function editComponentRecipe(next: ComponentRecipeSelection) {
+    if (recipeSelection?.component !== next.component || recipeSelection?.recipe !== next.recipe) setPreviewDefaults(undefined);
     setComponentEditorTab("styles"); setRecipeSelection(next); showInspector();
     if (selection !== next.component) router.push(`/${next.component}`, { scroll: false });
   }
@@ -382,9 +393,11 @@ export default function Studio() {
       : target.part ? `system-shared-${target.selection}-${target.part}-${target.key}` : variant
         ? `variant-color-${target.selection}-${variantSlug}-${target.key}` : `token-${target.key}`;
     setComponentEditorTab("styles");
-    if (target.recipe !== undefined) setRecipeSelection({ component: target.selection, recipe: target.recipe, part: target.part, target: target.target });
-    else {
-      setRecipeSelection(null);
+    if (target.recipe !== undefined) {
+      if (recipeSelection?.component !== target.selection || recipeSelection?.recipe !== target.recipe) setPreviewDefaults(undefined);
+      setRecipeSelection({ component: target.selection, recipe: target.recipe, part: target.part, target: target.target });
+    } else {
+      clearRecipeSelection();
       if (target.part && target.selection !== "colors") setSharedStyleTarget({ component: target.selection, part: target.part });
     }
     const next = { selection: target.selection, inputId };
@@ -420,21 +433,40 @@ export default function Studio() {
   const [renameDraft, setRenameDraft] = useState("");
   const [collection, setCollection] = useState<SystemCollection>({ version: 1, activeId: "original", systems: [{ id: "original", system: defaultSystem }] });
   const collectionRef = useRef(collection);
-  const systemsValidated = useRef(false);
-  const [systemCatalogReady, setSystemCatalogReady] = useState(false);
-  const composer = useComposer(() => systemsValidated.current ? collectionRef.current.systems : []);
-  const composerSystems = systemCatalogReady ? collection.systems : [];
-  const inspectorContext = `${composer.document?.id}/${composer.page?.id}/${composer.project?.frameId}/${composer.project?.selection?.nodeId}`;
-  function openProjectSettings() {
-    setInspectorView({ context: inspectorContext, tab: "project" });
-    showInspector();
-  }
-  function openProjects() {
-    if (!projectManagerRef.current) return;
-    projectManagerRef.current.open = true;
-    projectManagerRef.current.querySelector<HTMLInputElement>("input")?.focus();
-  }
-  const systemDeletionBlock = composer.controller.systemDeletionBlock(collection.activeId);
+  const systemSummaryRef = useRef<HTMLElement>(null);
+  const deleteCancelRef = useRef<HTMLButtonElement>(null);
+  type DeletionRequest = { collection: SystemCollection; system: DesignSystem; id: string; name: string };
+  const deletionRequestRef = useRef<DeletionRequest | null>(null);
+  const [deletionRequest, setDeletionRequest] = useState<DeletionRequest | null>(null);
+  const deletionAttempt = useRef<symbol | null>(null);
+  const [deletionPending, setDeletionPending] = useState(false);
+  const [deletionError, setDeletionError] = useState("");
+  useEffect(() => () => { deletionAttempt.current = null; deletionRequestRef.current = null; }, []);
+  const [references, setReferences] = useState<LegacyProjectReferences | null>(null);
+  const refreshReferences = useCallback(() => {
+    let next: LegacyProjectReferences;
+    try { next = readLegacyProjectReferences(window.localStorage); }
+    catch { next = { blocked: "Local Project storage is unavailable. System deletion is unavailable. Duplicate or export the System instead.", systemIds: [] }; }
+    setReferences(next);
+    return next;
+  }, []);
+  const systemDeletionBlock = legacySystemDeletionBlock(references, collection.activeId);
+  const deletionContextChanged = deletionRequest !== null && (deletionRequest.collection !== collection || deletionRequest.system !== system);
+  const deletionDialogBlock = deletionRequest
+    ? deletionContextChanged ? "The System changed while confirmation was open. Cancel and reopen confirmation for the current System."
+      : legacySystemDeletionBlock(references, deletionRequest.id)
+    : "";
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => { if (!cancelled) refreshReferences(); });
+    const refresh = () => refreshReferences();
+    const storage = (event: StorageEvent) => {
+      if (event.key === null || event.key === "bambiui.composer.projects.v1" || event.key.startsWith("bambiui.composer.document.v1.")) refresh();
+    };
+    window.addEventListener("storage", storage);
+    window.addEventListener("focus", refresh);
+    return () => { cancelled = true; window.removeEventListener("storage", storage); window.removeEventListener("focus", refresh); };
+  }, [refreshReferences]);
   const history = useRef<{ undo: DesignSystem[]; redo: DesignSystem[]; group: string | null }>({ undo: [], redo: [], group: null });
   const currentSystem = useRef(system);
   const [historyCounts, setHistoryCounts] = useState({ undo: 0, redo: 0 });
@@ -462,8 +494,7 @@ export default function Studio() {
       try {
         const saved = localStorage.getItem(SYSTEMS_KEY) || localStorage.getItem(STORAGE_KEY);
         const loaded = loadSystems(localStorage);
-        systemsValidated.current = true;
-        setSystemCatalogReady(true);
+
         collectionRef.current = loaded;
         setCollection(loaded);
         const active = loaded.systems.find((entry) => entry.id === loaded.activeId)!.system;
@@ -517,8 +548,59 @@ export default function Studio() {
     setHistoryCounts({ undo: 0, redo: 0 });
     setWorkspaceRevision((revision) => revision + 1);
     setEditTarget(null);
+    clearRecipeSelection();
+    setSharedStyleTarget(null);
     switcherRef.current?.removeAttribute("open");
     return true;
+  }
+
+  function openSystemDeletion() {
+    if (deletionRequestRef.current || deletionAttempt.current) return;
+    const snapshot = collectionRef.current;
+    const target = snapshot.systems.find(entry => entry.id === snapshot.activeId);
+    if (!target || snapshot.systems.length <= 1 || legacySystemDeletionBlock(refreshReferences(), target.id)) return;
+    const request = { collection: snapshot, system: target.system, id: target.id, name: target.system.name || t.untitled };
+    deletionRequestRef.current = request;
+    setDeletionRequest(request);
+    setDeletionError("");
+    switcherRef.current?.removeAttribute("open");
+  }
+
+  function cancelSystemDeletion() {
+    deletionAttempt.current = null;
+    deletionRequestRef.current = null;
+    setDeletionRequest(null);
+    setDeletionPending(false);
+    setDeletionError("");
+  }
+
+  async function confirmSystemDeletion() {
+    const request = deletionRequestRef.current;
+    if (!request || deletionAttempt.current) return;
+    const attempt = Symbol();
+    deletionAttempt.current = attempt;
+    setDeletionPending(true);
+    try {
+      // The app dialog never blocks the event loop. Let pending UI/storage/cancel events
+      // run before the final snapshot; this task boundary is not a cross-tab lock.
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+      if (deletionAttempt.current !== attempt || deletionRequestRef.current !== request) return;
+      const block = legacySystemDeletionBlock(refreshReferences(), request.id);
+      if (block) { setDeletionError(block); return; }
+      if (collectionRef.current !== request.collection || collectionRef.current.activeId !== request.id || currentSystem.current !== request.system) {
+        setDeletionError("The System changed while confirmation was open. Cancel and reopen confirmation for the current System.");
+        return;
+      }
+      const systems = request.collection.systems.filter(entry => entry.id !== request.id);
+      if (systems.length < 1 || systems.length !== request.collection.systems.length - 1) return;
+      if (activate({ ...request.collection, activeId: systems[0].id, systems })) cancelSystemDeletion();
+      else setDeletionError("The System could not be deleted because saving failed. Export your System before retrying.");
+    } finally {
+      if (deletionAttempt.current === attempt) {
+        deletionAttempt.current = null;
+        setDeletionPending(false);
+      }
+    }
   }
 
   function addSystem(duplicate: boolean, imported?: DesignSystem) {
@@ -560,7 +642,7 @@ export default function Studio() {
   const failingChecks = auditChecks.filter((check) => !check.passes);
   const globalIssueCount = failingChecks.filter((check) => !check.component).length;
   const componentIssueCount = (id: ComponentId) => failingChecks.filter((check) => check.component === id).length;
-  const visibleFont = pagesActive ? composerSystems.find(entry => entry.id === composer.document?.systemId)?.system.themes[activeTheme].fontFamily : theme.fontFamily;
+  const visibleFont = theme.fontFamily;
   useEffect(() => {
     if (!ready || !visibleFont) return;
     const url = googleFontUrl(visibleFont);
@@ -730,7 +812,7 @@ export default function Studio() {
   }
 
   return (
-    <div className={`studio-shell ${shell.shell}`} data-view={view} data-workspace={pagesActive ? "project" : "system"} data-left-hidden={!leftVisible || undefined} data-right-hidden={!rightVisible || undefined}>
+    <div className={`studio-shell ${shell.shell}`} data-view={view} data-workspace="system" data-left-hidden={!leftVisible || undefined} data-right-hidden={!rightVisible || undefined}>
       <a className="skip-link" href="#workspace">
         {t.skip}
       </a>
@@ -741,15 +823,10 @@ export default function Studio() {
           </span>
           <span className={shell.brandName}>bambiui</span>
         </Link>
-        <nav className={shell.workspaceSwitch} aria-label="Workspace">
-          <Link href="/pages" aria-current={pagesActive ? "page" : undefined}>Project</Link>
-          <Link href={workspaceHref("design", selection)} aria-current={!pagesActive ? "page" : undefined}>System</Link>
-        </nav>
-        {pagesActive && <ProjectManager composer={composer} systems={composerSystems} managerRef={projectManagerRef} onPages={() => router.push("/pages")} onSettings={openProjectSettings} />}
-        <details className="system-switcher" hidden={pagesActive} ref={switcherRef} onToggle={(event) => {
+        <details className="system-switcher" ref={switcherRef} onToggle={(event) => {
           if (event.currentTarget.open) setRenameDraft(system.name);
         }}>
-          <summary aria-label={`${t.selectSystem}: ${system.name || t.untitled}`}>
+          <summary ref={systemSummaryRef} aria-label={`${t.selectSystem}: ${system.name || t.untitled}`}>
             <span className="system-switcher-name">{system.name || t.untitled}</span>
             <Icon name="chevron" size={14} />
           </summary>
@@ -765,13 +842,7 @@ export default function Studio() {
               <button type="button" onClick={() => addSystem(false)}>{t.newSystem}</button>
               <button type="button" onClick={() => addSystem(true)}>{t.duplicateSystem}</button>
               <button type="button" onClick={() => { importAsNew.current = true; switcherRef.current?.removeAttribute("open"); importRef.current?.click(); }}>{t.importAsNew}</button>
-              {collection.systems.length > 1 && <button type="button" disabled={!!systemDeletionBlock} title={systemDeletionBlock || undefined} onClick={() => {
-                if (composer.controller.systemDeletionBlock(collectionRef.current.activeId)) return;
-                if (!window.confirm(t.deleteSystemConfirm(system.name || t.untitled))) return;
-                if (composer.controller.systemDeletionBlock(collectionRef.current.activeId)) return;
-                const systems = collectionRef.current.systems.filter((entry) => entry.id !== collectionRef.current.activeId);
-                activate({ ...collectionRef.current, activeId: systems[0].id, systems });
-              }}>{t.deleteSystem}</button>}
+              {collection.systems.length > 1 && <button type="button" data-system-delete-trigger aria-haspopup="dialog" aria-expanded={deletionRequest !== null} aria-controls="system-delete-dialog" disabled={deletionRequest !== null || !!systemDeletionBlock} title={systemDeletionBlock || undefined} onClick={openSystemDeletion}>{t.deleteSystem}</button>}
               {collection.systems.length > 1 && systemDeletionBlock && <p className="p-2 text-xs studio-text-muted">{systemDeletionBlock}</p>}
             </div>
             <form className="system-rename" onSubmit={(event) => {
@@ -786,15 +857,32 @@ export default function Studio() {
             </form>
           </div>
         </details>
-        {pagesActive && composer.page && <span className={shell.pageName} title={composer.page.name}>{composer.page.name}</span>}
+        <Dialog.Root open={deletionRequest !== null} onOpenChange={open => { if (!open) cancelSystemDeletion(); }}>
+          <Dialog.Portal>
+            <Dialog.Backdrop className="studio-backdrop" />
+            <Dialog.Popup id="system-delete-dialog" className="export-dialog" data-system-delete-dialog data-system-id={deletionRequest?.id}
+              data-delete-pending={deletionPending || undefined} data-delete-blocked={!!(deletionDialogBlock || deletionError) || undefined}
+              initialFocus={deleteCancelRef} finalFocus={systemSummaryRef}>
+              <Dialog.Title className="text-lg font-semibold">Delete system?</Dialog.Title>
+              <Dialog.Description className="mt-2 text-sm studio-text-muted">
+                Delete “{deletionRequest?.name}”? This action is irreversible. Export the System first, or duplicate it to keep a recovery copy.
+              </Dialog.Description>
+              <p role={deletionDialogBlock || deletionError ? "alert" : "status"} aria-atomic="true" data-system-delete-status className="mt-3 min-h-5 text-sm studio-text-muted">
+                {deletionDialogBlock || deletionError || (deletionPending ? "Checking local Project references…" : "Local Project references will be checked again before deletion.")}
+              </p>
+              <div className="mt-3 flex justify-end gap-2">
+                <Dialog.Close ref={deleteCancelRef} render={<Button />}>Cancel</Dialog.Close>
+                <Button variant="primary" data-system-delete-confirm disabled={deletionPending || !!deletionDialogBlock || !!deletionError} aria-busy={deletionPending || undefined} onClick={confirmSystemDeletion}>Delete system</Button>
+              </div>
+            </Dialog.Popup>
+          </Dialog.Portal>
+        </Dialog.Root>
+
         <div className={shell.headerSpacer} />
-        {pagesActive ? <div className={shell.modeSwitch} role="group" aria-label="Canvas mode">
-          <Button variant="ghost" aria-pressed={composer.state.mode === "design"} onClick={() => composer.controller.setMode("design")}>Design</Button>
-          <Button variant="ghost" aria-pressed={composer.state.mode === "preview"} title="Interact with components" onClick={() => composer.controller.setMode("preview")}>Preview</Button>
-        </div> : <nav className="view-switch" aria-label={t.workspaceView}>
+        <nav className="view-switch" aria-label={t.workspaceView}>
           <Link href={workspaceHref("design", selection)} aria-current={view === "design" ? "page" : undefined} data-active={view === "design" || undefined}>{t.design}</Link>
           <Link href={workspaceHref("develop", selection)} aria-current={view === "develop" ? "page" : undefined} data-active={view === "develop" || undefined}>{t.develop}</Link>
-        </nav>}
+        </nav>
         {view === "develop" && <div className="header-workspace-controls"><SegmentedControl aria-label={t.theme} value={activeTheme} onValueChange={(next) => setActiveTheme(next as PaletteMode)}>
           <SegmentedControl.Item value="light" aria-label={t.light} title={t.light}><Icon name="sun" size={14} /></SegmentedControl.Item>
           <SegmentedControl.Item value="dark" aria-label={t.dark} title={t.dark}><Icon name="moon" size={14} /></SegmentedControl.Item>
@@ -804,7 +892,7 @@ export default function Studio() {
           {view === "design" && <Button variant="ghost" iconOnly aria-label={rightVisible ? "Hide inspector" : "Show inspector"} title={rightVisible ? "Hide inspector" : "Show inspector"} aria-expanded={rightVisible} aria-controls="workspace-inspector" onClick={() => { setPanelsHidden(false); if (compact) setMobilePanel(rightVisible ? null : "right"); else setRightHidden(rightVisible); }}><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" aria-hidden="true"><rect x="2" y="3" width="16" height="14" rx="2" /><path d="M13 3v14" /></svg></Button>}
           <Button variant="ghost" iconOnly aria-label={panelsHidden ? "Show panels" : "Focus canvas"} title={panelsHidden ? "Show panels" : "Focus canvas"} aria-pressed={panelsHidden} onClick={() => { setPanelsHidden(!panelsHidden); if (panelsHidden) { setLeftHidden(false); setRightHidden(false); if (compact) setMobilePanel("left"); } }}><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" aria-hidden="true"><path d="M7 2H2v5m11-5h5v5M2 13v5h5m11-5v5h-5" /></svg></Button>
         </div>
-        <div className="header-actions" hidden={pagesActive}>
+        <div className="header-actions">
 
           <span className="save-status">
             <span
@@ -840,7 +928,10 @@ export default function Studio() {
                   if (!addSystem(false, imported)) return;
                 } else {
                   if (!window.confirm(t.replace)) return;
+                  clearRecipeSelection();
+                  setSharedStyleTarget(null);
                   update(imported);
+                  setImportRevision((revision) => revision + 1);
                   setWorkspaceRevision((revision) => revision + 1);
                 }
                 setNotice("imported");
@@ -926,14 +1017,14 @@ export default function Studio() {
         </div>
       </header>
 
-      <aside className="studio-sidebar" id="workspace-sidebar" hidden={!leftVisible} aria-label={pagesActive ? "Project layers and assets" : t.library} onKeyDown={event => { if (compact && event.key === "Escape" && !event.defaultPrevented) { setMobilePanel(null); document.querySelector<HTMLButtonElement>('[aria-controls="workspace-sidebar"]')?.focus(); } }}>
-        {pagesActive ? <LayersPanel composer={composer} onPages={() => router.push("/pages")} /> : <><div className="sidebar-navigation">
+      <aside className="studio-sidebar" id="workspace-sidebar" hidden={!leftVisible} aria-label={t.library} onKeyDown={event => { if (compact && event.key === "Escape" && !event.defaultPrevented) { setMobilePanel(null); document.querySelector<HTMLButtonElement>('[aria-controls="workspace-sidebar"]')?.focus(); } }}>
+        <div className="sidebar-navigation">
           <div className="sidebar-section-label sidebar-foundations-label">{t.sidebarFoundations.toUpperCase()}</div>
-          <NavItem icon={<Icon name="colors" />} href={workspaceHref(view, "colors")} current={!pagesActive && selection === "colors"}
+          <NavItem icon={<Icon name="colors" />} href={workspaceHref(view, "colors")} current={selection === "colors"}
             ariaLabel={ready && globalIssueCount ? `Colors, ${t.sidebarContrastWarning(globalIssueCount, activeTheme)}` : undefined}
             end={ready && globalIssueCount > 0 && <span className="nav-indicators"><span className="nav-contrast-warning" title={t.sidebarContrastWarning(globalIssueCount, activeTheme)}><Icon name="warning" size={14} /></span></span>}
           >Colors</NavItem>
-          <NavItem icon={<Icon name="sliders" />} href={workspaceHref(view, "spacing")} current={!pagesActive && selection === "spacing"}>Shape &amp; spacing</NavItem>
+          <NavItem icon={<Icon name="sliders" />} href={workspaceHref(view, "spacing")} current={selection === "spacing"}>Shape &amp; spacing</NavItem>
           <div className="sidebar-divider" />
           <div className="sidebar-section-label">
             {t.components.toUpperCase()}
@@ -959,7 +1050,7 @@ export default function Studio() {
                   return <NavItem
                     key={id}
                     icon={<Icon name={id} />}
-                    current={!pagesActive && selection === id}
+                    current={selection === id}
                     ariaLabel={issues ? `${t.componentNames[id]}, ${t.sidebarContrastWarning(issues, activeTheme)}${overridden ? t.custom : ""}` : undefined}
                     end={(overridden || issues > 0) && <span className="nav-indicators">
                       {overridden && <><span className="override-dot" aria-hidden="true" title={t.customTitle} /><span className="sr-only">{t.custom}</span></>}
@@ -989,11 +1080,11 @@ export default function Studio() {
             {t.builtWith}
             <Icon name="arrow" size={14} />
           </a>
-        </div></>}
+        </div>
       </aside>
 
       <main className={`studio-main studio-main--${view}`} id="workspace" tabIndex={-1}>
-        {pagesActive ? null : view === "design" ? (
+        {view === "design" ? (
           <h1 className="sr-only">{selection === "colors" ? "Colors" : selection === "spacing" ? "Shape & spacing" : t.componentTitle(t.componentNames[selection])}</h1>
         ) : (
           <div className="workspace-heading">
@@ -1022,8 +1113,8 @@ export default function Studio() {
                 </Button>
               </div>
             )}
-            {pagesActive && <PageCanvas composer={composer} systems={composerSystems} theme={activeTheme} onTheme={setActiveTheme} onOpenProjects={openProjects} onSettings={openProjectSettings} />}
-            <section hidden={pagesActive || view !== "design"} aria-label={t.design} className="workspace-panel workspace-panel--design preview-canvas">
+
+            <section hidden={view !== "design"} aria-label={t.design} className="workspace-panel workspace-panel--design preview-canvas">
               <div className="preview-frame">
                 <div className="canvas-history" role="group" aria-label="Edit history">
                   <Button iconOnly aria-label={t.undo} title={t.undo} disabled={!ready || historyCounts.undo === 0} onClick={() => travel("undo")}><Icon name="undo" size={16} /></Button>
@@ -1035,8 +1126,8 @@ export default function Studio() {
                     <SegmentedControl.Item value="dark" aria-label={t.dark} title={t.dark}><Icon name="moon" size={16} /></SegmentedControl.Item>
                   </SegmentedControl>
                 </div>
-                <Preview key={collection.activeId} selected={selection} system={system} mode={activeTheme} active={!pagesActive && view === "design"} onSelectColorRole={setScaleRole} onEditToken={(nextSelection, inputId) => { showInspector(); setEditTarget({ selection: nextSelection, inputId }); }}
-                  recipeSelection={recipeSelection} onSelectRecipe={editComponentRecipe} />
+                <Preview key={`${collection.activeId}-${importRevision}`} selected={selection} system={system} mode={activeTheme} active={view === "design"} onSelectColorRole={setScaleRole} onEditToken={(nextSelection, inputId) => { showInspector(); setEditTarget({ selection: nextSelection, inputId }); }}
+                  recipeSelection={recipeSelection} onSelectRecipe={editComponentRecipe} previewDefaults={previewDefaults} onClearRecipeSelection={clearRecipeSelection} />
               </div>
             </section>
             <section hidden={view !== "develop"} aria-label={t.develop} className="workspace-panel workspace-panel--develop">
@@ -1048,14 +1139,11 @@ export default function Studio() {
       </main>
 
       <div className={shell.inspector} id="workspace-inspector" hidden={!rightVisible} onKeyDown={event => { if (compact && event.key === "Escape" && !event.defaultPrevented) { setMobilePanel(null); document.querySelector<HTMLButtonElement>('[aria-controls="workspace-inspector"]')?.focus(); } }}>
-      {pagesActive && <ProjectInspector key={composer.document?.id ?? "empty"} composer={composer} systems={composerSystems} tab={inspectorView.context === inspectorContext ? inspectorView.tab : "design"} onTabChange={tab => setInspectorView({ context: inspectorContext, tab })} onEditSystem={(id, kind) => {
-        const component = ["button", "input", "switch", "checkbox", "badge", "card", "text"].includes(kind ?? "") ? kind : "colors";
-        setComponentEditorTab("styles"); setRecipeSelection(null);
-        if (collectionRef.current.activeId === id || activate({ ...collectionRef.current, activeId: id })) router.push(`/${component}`);
-      }} />}
+
       <aside
         className="token-editor"
-        hidden={pagesActive || view !== "design"}
+        key={`${collection.activeId}-${selection}-${activeTheme}-${view}`}
+        hidden={view !== "design"}
         id="token-editor"
         tabIndex={-1}
         aria-label={t.editor}
@@ -1077,11 +1165,11 @@ export default function Studio() {
             <div className="section-heading"><h3>{group.label}</h3>{group.label === "Shape" && <span>{t.sharedThemes}</span>}</div>
             <div className="number-fields">{numberFields.filter((field) => group.keys.includes(field.key)).map(renderTokenField)}</div>
           </section>)}
-          <SystemComponentEditor key={`${collection.activeId}-${workspaceRevision}-${component}-${activeTheme}`} component={isGlobal ? null : component} theme={theme} mode={activeTheme} defaults={system.componentDefaults}
+          <SystemComponentEditor key={`${collection.activeId}-${workspaceRevision}-${component}-${activeTheme}-${view}`} component={isGlobal ? null : component} theme={theme} mode={activeTheme} defaults={system.componentDefaults}
             tab={componentEditorTab} selection={recipeSelection} onTabChange={setComponentEditorTab} onSelectionChange={editComponentRecipe}
             sharedPart={sharedStyleTarget?.component === component ? sharedStyleTarget.part : undefined}
             onSharedPartChange={part => setSharedStyleTarget({ component, part })}
-            onDefaultsChange={componentDefaults => update({ ...system, componentDefaults })}
+            previewDefaults={previewDefaults} onPreviewDefaultsChange={setPreviewDefaults}
             onRecipesChange={componentRecipes => updateTheme({ ...theme, componentRecipes })}
             onStylesChange={componentStyles => updateTheme({ ...theme, componentStyles })}>
           {!isGlobal && variantComponent && <section className="token-section component-variant-editor" id="variant-colors">
@@ -1206,7 +1294,7 @@ export default function Studio() {
                     ? selection === "colors" ? `Reset ${activeTheme} global colors? Color scale and component overrides will be kept; shared dimensions and font family will not change.`
                       : selection === "spacing" ? "Reset shared shape, spacing and sizing in both themes? Colors and component overrides will be kept."
                       : t.confirmGlobal(activeTheme === "light" ? t.light : t.dark)
-                    : `Reset ${t.componentNames[component]} styles? ${activeTheme} colors and shared geometry in both themes will reset. Starting parameters and project-local overrides will be kept.`,
+                    : `Reset ${t.componentNames[component]} styles? ${activeTheme} colors and shared geometry in both themes will reset. Saved sample defaults and existing local overrides will be kept.`,
                 )
               )
                 return;

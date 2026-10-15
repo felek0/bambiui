@@ -150,6 +150,26 @@ async function commitRecipe(id, recipe, part, target, field, value) {
   await key('Enter');
   await wait(`JSON.parse(localStorage.getItem('bambiui.design-system.v1')).themes[document.documentElement.dataset.studioTheme].componentRecipes?.[${JSON.stringify(id)}]?.[${JSON.stringify(recipe)}]?.[${JSON.stringify(part)}]?.[${JSON.stringify(field)}]===${JSON.stringify(value)}`);
 }
+function expectedRecipePatch(system, id, recipes, part, patch, modes = ['light','dark']) {
+  const expected = structuredClone(system);
+  for(const mode of modes) for(const recipe of recipes) {
+    const component = ((expected.themes[mode].componentRecipes ??= {})[id] ??= {});
+    Object.assign((component[recipe] ??= {})[part] ??= {},patch);
+  }
+  return expected;
+}
+const recipePaintExpression = (id, properties) => `[...document.querySelectorAll('${matrix(id)} [data-recipe-body] [data-component-part]')].map(e=>{const s=getComputedStyle(e);return {recipe:e.closest('[data-recipe-example]').dataset.recipeExample,component:e.dataset.dsComponent,part:e.dataset.componentPart,values:Object.fromEntries(${JSON.stringify(properties)}.map(key=>[key,s[key]]))}})`;
+async function recipePaint(id, properties) {
+  return evaluate(recipePaintExpression(id,properties));
+}
+async function assertSettledRecipePaint(id, properties, expected, message) {
+  // Stored tokens update before CSS transitions finish; wait for the exact full-matrix paint.
+  await wait(`JSON.stringify(${recipePaintExpression(id,properties)})===${JSON.stringify(JSON.stringify(expected))}`);
+  assert.deepEqual(await recipePaint(id,properties),expected,message);
+}
+async function resetRecipeField(id, recipe, part, target, field) {
+  await click(`${q(recipeField(id,recipe,part,target,field))}.closest('[data-appearance-field]').querySelector('button[aria-label^="Reset "]')`);
+}
 async function openInteractions(id) {
   const selector = interactions(id);
   if (!await evaluate(`${q(selector)}?.open`)) await click(q(`${selector} > summary`));
@@ -329,9 +349,9 @@ try {
     assert.deepEqual(await evaluate(`[...document.querySelectorAll(${JSON.stringify(viewNav + ' a')})].map(e=>e.textContent.trim())`),['Design','Develop']);
     assert.deepEqual(await evaluate(`[...document.querySelectorAll(${JSON.stringify(themeControl + ' button')})].map(e=>e.getAttribute('aria-label'))`),['Light','Dark']);
     assert.ok(await evaluate(`[...document.querySelectorAll(${JSON.stringify(themeControl + ' button')})].every(e=>!e.textContent.trim() && !!e.querySelector('svg'))`));
-    assert.ok(await evaluate(`${q('.studio-header .brand')}.nextElementSibling === ${q('.studio-header nav[aria-label="Workspace"]')}`),'workspace switch follows the brand');
-    assert.deepEqual(await evaluate(`[...document.querySelectorAll('.studio-header nav[aria-label="Workspace"] a')].map(e=>e.textContent.trim())`),['Project','System']);
-    assert.equal(await evaluate(`${q('.studio-header nav[aria-label="Workspace"] [aria-current]')}.textContent`),'System');
+    assert.equal(await evaluate(`!!${q('.studio-header nav[aria-label="Workspace"]')}`),false,'Project/System workspace switch is suspended');
+    assert.equal(await evaluate(`document.querySelectorAll('.studio-shell').length`),1,'only one System shell is mounted');
+    assert.equal(await evaluate(`!!${q('[aria-label="New project name"], [aria-label="Page canvas"], #project-inspector')}`),false,'Project authoring must not mount');
     assert.ok(await evaluate(`${q('.studio-header .system-switcher summary')}?.getClientRects().length > 0`),'active system belongs in the header');
     assert.equal(await evaluate(`!!${q('.studio-sidebar #design-system-name')}`),false);
     assert.deepEqual(await evaluate(`[...document.querySelectorAll('.component-group')].map(e=>[e.querySelector('.component-group-label').textContent,...[...e.querySelectorAll('a')].map(a=>a.textContent.trim())])`),[['Actions','Button'],['Forms','Input','Switch','Checkbox'],['Content','Card','Badge','Text']]);
@@ -399,23 +419,22 @@ try {
       } else assert.equal(computed,value,`${selector} uses ${constant}`);
     }
   });
-  await check('System puts exact Styles first, with Parameters and collapsed shared/base defaults separate',async()=>{
+  await check('System puts exact Styles first, with session Preview and collapsed shared/base defaults separate',async()=>{
     await navigate('design','button');
-    assert.deepEqual(await evaluate(`[...document.querySelectorAll('[aria-label="Component editor"] [role="tab"]')].map(e=>e.textContent.trim())`),['Styles','Parameters']);
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('[aria-label="Component editor"] [role="tab"]')].map(e=>e.textContent.trim())`),['Styles','Preview']);
     assert.equal(await evaluate(`${named('[aria-label="Component editor"] [role="tab"]','Styles')}.getAttribute('aria-selected')`),'true');
     assert.equal(await evaluate(`!!${q('[data-system-recipe-controls]')}`),false,'no recipe is selected by insertion defaults');
-    assert.ok(await evaluate(`${q('#token-editor')}.textContent.includes('Select a frame or text')`));
+    assert.ok(await evaluate(`${q('#token-editor')}.textContent.includes('Select a component layer')`));
     for(const selector of ['[data-system-shared-defaults]','[data-system-base-tokens]']) assert.equal(await evaluate(`${q(selector)}.open`),false);
     assert.equal(await evaluate(`${q('#token-paddingX')}.checkVisibility()`),false,'base token controls start collapsed');
     assert.equal(await evaluate(`${q('#token-paddingX')}.closest('[data-system-base-tokens]')!==null`),true);
     await click(q('[data-system-base-tokens] > summary'));
     assert.equal(await evaluate(`${q('[data-system-base-tokens]')}.open && ${q('#token-paddingX')}.checkVisibility()`),true);
     await click(q('[data-system-base-tokens] > summary'));
-    await componentTab('Parameters');
-    assert.equal(await evaluate(`${q('[aria-label="Default Text"]')}.value`),'Continue');
-    assert.equal(await evaluate(`${q('[aria-label="Default Variant"]')}.value`),'primary');
-    assert.equal(await evaluate(`${q('[aria-label="Default Size"]')}.value`),'md');
-    assert.equal(await evaluate(`!!${q('#token-editor [data-system-recipe-controls], #token-editor [data-system-shared-defaults], #token-editor [data-system-base-tokens]')}`),false,'Parameters does not expose style controls');
+    await componentTab('Preview');
+    assert.equal(await evaluate(`${q('[aria-label="Preview Text"]')}.value`),'Continue');
+    assert.equal(await evaluate(`!!${q('[aria-label="Default Variant"], [aria-label="Default Size"], [aria-label="Preview Variant"], [aria-label="Preview Size"]')}`),false,'session samples cannot compete with matrix axes');
+    assert.equal(await evaluate(`!!${q('#token-editor [data-system-recipe-controls], #token-editor [data-system-shared-defaults], #token-editor [data-system-base-tokens]')}`),false,'Preview does not expose style controls');
     await componentTab('Styles');
     assert.equal(await evaluate(`${q('[data-system-base-tokens]')}.open`),false);
     assert.equal(await evaluate(`!!${q('[aria-label="System component part"]')}`),false);
@@ -449,7 +468,7 @@ try {
       assert.equal(await evaluate(`${q(`${recipePart('card','outlined.md',part)} ${child}`)}.dataset.systemSelectedPart`),'text');
     }
     await capture('studio-matrix-card-footer');
-    await componentTab('Parameters');
+    await componentTab('Preview');
     await click(q(recipePart('card','outlined.md','title')));
     await assertRecipeSelection('card','outlined.md','title','text');
   });
@@ -505,10 +524,10 @@ try {
     const row = key => `${details} [data-style-source-field="${key}"]`;
     await navigate('design','card'); await click(q(recipePart('card','outlined.md','title')));
     assert.equal(await evaluate(`${q(details)}.open`),false);
-    assert.equal(await evaluate(`${q('[data-system-edit-scope="recipe"]')}.textContent`),'This combination · all linked projects');
+    assert.equal(await evaluate(`${q('[data-system-recipe-controls] [data-system-edit-scope="recipe"]')}.textContent`),'Size styles / combination colors');
     await click(q(`${details} > summary`));
     assert.equal(await evaluate(`${q(details)}.open`),true);
-    assert.ok(await evaluate(`${q(details)}.textContent.includes('Local instance styles can take precedence')`));
+    assert.ok(await evaluate(`/Reset[^.]*\\b(size|group)\\b/i.test(${q(details)}.textContent) && ${q(details)}.textContent.includes('Sample content and other layers stay unchanged')`),'scope details explain grouped reset and preservation of sample content and other layers');
     assert.equal(await evaluate(`${q(row('fontSize'))}.dataset.styleSource`),'fallback');
     assert.ok(await evaluate(`${q(row('fontSize'))}.textContent.includes('--card-recipe-outlined-md-title-font-size') && ${q(row('fontSize'))}.textContent.includes('Reset → Component / parent CSS')`));
     assert.equal(await evaluate(`${q(details)}.querySelectorAll('input,select,button,textarea').length`),0,'details cannot change a value');
@@ -530,8 +549,8 @@ try {
     await click(q('[data-system-base-tokens] > summary'));
     await click(q('[data-system-scope-details="base"] > summary'));
     assert.ok(await evaluate(`${q('[data-system-scope-details="base"]')}.textContent.includes('across all sizes') && ${q('[data-system-scope-details="base"]')}.textContent.includes('does not clear shared layer styles')`));
-    await componentTab('Parameters');
-    assert.equal(await evaluate(`${q('[data-system-edit-scope="parameters"]')}.textContent`),'New instances only');
+    await componentTab('Preview');
+    assert.equal(await evaluate(`${q('[data-system-edit-scope="preview"]')}.textContent`),'Temporary preview');
     await componentTab('Styles');
     await navigate('design','card'); await click(q(recipePart('card','outlined.md','title')));
     assert.equal(await evaluate(`localStorage.getItem('bambiui.design-system.v1')`),bytes);
@@ -629,7 +648,7 @@ try {
     assert.equal(await evaluate(`localStorage.getItem('bambiui.design-system.v1')`),bytes,'native typing/toggles/preview conditions do not persist tokens or insertion defaults');
     await navigate('design','card'); await click(q(recipePart('card','outlined.md','title')));
   });
-  await check('Card outlined.md title font size/weight affect only that combination and title, with undo/reset/export',async()=>{
+  await check('Card outlined.md title typography shares all md variants only, with undo/reset/export',async()=>{
     await navigate('design','card'); await click(q(recipePart('card','outlined.md','title')));
     // A pristine workspace intentionally has no persisted system until its first edit.
     await click(q('[aria-label="Export tokens"]'));
@@ -645,14 +664,20 @@ try {
     await commitRecipe('card','outlined.md','title','text','fontSize',31);
     await commitRecipe('card','outlined.md','title','text','fontWeight',650);
     await wait(`${q('[data-system-scope-details="recipe"] [data-style-source-field="fontSize"]')}.dataset.styleSource==='recipe'`);
-    assert.ok(await evaluate(`${q('[data-system-scope-details="recipe"] [data-style-source-field="fontSize"]')}.textContent.includes('This combination')`));
-    const expected = original.map(entry=>entry.recipe==='outlined.md' && entry.component==='card' && entry.part==='title' ? {...entry,fontSize:'31px',fontWeight:'650'} : entry);
-    assert.deepEqual(await snapshot(),expected,'other sizes, variants, Card slots and nested components retain typography');
+    assert.ok(await evaluate(`${q('[data-system-recipe-controls]')}.textContent.includes('Size styles / combination colors')`));
+    const expected = original.map(entry=>entry.recipe.endsWith('.md') && entry.component==='card' && entry.part==='title' ? {...entry,fontSize:'31px',fontWeight:'650'} : entry);
+    assert.deepEqual(await snapshot(),expected,'all three md titles share typography; the other six recipes, Card slots and nested components retain typography');
     await capture('studio-matrix-card-title');
-    for(const mode of ['light','dark']) assert.deepEqual((await stored()).themes[mode].componentRecipes.card['outlined.md'].title,{fontSize:31,fontWeight:650});
+    const expectedStored = structuredClone(before);
+        for(const mode of ['light','dark']) for(const variant of matrixVariants.card) {
+          const card = ((expectedStored.themes[mode].componentRecipes ??= {}).card ??= {});
+          ((card[`${variant}.md`] ??= {}).title ??= {}).fontSize = 31;
+          card[`${variant}.md`].title.fontWeight = 650;
+        }
+        assert.deepEqual(await stored(),expectedStored,'only the three md title records change in both themes');
     const customized = await stored();
     await click(q('[aria-label="Undo change"]'));
-    assert.equal(await evaluate(`getComputedStyle(${q(recipePart('card','outlined.md','title'))}).fontWeight`),original.find(entry=>entry.recipe==='outlined.md' && entry.part==='title').fontWeight);
+    assert.deepEqual(await snapshot(),original.map(entry=>entry.recipe.endsWith('.md') && entry.component==='card' && entry.part==='title' ? {...entry,fontSize:'31px'} : entry),'one undo restores font weight across the entire md group');
     await click(q('[aria-label="Redo change"]'));
     assert.deepEqual(await stored(),customized);
     await click(q('[aria-label="Export tokens"]'));
@@ -682,6 +707,130 @@ try {
     await click(q('[aria-label="Redo change"]'));
     assert.deepEqual(await stored(),reset);
     await assertMeasuredRecipe('card','outlined.md','title','text',textFields);
+  });
+  await check('Button outline.sm frame and text edits fan out to six sm variants in one history step per field',async()=>{
+    await navigate('design','button');
+    await click(named(themeControl + ' button','Light'));
+    await click(q(`${example('button','outline.sm')} > button`));
+    await assertRecipeSelection('button','outline.sm','root','frame');
+    const before = await stored();
+    const properties = ['paddingLeft','boxShadow','fontSize'];
+    const original = await recipePaint('button',properties);
+    const peers = matrixVariants.button.map(variant=>`${variant}.sm`);
+    let expected = before;
+    let painted = original;
+    const assertPaint = async () => assert.deepEqual(await recipePaint('button',properties),painted,'all six sm variants paint the edited part; md/lg and other parts retain their styles');
+    for(const [part,target,field,value,property] of [
+      ['root','frame','paddingLeft',27.375,'paddingLeft'],
+      ['root','frame','shadow','lg','boxShadow'],
+      ['text','text','fontSize',23.625,'fontSize'],
+    ]) {
+      await click(q(`[data-system-recipe-controls] [aria-label="Select ${part==='root' ? 'Button frame' : 'Label text'}"]`));
+      await assertRecipeSelection('button','outline.sm',part,target);
+      const previous = expected, previousPaint = painted;
+      if(field==='shadow') await select(recipeField('button','outline.sm',part,target,field),value);
+      else await commitRecipe('button','outline.sm',part,target,field,value);
+      expected = expectedRecipePatch(expected,'button',peers,part,{[field]:value});
+      await wait(`JSON.parse(localStorage.getItem('bambiui.design-system.v1')).themes.light.componentRecipes.button['primary.sm']?.[${JSON.stringify(part)}]?.[${JSON.stringify(field)}]===${JSON.stringify(value)}`);
+      assert.deepEqual(await stored(),expected,'only same-size same-part records change, shared across themes');
+      const renderedValue = field==='shadow' ? await evaluate(`(()=>{const host=${q(recipePart('button','outline.sm','root'))},probe=document.createElement('span');probe.style.boxShadow='var(--ds-shadow-lg)';host.append(probe);const value=getComputedStyle(probe).boxShadow;probe.remove();return value})()`) : `${value}px`;
+      if(field==='shadow') assert.notEqual(renderedValue,'none');
+      painted = painted.map(entry=>peers.includes(entry.recipe) && entry.component==='button' && entry.part===part ? {...entry,values:{...entry.values,[property]:renderedValue}} : entry);
+      await assertPaint();
+      await click(q('[aria-label="Undo change"]'));
+      assert.deepEqual(await stored(),previous,'one undo restores the whole group, not just the selected recipe');
+      assert.deepEqual(await recipePaint('button',properties),previousPaint);
+      await click(q('[aria-label="Redo change"]'));
+      assert.deepEqual(await stored(),expected,'one redo reapplies the whole group');
+      await assertPaint();
+    }
+    await click(q('[data-system-recipe-controls] [aria-label="Select Button frame"]'));
+    for(const [field,property,value,rgb] of [
+      ['background','backgroundColor','#123456','rgb(18, 52, 86)'],
+      ['borderColor','borderTopColor','#345678','rgb(52, 86, 120)'],
+    ]) {
+      const originalColors = await recipePaint('button',[property]);
+      await commitRecipe('button','outline.sm','root','frame',field,value);
+      const colored = expectedRecipePatch(expected,'button',['outline.sm'],'root',{[field]:value},['light']);
+      assert.deepEqual(await stored(),colored,'frame color edits remain exact-recipe and Light-only');
+      const coloredPaint = originalColors.map(entry=>entry.recipe==='outline.sm' && entry.component==='button' && entry.part==='root' ? {...entry,values:{...entry.values,[property]:rgb}} : entry);
+      await assertSettledRecipePaint('button',[property],coloredPaint,'only the selected frame paints the color');
+      await click(q('[aria-label="Undo change"]')); assert.deepEqual(await stored(),expected);
+      await assertSettledRecipePaint('button',[property],originalColors,'undo restores every frame color');
+      await click(q('[aria-label="Redo change"]')); assert.deepEqual(await stored(),colored);
+      await assertSettledRecipePaint('button',[property],coloredPaint,'redo repaints only the selected frame');
+      await click(q('[aria-label="Undo change"]')); assert.deepEqual(await stored(),expected);
+      await assertSettledRecipePaint('button',[property],originalColors,'cleanup undo restores every frame color');
+    }
+    await click(q('[data-system-recipe-controls] [aria-label="Select Label text"]'));
+    await resetRecipeField('button','outline.sm','text','text','fontSize');
+    const resetFont = structuredClone(expected);
+    for(const mode of ['light','dark']) for(const recipe of peers) {
+      const record = resetFont.themes[mode].componentRecipes.button[recipe];
+      delete record.text.fontSize;
+      if(!Object.keys(record.text).length) delete record.text;
+    }
+    assert.deepEqual(await stored(),resetFont,'field reset removes typography for all six sm variants and preserves frame styles');
+    assert.deepEqual(await recipePaint('button',properties),painted.map((entry,index)=>({...entry,values:{...entry.values,fontSize:original[index].values.fontSize}})));
+    await click(q('[aria-label="Undo change"]')); assert.deepEqual(await stored(),expected);
+    await click(q('[aria-label="Redo change"]')); assert.deepEqual(await stored(),resetFont);
+    // Reset and all three edits each occupy exactly one history entry.
+    for(let i=0;i<4;i++) await click(q('[aria-label="Undo change"]'));
+    assert.deepEqual(await stored(),before);
+    assert.deepEqual(await recipePaint('button',properties),original);
+  });
+  await check('Text paragraph.neutral.sm typography groups six tones only; color and reset remain exact and theme-specific',async()=>{
+    await navigate('design','text');
+    await click(named(themeControl + ' button','Light'));
+    await click(q(recipePart('text','paragraph.neutral.sm','root')));
+    await assertRecipeSelection('text','paragraph.neutral.sm','root','text');
+    const before = await stored();
+    const properties = ['fontSize','fontWeight','color'];
+    const original = await recipePaint('text',properties);
+    const peers = tones.map(tone=>`paragraph.${tone}.sm`);
+    const fontSize = expectedRecipePatch(before,'text',peers,'root',{fontSize:25.375});
+    await commitRecipe('text','paragraph.neutral.sm','root','text','fontSize',25.375);
+    assert.deepEqual(await stored(),fontSize);
+    let painted = original.map(entry=>peers.includes(entry.recipe) && entry.component==='text' && entry.part==='root' ? {...entry,values:{...entry.values,fontSize:'25.375px'}} : entry);
+    assert.deepEqual(await recipePaint('text',properties),painted,'all six paragraph sm tones change; h1, caption, other variants and md/lg do not');
+    await click(q('[aria-label="Undo change"]')); assert.deepEqual(await stored(),before);
+    assert.deepEqual(await recipePaint('text',properties),original);
+    await click(q('[aria-label="Redo change"]')); assert.deepEqual(await stored(),fontSize);
+    await commitRecipe('text','paragraph.neutral.sm','root','text','fontWeight',675);
+    const typography = expectedRecipePatch(fontSize,'text',peers,'root',{fontWeight:675});
+    assert.deepEqual(await stored(),typography);
+    painted = painted.map(entry=>peers.includes(entry.recipe) && entry.component==='text' && entry.part==='root' ? {...entry,values:{...entry.values,fontWeight:'675'}} : entry);
+    assert.deepEqual(await recipePaint('text',properties),painted);
+    await click(q('[aria-label="Undo change"]')); assert.deepEqual(await stored(),fontSize);
+    await click(q('[aria-label="Redo change"]')); assert.deepEqual(await stored(),typography);
+    await commitRecipe('text','paragraph.neutral.sm','root','text','color','#123456');
+    const colored = expectedRecipePatch(typography,'text',['paragraph.neutral.sm'],'root',{color:'#123456'},['light']);
+    assert.deepEqual(await stored(),colored,'only the selected tone and Light theme receive color');
+    const colorPaint = painted.map(entry=>entry.recipe==='paragraph.neutral.sm' && entry.component==='text' && entry.part==='root' ? {...entry,values:{...entry.values,color:'rgb(18, 52, 86)'}} : entry);
+    assert.deepEqual(await recipePaint('text',properties),colorPaint,'peer tones retain their painted colors');
+    await click(named(themeControl + ' button','Dark'));
+    assert.notEqual(await evaluate(`getComputedStyle(${q(recipePart('text','paragraph.neutral.sm','root'))}).color`),'rgb(18, 52, 86)');
+    for(const recipe of peers) assert.equal(await evaluate(`getComputedStyle(${q(recipePart('text',recipe,'root'))}).fontSize`),'25.375px');
+    await click(named(themeControl + ' button','Light'));
+    await resetRecipeField('text','paragraph.neutral.sm','root','text','fontSize');
+    const reset = structuredClone(colored);
+    for(const mode of ['light','dark']) for(const recipe of peers) delete reset.themes[mode].componentRecipes.text[recipe].root.fontSize;
+    assert.deepEqual(await stored(),reset,'reset removes one field across all six tones but retains weight and the exact Light color');
+    const resetPaint = colorPaint.map((entry,index)=>({...entry,values:{...entry.values,fontSize:original[index].values.fontSize}}));
+    assert.deepEqual(await recipePaint('text',properties),resetPaint);
+    await click(q('[aria-label="Undo change"]')); assert.deepEqual(await stored(),colored);
+    assert.deepEqual(await recipePaint('text',properties),colorPaint);
+    await click(q('[aria-label="Redo change"]')); assert.deepEqual(await stored(),reset);
+    await resetRecipeField('text','paragraph.neutral.sm','root','text','color');
+    const resetColor = structuredClone(reset);
+    delete resetColor.themes.light.componentRecipes.text['paragraph.neutral.sm'].root.color;
+    assert.deepEqual(await stored(),resetColor,'color reset remains selected-combination and Light-only');
+    assert.deepEqual(await recipePaint('text',properties),resetPaint.map((entry,index)=>({...entry,values:{...entry.values,color:original[index].values.color}})));
+    await click(q('[aria-label="Undo change"]')); assert.deepEqual(await stored(),reset);
+    await click(q('[aria-label="Redo change"]')); assert.deepEqual(await stored(),resetColor);
+    for(let i=0;i<5;i++) await click(q('[aria-label="Undo change"]'));
+    assert.deepEqual(await stored(),before,'two resets and three edits are five history steps total');
+    assert.deepEqual(await recipePaint('text',properties),original);
   });
   await check('style inspector units, inline errors, precision/reset and full shadows remain usable in narrow panels',async()=>{
     await navigate('design','card'); await click(q(recipePart('card','outlined.md','title')));
@@ -899,9 +1048,16 @@ try {
     await click(q('[data-system-recipe-controls] [aria-label="Select Card frame"]'));
     await commitRecipe('card','outlined.md','root','frame','paddingLeft',23);
     const customized = await stored();
+    let expected = expectedRecipePatch(before,'card',['outlined.md'],'title',{color:'#123456'},['light']);
+    expected = expectedRecipePatch(expected,'card',['outlined.md'],'title',{color:'#abcdef'},['dark']);
+    expected = expectedRecipePatch(expected,'card',matrixVariants.card.map(variant=>`${variant}.md`),'title',{fontSize:29});
+    expected = expectedRecipePatch(expected,'card',matrixVariants.card.map(variant=>`${variant}.md`),'root',{paddingLeft:23});
+    assert.deepEqual(customized,expected,'colors stay exact while geometry/type update only the three md peers; other six recipes and all other parts remain unchanged');
     for(const mode of ['light','dark']) {
-      assert.equal(customized.themes[mode].componentRecipes.card['outlined.md'].title.fontSize,29);
-      assert.equal(customized.themes[mode].componentRecipes.card['outlined.md'].root.paddingLeft,23);
+      for(const variant of matrixVariants.card) {
+        assert.equal(customized.themes[mode].componentRecipes.card[`${variant}.md`].title.fontSize,29);
+        assert.equal(customized.themes[mode].componentRecipes.card[`${variant}.md`].root.paddingLeft,23);
+      }
     }
     assert.equal(customized.themes.light.componentRecipes.card['outlined.md'].title.color,'#123456');
     assert.equal(customized.themes.dark.componentRecipes.card['outlined.md'].title.color,'#abcdef');
@@ -1338,7 +1494,7 @@ try {
     await fill(shared,'#123456'); await key('Enter');
     await wait(`JSON.parse(localStorage.getItem('bambiui.design-system.v1')).themes[document.documentElement.dataset.studioTheme].componentStyles?.card?.title?.color==='#123456'`);
     await select('[aria-label="Shared default layer"]','description');
-    await componentTab('Parameters');
+    await componentTab('Preview');
     await navigate('design','colors');
     await click(q('.editor-title-actions button[aria-label*="System color pairs"]'));
     await click(named('[data-contrast-check="card.outlined.title.text"] button','Edit Card shared title color'));
@@ -1909,10 +2065,10 @@ try {
     await click(q('.system-switcher summary'));
     await click(named('.system-switcher-list button','Imported system'));
     await click(q('.system-switcher summary'));
-    acceptImportDialog = true;
-    try {
-      await click(named('.system-switcher-actions button','Delete current system'));
-    } finally { acceptImportDialog = false; }
+    await click(named('.system-switcher-actions button','Delete current system'));
+    await wait(`${q('[data-system-delete-dialog]')} && !${q('[data-system-delete-confirm]')}.disabled`);
+    await click(q('[data-system-delete-confirm]'));
+    await wait(`!${q('[data-system-delete-dialog]')}`);
     await wait(`${q('.system-switcher summary')}.textContent.includes(${JSON.stringify(original.name)})`);
     assert.deepEqual(await stored(),original);
     assert.equal(await evaluate(`JSON.parse(localStorage.getItem('bambiui.systems.v1')).systems.length`),count);
@@ -2004,16 +2160,19 @@ try {
       assert.equal(await evaluate(`${q('h1')}.textContent`),view==='design'?'Colors':'Colors documentation');
     });
   }
-  await check('/ opens Project without creating records and System switch restores Colors',async()=>{
+  await check('/ opens System Colors without Project records or a hidden authoring shell',async()=>{
     const before=await stored(), origin=await evaluate('performance.timeOrigin');
     await send('Page.navigate',{url:`http://127.0.0.1:${server.address().port}/`});
-    await wait(`performance.timeOrigin!==${origin} && ${q('[aria-label="New project name"]')} && !${q('[aria-label="New project name"]')}.disabled`);
-    assert.equal(await evaluate(`${q('[aria-label="Workspace"] [aria-current]')}.textContent`),'Project');
+    await wait(`performance.timeOrigin!==${origin} && ${q('.editor-fields')} && !${q('.editor-fields')}.disabled`);
+    assert.equal(await evaluate('location.pathname'),'/');
+    assert.equal(await evaluate(`${q('h1')}.textContent`),'Colors');
+    assert.equal(await evaluate(`${q('.studio-sidebar a[aria-current="page"]')}.getAttribute('href')`),'/colors');
+    assert.equal(await evaluate(`${q(viewNav + ' a[aria-current="page"]')}.textContent.trim()`),'Design');
+    assert.equal(await evaluate(`document.querySelectorAll('.studio-shell').length`),1);
+    assert.equal(await evaluate(`!!${q('[aria-label="New project name"], [aria-label="Page canvas"], #project-inspector')}`),false);
     assert.equal(await evaluate(`localStorage.getItem('bambiui.composer.projects.v1')`),null);
     assert.deepEqual(await evaluate(`Object.keys(localStorage).filter(key=>key.startsWith('bambiui.composer.document.v1.'))`),[]);
     assert.deepEqual(await stored(),before);
-    await click(named('[aria-label="Workspace"] a','System'));
-    await route('design','colors'); assert.deepEqual(await stored(),before);
   });
   await check('no runtime, browser console or resource errors',async()=>{await delay(200);assert.deepEqual(errors,[]);});
 } catch(error) {failures.push('harness');console.error(`FAIL harness: ${error.stack || error}`);}

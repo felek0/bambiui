@@ -1,14 +1,18 @@
-# bambiui System / Project acceptance session
+# bambiui System-only acceptance session
 
 Status: **not run**. This is a session protocol, not evidence of user or accessibility acceptance.
 
+**Candidate protocol — 2026-10-16:** The first [System-first UI](roadmap.md) candidate is implemented locally and automated System/source/browser checks passed. It has not been deployed or accepted by a human participant. Run this protocol against an identified candidate build; Agent D checked representative controls against the frozen SF0 contract, not every manual environment. An unavailable planned control is blocked/feature pending, not a participant failure or a reason to reopen Project. The [previous Project protocol](studio-acceptance-history-2026-10-16.md) is archived; it also has no observed passes.
+
+**Superseding scope amendment:** This protocol now targets the [user-requested size-based editor policy](system-first-sf0-contract.md#superseding-user-amendment--size-based-editor-write-groups). Implementation and automated checks passed for this amendment: 637 unit/SSR/source tests, 99 System browser checks and 17 System-only checks, including Button/Text grouping and Card historical-value preservation. Source delivery checks also passed with unchanged catalog/registry identities. No participant, VoiceOver or native-zoom session result is claimed; the result table remains Not run.
+
 ## Purpose and safety
 
-Validate that a regular Figma user can distinguish shared component styling from project-instance parameters without learning bambiui's implementation. Run the task session before explaining the inspector. Follow with keyboard, VoiceOver and native-zoom checks from [the accessibility checklist](accessibility-checklist.md).
+Validate that a regular Figma user can distinguish selected-example inspection, selected-size non-color write groups, exact recipe/theme colors, all-combination/all-size defaults and temporary preview content without learning bambiui's implementation. Run the task session before explaining the inspector. Follow with keyboard, VoiceOver and native-zoom checks from [the accessibility checklist](accessibility-checklist.md).
 
 - Use the deployed site or a fresh local static export. Record the URL and build/commit before testing.
-- Use a separate browser profile and a disposable system/project. Do not clear or overwrite a participant's normal browser storage. Systems and projects are browser-local; they are not shared between browser profiles.
-- If testing existing work, export both System and Project JSON before starting. Project JSON alone is not a portable backup of its linked System.
+- Use a separate browser profile and a disposable system. Do not clear or overwrite a participant's normal browser storage. Systems are browser-local; they are not shared between browser profiles. Project creation is outside this session.
+- Export the System before testing existing work. Test legacy Project-data preservation and the read-only recovery download separately with synthetic data; do not use a participant's real data. Raw legacy recovery is not a supported Project restore/import flow.
 - Never put npm credentials, personal project data or identifying participant details in the results. Obtain consent before screenshots or recordings.
 - Approximate session budget: 30 minutes for tasks, then a separate accessibility pass. Times are observations, not performance guarantees or a universal pass threshold.
 
@@ -22,7 +26,8 @@ Validate that a regular Figma user can distinguish shared component styling from
 | OS / browser version / device | Not recorded |
 | Viewport / native browser zoom | Not recorded |
 | Assistive technology and version, if used | Not recorded |
-| Disposable system / project names | Not recorded |
+| Disposable system name / imported snapshot ID | Not recorded |
+| SF0 contract / candidate readiness | Not recorded |
 
 ## Facilitation
 
@@ -34,16 +39,17 @@ Do not insist on pointer use: Layers and keyboard alternatives are valid. If a r
 
 ## Participant tasks
 
-### T01 — Find and edit one combination
+### T01 — Inspect one example and edit its size group
 
-**Participant goal:** “Find the medium outlined Card. Change only its title to 19.375px and weight 635. Keep the other Card sizes and variants unchanged.”
+**Participant goal:** “Find the medium outlined Card. Make medium Card titles 19.375px and weight 635 across its surface variants. Keep small and large Cards and other layers unchanged.”
 
 Facilitator checks:
 - The participant finds System, the Card matrix and the title layer without changing insertion defaults.
 - Selection identifies `outlined.md`, title and text styling; selecting the Card root exposes frame styling instead.
-- Only this exact title combination changes; other sizes/variants and standalone Text/Button recipes do not.
+- Title typography changes in outlined/elevated/filled md Card title/text entries in both themes; sm/lg, other fields/layers and standalone Text/Button do not. Controls measure the selected canonical example and label the broader write scope, not a fabricated normalized peer value.
 - Fields show effective numeric values, not an unhelpful inherited placeholder.
-- The participant correctly predicts the effect on matching linked-project instances.
+- The participant predicts the selected-size non-color group correctly and distinguishes it from exact recipe/current-theme colors and the all-size All combinations section. They do not expect a temporary preview edit or the normal CLI `theme` command to live-sync remote applications.
+- Repeat on Text `paragraph.neutral.sm`: a typography edit reaches all six paragraph sm tones, not h1/caption or md/lg. On a divergent fixture, inspection alone leaves peers unchanged; only the specific edited/reset field fans out.
 
 ### T02 — Independent frame geometry and recovery
 
@@ -51,29 +57,29 @@ Facilitator checks:
 
 Facilitator checks:
 - Root/frame selection is understandable and distinct from title text selection.
-- Other edges/corners retain their values; title typography stays intact.
-- Undo/Redo and reset produce the expected visible result. Reset is explained as returning to the effective default, not necessarily zero.
+- The two root/frame non-color fields reach all md Card variants in both themes. Other edges/corners, sizes and title typography retain their values.
+- Each edit/reset emits one combined `onRecipesChange`; Undo/Redo restores the whole fan-out gesture group, not one recipe at a time. Field reset removes that field over its write group and returns each entry to its own effective fallback, not necessarily zero or identical values.
+- For a mixed target reset, non-colors reset across the supported selected-size group while background/color/borderColor reset only on the selected recipe/current theme; unrelated fields/parts/sizes remain. Historical divergent entries remain until that field's explicit edit/reset.
 - Looking at values or opening help does not create an edit/history entry.
 
-### T03 — Separate component styling from instance content
+### T03 — Separate temporary content from saved design
 
-**Participant goal:** “Create a project linked to your system, add a mobile frame and a ready-to-use Card. Give its title your own wording without changing the design of all Cards.”
+**Participant goal:** “Try a much longer title on your Card without saving new default content. Then return to the original example and check that your typography edits remain.”
 
 Facilitator checks:
-- The participant can create/open a project, select its system, add a page/frame and insert a populated Card.
-- Project parameters edit local content/options, while System owns shared component styling.
-- Use an `outlined` / `md` instance to compare T01; if insertion defaults differ, choose those axes through Project parameters.
-- Local title copy changes; the System insertion default and other instances' copy do not.
-- A subsequent System title style edit reaches the matching linked instance, but not other combinations. Use a newly inserted instance so historical local style overrides cannot mask the test.
+- The participant finds session-only Preview options rather than a Project or insertion-default editor.
+- Preview/reset/close behavior matches the SF0 lifecycle table. Temporary text is clearly distinguished from saved styles.
+- T01/T02 typography and geometry remain unchanged; preview actions do not enter token Undo or persist after reload/system switch.
+- Exported System JSON and source example still use the saved System/defaults, not session text. The participant understands the distinction; perform exact data comparisons in automated fixtures, not by forcing a user to inspect raw hashes.
 
 ### T04 — Error message anatomy
 
-**Participant goal:** “Make an Input show an error above the field with a warning icon. Make only the medium invalid Input's error message 12.625px.”
+**Participant goal:** “Make an Input show an error above the field with a warning icon. Make medium Input error messages 12.625px wherever an error is supported.”
 
 Facilitator checks:
-- Project parameters own error content, icon and position; System `invalid.md` error text owns typography.
-- Root, control text, label, description and error selection are distinguishable. Label/error clicks in Project select the owning Input.
-- Other sizes, normal Input text and unrelated component recipes remain unchanged.
+- Preview owns temporary error content, icon and position. Selecting `invalid.md` error/text writes saved typography into invalid.md and readonly.md in both themes, never default.md. Export is not promised to reproduce temporary props.
+- Root, control text, label, description and error selection are distinguishable. The canonical invalid recipe exposes its error layer; preview props must not silently change the inspector's edit recipe.
+- Other sizes, normal Input text and unrelated component recipes remain unchanged. Repeat on Switch/Checkbox: error typography reaches only invalidChecked/invalidUnchecked at that size, never valid checked/unchecked entries; unsupported error records are not invented.
 - Read-only and disabled are not mistaken for styling-only preview effects.
 
 ### T05 — Inspect interaction without changing the system
@@ -88,11 +94,12 @@ Facilitator checks:
 
 ### T06 — Themes, persistence and developer handoff
 
-**Participant goal:** “Give your selected Card title a different color in Dark, keeping its size and padding the same in both themes. Reload, then find how to use this system in an existing React project.”
+**Participant goal:** “Give your selected Card title a different color in Dark, keeping its size and padding the same in both themes. Save a System backup, import it as a separate system, reload, then find how to use it in an existing React project.”
 
 Facilitator checks:
-- Light/Dark title colors are independent; geometry/typography remain shared.
-- Project content, linked system and authored values survive reload in this profile.
+- Light/Dark title colors are independent and only the selected exact recipe changes; other variants/tones/sizes keep their colors. Geometry/typography remain shared across themes with the selected-size non-color write group. `background`, `color` and `borderColor` all obey exact recipe/current-theme scope.
+- Saved System name/values and both themes survive reload. Import as a new System does not replace the original; temporary preview text is not in the backup.
+- Existing `componentDefaults` values in an imported fixture remain preserved even though their former insertion editor is not shown. A standalone API's default props are not silently rewritten.
 - Develop exposes the published CLI instructions, System JSON export and explicit stylesheet/ThemeScope setup. The participant does not mistake the collapsed ZIP fallback for the primary path.
 - The participant understands that System JSON stays local and `theme` does not rewrite component code. Running npm commands is optional here and requires a disposable host; credentials never belong in this session record.
 
@@ -102,8 +109,8 @@ Run separately; do not infer these results from the pointer task session.
 
 | ID | Environment and task | Required observation |
 | --- | --- | --- |
-| A01 | Keyboard only, T01–T04 | Reach matrix/layer alternatives, inspector and frame insertion; identify selection; no keyboard trap; visible focus returns after overlays close. |
-| A02 | VoiceOver + Safari, then Chrome | Announce System/Project context, exact combination/layer, actual values/units, invalid drafts and reset actions; hidden panels stay out of reading order. |
+| A01 | Keyboard only, T01–T04 | Reach matrix/frame and layer alternatives, filters, inspector and preview; identify selection; no keyboard trap; visible focus returns after overlays close. Hidden or filtered examples are not focusable. |
+| A02 | VoiceOver + Safari, then Chrome | Announce selected example/layer, selected-size non-color (Text variant retained) versus exact-color/current-theme scope, all-combinations/all-sizes and preview context, actual values/units, invalid drafts and per-field reset actions; hidden panels stay out of reading order. |
 | A03 | Native browser 200% zoom | Use the browser's menu to verify 200%, not canvas zoom or viewport emulation. Inspector, Layers, help, errors and floating tools remain reachable without obscured focus. |
 | A04 | Real mobile Safari/Chrome | Open/close overlay panels, read long values and scroll Develop. Check native scroll/pinch and increased text size. Touch/pen canvas authoring is not currently claimed. |
 | A05 | Keyboard + real form/error controls | Verify names, helper/error associations, checked/mixed/readonly/disabled/loading announcements and focus; test actual submitted values only in a disposable consumer. |
@@ -123,11 +130,16 @@ Use **not run**, **pass**, **assisted**, **fail** or **blocked**. Only observed,
 | T04 | Not run | — | — | — | — |
 | T05 | Not run | — | — | — | — |
 | T06 | Not run | — | — | — | — |
-| A01–A06 | Not run (record each environment separately) | — | — | — | — |
+| A01 | Not run | — | — | — | — |
+| A02 | Not run (separate Safari/Chrome records) | — | — | — | — |
+| A03 | Not run | — | — | — | — |
+| A04 | Not run (record actual devices/browsers) | — | — | — | — |
+| A05 | Not run | — | — | — | — |
+| A06 | Not run | — | — | — | — |
 
 For each issue record the build, task ID, environment, reproduction steps, expected/actual behavior and evidence. Classify:
 - **Blocker:** data loss, wrong edit scope, inaccessible essential action, keyboard trap or impossible task. Resolve and rerun the affected task and regressions before acceptance.
 - **Major:** completion needs coaching, scope is repeatedly misunderstood, or an essential value/control cannot be found. Keep the relevant product gate open.
 - **Minor:** non-blocking wording or visual polish; record owner/follow-up instead of silently dismissing it.
 
-M1 S01–S03 require T01–T05 and the applicable accessibility passes; CLI handoff acceptance also needs T06. Retest fixes with a fresh session where practical. One session is evidence for that participant/environment, not universal usability or WCAG conformance. Do not close roadmap gates until results are actually recorded and blockers/major issues are addressed.
+SF2/SF3 use T01/T02; temporary preview and SF4 coverage use T03–T05; System persistence/developer handoff uses T06. SF5 requires the observed task results and applicable A01–A06 passes in the declared environments. SF1 route/legacy-data safety and SF6 Figma authoring have separate acceptance evidence; these tasks do not close them. Agent D verifies task/control names against the implemented candidate before a human session. Retest fixes with a fresh session where practical. One session is evidence for that participant/environment, not universal usability or WCAG conformance. Do not close roadmap gates until results are actually recorded and blockers/major issues are addressed.

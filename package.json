@@ -11,6 +11,7 @@
     "registry:snapshot": "node scripts/snapshot-registry.mjs",
     "check:registry": "node scripts/build-cli.mjs && node scripts/check-registry-retention.mjs",
     "test:browser-process": "node --test scripts/disposable-browser-process.test.mjs",
+    "test:system-only": "node scripts/studio-system-only-smoke.mjs",
     "cli:build": "node scripts/build-cli.mjs",
     "test:cli": "node scripts/generate-registry.mjs && node scripts/build-cli.mjs && node --test packages/cli/test/*.test.mjs",
     "check:cli": "node scripts/generate-registry.mjs && node scripts/build-cli.mjs && node scripts/check-cli-source.mjs --browser",

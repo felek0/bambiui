@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+// DORMANT: public Project authoring is suspended. No legacy browser pass is claimed.
+const legacyAuthoringNotice = 'DORMANT studio-composer-smoke: requires historical Project authoring routes, unavailable in the System-only export. Run npm run test:system-only for active reference/deletion coverage. Composer model/storage/command tests remain active. No public bypass is provided.';
+console[process.argv.includes('--help') ? 'log' : 'error'](legacyAuthoringNotice);
+process.exit(process.argv.includes('--help') ? 0 : 2);
+// Historical harness retained below; it is not run against the current public export.
 // Production static export, disposable Chrome profile, bounded CDP and process cleanup. No dependencies.
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';

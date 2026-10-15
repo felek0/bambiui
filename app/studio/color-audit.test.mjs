@@ -7,7 +7,24 @@ import { appearanceToStyle, parseNodeAppearance, parseNodeParts } from "./page-d
 import { componentStyleFields, componentStyleParts, parseComponentStyles, shareComponentStyles } from "./component-styles.ts";
 import { componentRecipeIds, componentRecipeFields, componentRecipeOptions, componentRecipeParts, componentRecipeVariable, parseComponentRecipes, shareComponentRecipes } from "./component-recipes.ts";
 
+import { applyScopedRecipePatch } from "./recipe-edit-scope.ts";
+
 const modes = ["light", "dark"];
+test("grouped size geometry retains default contrast coverage while colors remain exact-recipe diagnostics", () => {
+  for (const mode of modes) for (const component of componentIds) {
+    const theme = fresh(mode), baseline = auditSystemColors(theme, mode);
+    const option = componentRecipeOptions(component).find(option => option.size === "sm" && (component !== "text" || option.variant === "paragraph"));
+    const selection = { component, recipe: option.key, part: "root", target: "frame" };
+    theme.componentRecipes = applyScopedRecipePatch(undefined, selection, { paddingLeft: 13.375, shadow: "lg" });
+    assert.deepEqual(auditSystemColors(theme, mode), baseline, `${component}: grouped geometry does not invent color pairs`);
+  }
+  const theme = fresh();
+  const selection = { component: "button", recipe: "outline.sm", part: "text", target: "text" };
+  theme.componentRecipes = applyScopedRecipePatch(undefined, selection, { fontSize: 23.375, color: "#123456" });
+  const recipeChecks = auditSystemColors(theme).filter(check => check.id.startsWith("button.recipe."));
+  assert.ok(recipeChecks.length > 0);
+  assert.ok(recipeChecks.every(check => check.id.startsWith("button.recipe.outline.sm/")), "shared size typography does not spread the exact label color diagnostic");
+});
 const fresh = (mode = "light") => structuredClone(defaultSystem.themes[mode]);
 const byId = (theme = fresh(), mode = "light") => new Map(auditSystemColors(theme, mode).map((c) => [c.id, c]));
 function pair(check, foreground, background, minimum = 4.5) {
@@ -910,7 +927,7 @@ test("Develop recipe reference lists only authored consumed fields with exact sc
     const card = section(render("card", "light"));
     assert.match(card, /nested Text and Button\/Badge labels/);
     assert.match(card, /nested Card starts a new scope/);
-    assert.match(card, /Parameters only seed new insertions/);
+    assert.match(card, /Preview options do not select the matrix edit scope, rewrite saved defaults or change exports/);
     assert.match(card, /not a blanket WCAG claim/);
   } finally { loader.cleanup(); nextPaths.deregister(); }
 });

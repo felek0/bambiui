@@ -48,7 +48,7 @@ export function SourceDownloadPanel({ selected, system, ready }: { selected: "co
     <details className={styles.manualSource}>
       <summary>Manual source ZIP (fallback)</summary>
       <div className={styles.section} data-source-download>
-      <p>Components, CSS Modules, both themes and a populated example. A detached system snapshot—not a Project backup.</p>
+      <p>Components, CSS Modules, both themes and a populated example from saved System sample defaults. Temporary Preview options are excluded. A detached system snapshot—not a Project backup. CLI sources retain their React API defaults.</p>
       <div className={styles.sourceActions}>
       {component && <Button disabled={!ready || status.busy} onClick={() => download([component])}>Download {component[0].toUpperCase() + component.slice(1)} source</Button>}
       <Button disabled={!ready || status.busy} onClick={() => download(componentIds)}>Download all 7 components</Button>

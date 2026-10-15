@@ -1,235 +1,216 @@
-# bambiui · ürün ve geliştirme planı
+# bambiui · System-first roadmap
 
-Güncelleme: 2026-10-14 · İncelenen kod tabanı: `97725b3` (`feat(studio): show rendered appearance values`).
+Güncelleme: 2026-10-16. **Aktif kapsam ve iş sırasının tek kaynağıdır.** Kullanıcı kararı: Project/sayfa oluşturma şimdilik askıya alınacak ve UI'dan çıkarılacak; mevcut yedi komponentin token düzenleme deneyimi oturtulacak, ardından Figma kit ve yeni komponentler değerlendirilecek.
 
-Bu belge **güncel kapsamın ve iş sırasının tek kaynağıdır**. Aşağıdaki işler, developer/design-system odaklı yön görüşmesinden çıkan uygulama önerisidir; henüz yapılmış özellikler veya bütün ayrıntıları onaylanmış ürün kararları değildir. Bu güncelleme yalnız plan ve dokümantasyondur.
+System-only ilk uygulama dilimi yerelde uygulanıp otomatik testlerle doğrulandı: Project authoring UI askıda, katman inspector'u/session Preview ve matrix filtreleri aktif. Commit/deploy ve manuel kullanıcı/erişilebilirlik kabulü yapılmadı; Figma kit henüz teslim edilmedi. Önceki kod/test/yayın kanıtları [tarihsel roadmap'te](roadmap-history-2026-10-16.md) korunur; oradaki Project odaklı sıralama artık aktif değildir. Agent görevleri ve yazma sınırları: [System-first uygulama planı](system-first-execution-plan.md).
 
-[Composer uygulama defteri](studio-composer-execution-plan.md) C00–C12'nin teknik geçmişini, [önceki ürün/backend planı](interface-composer-plan.md) eski seçenekleri, [UX incelemesi](studio-ux-audit-plan.md) tarihsel bulguları korur. Eski belgelerdeki görev sırası ve test sayıları bu planın önüne geçmez. Veri/API sözleşmelerinde [component-api.md](component-api.md), [page-document.md](page-document.md) ve [reusable-components.md](reusable-components.md) esas alınır.
+**Kullanıcı edit-scope amendment'ı uygulandı:** [SF0 superseding amendment](system-first-sf0-contract.md#superseding-user-amendment--size-based-editor-write-groups) renk dışı edit/reset'leri aynı-size katman grubuna yayar; Text tipografik variant'ını korur, renkler exact/current-theme kalır. Güncel 637 app testi, 99 System ve 17 System-only browser kontrolü geçti; insan kabulü açık. Önceki baseline kayıtları aşağıda ayrı tutulur.
 
 ## 1. Ürün odağı
 
-> Tasarım sistemini görsel olarak oluştur, çalışan komponentlerle gerçek ekranlarda doğrula ve React projende kullan.
+> Komponentinin bütün kombinasyonlarını gör, istediğin katmanı düzenle, tutarlı tasarım sistemini tasarımcıya ve geliştiriciye teslim et.
 
-- **Birincil hedef kullanıcı önerisi:** frontend developer, design engineer ve tasarım–geliştirme işini birlikte yürüten küçük ürün ekipleri.
-- **Ana ürün System'dir.** Komponent kuralları, tokenlar, variant/size/state, tema, erişilebilirlik ve kod teslimatı burada geliştirilir.
-- **Project devam eder.** Sistemin gerçek içerik, layout ve farklı genişliklerde kullanılmasını/doğrulanmasını sağlar; ayrı bir genel amaçlı sayfa tasarım ürünü olarak büyütülmez.
-- Figma'ya tanıdık seçim, katman, frame ve inspector davranışları korunur. Vektör araçları, sınırsız serbest node konumlandırma ve Figma özellik paritesi hedef değildir.
-- İlk başarı ölçütü canvas'taki özellik sayısı değil, **sistem oluştur → ekranda dene → kodu gerçek uygulamada kullan** döngüsünün tamamlanmasıdır.
-- Yeni bir shell revizyonu veya mevcut editörün yeniden yazılması planlanmıyor. `/` ve `/pages` davranışı bu planla değiştirilmez; başlangıç/onboarding akışı ancak görev testiyle gerekçelendirilir.
+- Tasarımcı, design engineer ve frontend developer aynı component/variant/size/tone/state/part dilini kullanır. Figma'ya tanıdık seçim ve inspector davranışı hedeflenir; Figma klonu yapılmaz.
+- Aktif ürün **System + Develop**. Project, page/frame composer, saved-project assets, layout authoring ve frame source teslimatı askıda.
+- Önce Button, Input, Card, Badge, Switch, Checkbox ve Text ile deneyim tamamlanır. Başarı komponent sayısıyla değil doğru kapsamda, yardımsız düzenleme ile ölçülür.
+- Kod teslimatı CLI + statik registry olarak kalır; npm `bambiui@0.2.1` yayımlanmış baseline'dır. System CSS/JSON ve kapalı manual ZIP fallback korunur.
+- Figma kit, uygulama içi sayfa editörünün yerine tasarım kompozisyonu için değerlendirilen teslimattır. Kullanıcının özel tokenlarının kit'e otomatik aktarılması ve çift yönlü senkronizasyon mevcut özellik değildir.
 
-## 2. Bugün gerçekten var olanlar
+## 2. Bugünkü gerçek durum ve hedef farkı
 
-| Alan | Mevcut durum | Bir sonraki açık |
+| Alan | Mevcut | Hedef / açık |
 | --- | --- | --- |
-| Sistem ve tema | Ayrı sistemler, schema v3, Light/Dark renkleri; ortak geometri/tipografi; CSS/JSON export/import | Taşınabilir komponent kaynak teslimatı ve sistem kayıt güvenliğinin proje seviyesine getirilmesi |
-| Komponent düzenleme | Button, Input, Switch, Checkbox, Card, Badge, Text; 294 exact kombinasyon; frame/text katman seçimi | Kapsam/kaynak/etki bilgisini daha anlaşılır sunma ve etkileşim durumlarını gözden geçirme |
-| Inspector | Gerçek hesaplanan değerler; authored değerler ayrı; reset mirası geri açar; ortak farklı değerlerde Mixed | Kaynağı isteğe bağlı açıklama; değerleri tekrar Inherited etiketine dönüştürmeme |
-| Parametreler | System Parameters yeni eklemelerin varsayılanlarını, Project Parameters mevcut instance'ı düzenler | Bu ayrımın görev testlerinde anlaşılır olduğunu doğrulama |
-| Project | Çoklu sayfa, bağımsız frame, Stack/Grid, auto layout, canvas insertion/move, Actions, katmanlar, Undo/Redo | Gerçek kullanım örnekleri, taşınabilir yedek/import ve seçili frame kaynak UI'sı |
-| Sistem bağlantısı | Proje systemId ile canlı sistemi tüketir; açık rebind içerik/layout'u korur | Yayınlanmış sistem sürümüne sabitleme ve kontrollü güncelleme yok |
-| Saved components | Proje içi bağımsız snapshot/template; fresh-ID kopyalar; sistem tokenlarını tüketir | System'e ait bağlı tanım/instance modeli ve projeler arası ortak komponent yok |
-| Kaynak üretimi | PageDocument → TSX; kullanılan kaynak/CSS/tema/bağımlılıkları toplayan build-time script; consumer fixture | Son kullanıcıya açık System/frame kaynak paketi indirme akışı ve temiz kurulum kabulü yok |
-| Kayıt ve yedek | Projede autosave, revision/çatışma koruması, hata/retry ve JSON indirme; sistem JSON'u ayrı | Proje JSON'u yalnız systemId taşır; tam project+system backup/import yok |
-| Responsive | Frame'ler bağımsız ağaçlar; intrinsic Stack/Grid; Grid'in mevcut sabit container eşiği | Breakpoint editörü veya bağımsız frame'lerden otomatik responsive uygulama çıktısı yok |
+| Giriş | `/` System Colors; `/pages[/]` ve page-editor askı ekranı | Deploy ve gerçek kullanıcı kabulü |
+| Shell | Normal girişte composer mount yok; read-only legacy reference/recovery adapter var | System storage stale-tab/quota güvenliğini SF5'te ayrıca tamamla |
+| Komponentler | Yedi komponent, 294 exact kombinasyon, frame/text katmanları | Aynı kapsama daha okunabilir matrix ve seçime bağlı inspector |
+| Değerler | Effective değer, kesirler, reset/no-op/history altyapısı var | Kontrol sayısını azaltmadan doğru katman için doğru kontrolleri sunma |
+| Preview | Insertion-default UI kapandı; örnek içerik session-only Preview'da; eski defaults korunuyor | Gerçek kullanıcı scope ve lifecycle kabulü |
+| Tema | Light/Dark renkleri ayrı, geometri/tipografi ortak | Değişmeyecek; inspector etkisi açık olacak |
+| Teslimat | CLI/npm/prod registry, source, clean React/Vite → Next consumer doğrulandı | UX değişiklikleri mevcut source/API sözleşmesini bozmayacak |
+| Project verisi | Eski raw bytes korunuyor; askı ekranında allowlist'li raw recovery indirme | Restore/import yok; atomik çok-sekme backup garantisi yok |
+| Figma | Eşleme araştırması `figma-kit-contract.md` içinde; kit yok | SF4/SF5 sonrası mapping revalidation, gerçek authoring sahibi/erişimi ve Card pilotu |
 
-**Önemli ayrımlar:** System JSON `version: 3` bir veri şeması sürümüdür, ürün/sistem release sürümü değildir. Project storage revision bir kayıt çakışması sayacıdır, component library sürümü değildir. Saved component kopyası bir master instance değildir. Frame genişliği browser viewport/breakpoint değildir.
+## 3. Değişmeyecek sınırlar
 
-### Kod dayanakları
+1. `AGENTS.md`, `docs/component-api.md`, Base UI değişiyorsa `docs/base-ui.md` okunur. Next kodundan önce kurulu Next rehberi okunur; static export ile uyumlu çözüm gerekir.
+2. Schema v3, iki tema, Light'tan normalize edilen ortak non-color veriler, eski kesirli değerler ve sparse overrides korunur. UX işi schema migration gerekçesi değildir.
+3. Reset override'ı kaldırır; hesaplanan değeri kaydetmez. Seçim, filtreleme, help, preview ve no-op edit token/history yazmaz.
+4. Exact kayıt kimliği ile UI write group ayrıdır: non-color aynı component/size/part/target için tüm desteklenen variant/state/tone kayıtlarına yayılır; Text ayrıca typographic variant'ı korur (`paragraph.sm` altı tone, h1/caption değil). `background`/`color`/`borderColor` yalnız seçili exact recipe/theme'e yazılır. Shared/base ayarlar ayrıdır. Focus outline global erişilebilirlik sınırıdır; dekoratif border/shadow onu kapatmaz.
+5. Her editable token'ın typed alanı, gerçek CSS tüketicisi, reset/import/export, ilgili contrast ve testi olmalı. Bu turda yeni token eklemek varsayılan çözüm değildir.
+6. Project UI kapatılırken storage key'leri, eski kayıtlar, systemId referansları ve silme korumaları korunur. Bağlı/okunamayan Project kaydı varken sistem silme güvenliği kaldırılmaz. Gizli veriyi temizleyen migration yok. localStorage taraması başka açık sekmenin kaydedilmemiş belleğini/history'sini okuyamaz; böyle bir garanti verilmez. Eski authoring sekmesi açık olabilecek rollout ve kurtarma davranışı SF0'da açıkça kaydedilir.
+7. Preview içeriği/durumları geçicidir; eski `componentDefaults` verisi silinmez, yeniden anlamlandırılmaz veya preview state'iyle üstüne yazılmaz. Mevcut matrix/interaction preview bu defaults'u okur; yeni session overrides bunun üzerine ayrı uygulanır, canonical matrix axes/anatomy gizlenmez. CSS/JSON/ZIP/CLI çıktısı session overrides'tan değil kaydedilmiş System snapshot'ından üretilir. ZIP populated example eski defaults'u kullanmaya devam eder; CLI ise React API defaults'unu yeniden yazmaz. Bu fark UI'da açıklanır.
+8. UI İngilizce, ürün adı her yerde `bambiui`. Backend/auth/cloud, yeni runtime bağımlılığı ve otomatik publish/deploy bu planın parçası değil.
+9. Project UI ile ortak tüketici altyapısı aynı şey değildir. `page-document`, `component-defaults`, `layout` ve dağıtım allowlist'indeki modüller ZIP/CLI tarafından da kullanılır; UI kapandı diye silinmez. CLI `add layout`, mevcut public props ve immutable registry release'leri korunur.
 
-- System: `app/studio/component-matrix.tsx`, `system-component-editor.tsx`, `component-recipes.ts`, `component-styles.ts`, `tokens.ts`, `systems.ts`.
-- Görünen değerler: `app/studio/rendered-appearance.ts`, `use-canvas-appearance.ts`, `composer/appearance-inspector.tsx`.
-- Project: `app/studio/composer/model.ts`, `controller.ts`, `storage.ts`, `project-ui.tsx`, `assets.ts`.
-- Kaynak: `app/studio/page-document/export.ts`, `bundle.ts`, `registry.ts`, `scripts/page-source-files.mjs`, `scripts/check-page-source.mjs`.
+## 4. Aktif aşamalar
 
-## 3. Değişmeyecek sorumluluk sınırları
+Durum: `[ ]` başlanmadı, `[~]` kısmi, `[x]` kanıtla tamamlandı. Aşağıdakiler yeni iş paketleridir; tarihsel test başarıları bunları kapatmaz.
 
-| İşlem | Sahibi / etkisi |
+### SF0 — Sözleşme ve baseline
+
+- [x] **SF0.1 Envanter:** aktif route/UI/metadata/help bağlantılarını, System'in composer bağımlılıklarını ve storage yazılarını listele.
+- [x] **SF0.2 UX sözleşmesi:** seçimin `component + recipe + part + frame/text target` yapısını koru; Card pilotunun ekran/inspector taslağını ve keyboard/focus davranışını tanımla.
+- [x] **SF0.4 Kullanıcı edit-scope amendment'ı — uygulandı:** UI helper mevcut exact kayıtlara non-color fan-out yapar; field reset aynı kapsamı, mixed target reset her field'ın kapsamını kullanır. Input error yalnız invalid/readonly, choice error yalnız invalid state'ler. Tek `onRecipesChange` tek undo gesture group taşır. Inspector seçili örneği ölçer ve write scope'u etiketler; inspection peer normalize etmez. Eski divergent kayıtlar ilgili edit/reset'e kadar kalır. All combinations bölümü hâlâ all sizes kapsamındadır. Yeni size token/runtime inheritance/schema migration veya CSS/resolver/import/public API değişikliği yok; source catalog/registry kimliği aynı kaldı. Helper/unit testleri, gerçek Button/Text/Card browser regresyonları ve kaynak teslimatı geçti; version/publish yok. İnsan kabulü ayrı kapıdır.
+- [x] **SF0.3 Kabul baseline'ı:** D, A'nın sözleşme taslağı üzerinde System-only görevlerini ve route/storage fixture tasarımını hazırlar. Kodu henüz uygulanmamış bir testin geçmesi SF0 şartı değildir; expected failure ayrı kaydedilir.
+
+**Teslimat:** [Dondurulmuş SF0 sözleşmesi](system-first-sf0-contract.md): mevcut prop/type sınırları, route matrisi, storage read/write envanteri, Card inspector taslağı, keyboard/focus, preview/filter yaşam döngüsü ve test eşlemesi. QA incelemesi ve koordinatör onayı tamamlandı. System silme onayı için native confirmation yerine controlled app dialog amendment'ı gerçek ikinci-sekme regresyonuyla doğrulandı. A taslak → D baseline incelemesi → koordinatör sözleşme freeze/onayı sırasıyla ilerler; D'nin katkısı için SF0'ın önce tamamlanması gerekmez.
+
+**Çıkış:** SF1/SF2/SF3 sözleşmesi freeze edilmiş, çakışmasız yazıcılar ve test sahipleri belli; uygulama başlamadan belirsiz edit scope yok. Freeze sonrası interface değişikliği A/B/C/D'ye handoff edilmeden uygulanmaz.
+
+### SF1 — System-only giriş ve Project'i askıya alma
+
+- [x] `/` doğrudan System Design / Colors açar (mevcut route fallback'i). `/colors`, `/spacing`, geçerli komponent route'ları, `/develop` ve `/develop/<component>` korunur. Unsupported route mevcut not-found davranışını korur; root ve `/pages[/]` aynı route sanılmaz. Seçim değiştirmek otomatik token/default yazmaz; boş durumda Project oluşturma CTA'sı yok.
+- [x] `/pages` ve `/pages/` eski linkleri statik uyumlu, açık bir askıya-alındı ekranı ve System'e geçiş ile karşılanır; composer mount olmaz. Eski layout her child'ın önünde `<Studio />` render ediyordu; yeni WorkspaceShell sınırı askı route'unda Studio'yu mount etmez. Askı ekranının arkasında/önünde ikinci Studio, history handler veya gizli editör bulunmaz; client redirect flash/loop ya da gizli yeniden açma düğmesi eklenmez.
+- [x] Header Project/System switch, project manager, page/frame/asset araçları ve Project'e yönelten aktif yardım/marketing kaldırılır. System selector, Design/Develop, Light/Dark, history ve CSS/JSON erişimi korunur.
+- [x] `useComposer` sırf görünmez UI için çalıştırılmaz. Read-only referans adapter'ı kayıtlı Project index/documents'u inceler; loading, erişim hatası, eksik/bozuk kayıt durumunda silme kapalıdır. Referanslar render başına tüm projeyi parse ederek değil kontrollü bir snapshot ile okunur; storage event/yeniden focus ve silme onayı öncesi tekrar kontrol edilir. Index dışında kalmış partial/orphan document davranışı SF0'da belirlenir; index yok diye kayıtlar otomatik sahipsiz kabul edilmez. TOCTOU/çok-sekme atomikliği iddiası yok.
+- [x] Public `/examples/page-editor` authoring girişi askıya alınır. Statik account-settings consumer fixture'ı test amaçlı kalabilir, normal navigasyonda Project alternatifi olarak sunulmaz. Composer model/export/unit testleri tutulur.
+- [x] Eski Project keys/bytes System açılışı, tema değişimi, reload ve route geçişinde değişmez. Sistem silme engeli anlaşılır mesaj verir; projeye gidip çözme, otomatik rebind veya storage temizleme önermez. Güvenli alternatif System'i duplicate/export edip ayrı kopyada devam etmektir.
+- [x] Erişim kapanmadan minimum recovery yolu tanımlanır: askı ekranında yalnız açık kullanıcı eylemiyle eski yerel verileri indirme; authoring yok. SF0 raw key/value kurtarma dosyasının allowlist'ini (Project index/documents, ilgili System/legacy kayıtları), byte limitini ve hata politikasını sabitler. Geçersiz JSON'un orijinal string'i de korunur; başka origin/app localStorage verisi toplanmaz, upload yok. Okunamayan kayıt atlanıp tam backup diye sunulmaz. Bu ham kurtarma çıktısı restore/import desteği olan yeni Project bundle formatı değildir; UI bunu ve unsaved başka-sekme belleğinin dahil olmadığını açıklar. Recovery implementasyonu SF1 kapsamıdır, B01/B02'yi yeniden açmaz.
+
+**Çıkış:** root/System/Develop/direct-link/back-forward testleri geçer; Project erişimi yalnız menüden gizlenmiş değildir. Önceden kayıtlı kullanıcı verisi korunur. Yeni System-only browser kapsamı hazır olmadan eski workspace testini topluca silmek/yoksaymak kabul edilmez.
+
+### SF2 — Card pilotu: sade, katman odaklı inspector
+
+- [x] Üst bağlam component, o komponentte gerçekten var olan variant/size/tone veya state eksenlerini ve katmanı gösterir. Olmayan eksen için dummy kontrol yok. Selection null ise açık seçim çağrısı; görünmeyen Medium/default recipe sessizce edit hedefi olmaz. Seçili örnek ile inspector aynı hedefi anlatır.
+- [x] Root/frame: Layout & spacing, Corners, Surface, Border & shadow. Text: Typography, Color ve yalnız o katmanın tükettiği ek alanlar. Bunlar yeni CSS serbestliği veya token vaadi değil, mevcut field allowlist'inin gruplarıdır. Boş/no-op alan sunulmaz; mevcut desteklenen alanlar kaybolmaz. Foundations (Colors/Shape & spacing), font-family, contrast raporu ve rapordan doğru alanı açma/focus etme akışı korunur.
+- [x] Padding/margin/corners bağımsız kenarlardır; link durumu açıktır. Kesirli değerler korunur; çok uzun değer/help/hata dar panelde okunabilir kalır.
+- [x] Exact ayarlar ana alan, all-combination/shared/base ayarlar ayrı kapalı bölümdür. Kısa etki açıklaması ve görünür reset; ham CSS adı isteğe bağlı teknik detaydır.
+- [x] System Parameters insertion-default sekmesi aktif UX'ten çıkarılır. Gerekli örnek metin/ikon seçenekleri tek Preview bölümünde session state olur; ikinci rakip starting-component editörü üretilmez. SF0 system/component/recipe/part/theme/view/filter/close/reset/reload için yaşam döngüsü tablosunu sabitler. System değişimi/reload geçici değerleri sıfırlar; token Undo'ya veya export'a karışmaz. Insertion default'ları doğrudan değiştiren gizli yazım callback'i aktif akışta kalmaz.
+- [x] Card.Header/Title/Description/Content/Footer seçiminde nested Text/Button scope'u korunur; standalone komponent recipe'sine yanlış edit gitmez.
+
+**Güncel çıkış (amendment; otomatik kontroller geçti, insan kabulü açık):** kullanıcı `outlined.md / Card.Title` seçerek 19.375px/635 yazar; aynı title/text alanları üç md Card variant'ında değişir. Root sol padding 23.125px/top-left 17.25px aynı size root/frame grubuna yayılır. sm/lg, ilgisiz alan/katmanlar ve standalone Text/Button değişmez. Title color yalnız seçili exact recipe/theme'de değişir. Field/mixed reset, tek gesture Undo/Redo ve Light-Dark/export/import değişmeyen exact kayıt semantiğiyle tutarlıdır.
+
+### SF3 — Matrix ve seçim ergonomisi
+
+- [x] Komponent açılışında tüm kombinasyonlar erişilebilir; varsayılan görünüm bütün matrisi sunar. Variant/state grupları, size/tone etiketleri okunur; starting component paneli yok.
+- [x] Kalabalık Text/tone matrisinde opsiyonel filtreleme ve seçime odaklanma; aktif filtre/sayı ve Clear görünür. Filtreleme kombinasyonları/tokenları silmez veya inspector için yeni varsayılan hedef seçmez. Seçim gizlenirse stale hedefte edit durur. SF0 filter/component/system/route/theme değişiminde pending numeric/color draft ve focus politikasını belirler: eski draft yeni hedefe blur ile uygulanmaz, invalid draft engeli sessiz kaybolmaz. Contrast raporu gibi dış seçimler gerekirse filtreyi açıp hedefi görünür kılar.
+- [x] Frame/text seçimi, hover/selected sınırları ve klavye ile katman seçimi tutarlı. Mevcut design hit-target örnekleri ile gerçekten interaktif preview ayrı kalır; disabled/loading örneği de layer/frame kontrolünden seçilebilir. Filtrelenmiş/aria-hidden örneklerde focusable descendant kalmaz. Panel açma/kapama, zoom/pan/fit selection'ı bozmadan çalışır.
+- [x] Desktop canvas kalan alanı doldurur; mobil paneller overlay kalır. Metinlerin okunması için canvas zoom ile native browser zoom karıştırılmaz.
+- [~] 180 Text örneğinde başlangıç/filtreleme/seçim/pan ölçümü. Node SSR warm 5-run medyanı 9.54ms (8.96–12.04ms) alındı; bu browser pan/interaction performans kanıtı değildir. Browser profiling açık; renderer/virtualisation rewrite yapılmadı.
+
+**Çıkış:** 294 kayıt coverage'ı korunur; klavye ile bir exact katmana ulaşılır; filter/no-op storage testi ve 390px reflow geçer. SF2 ile aynı selection sözleşmesini kullanır.
+
+### SF4 — Aynı deneyimi yedi komponente yay
+
+- [x] Button: mevcut exact `root` ve `text` (UI Label) katmanları, loading/disabled ve geçici native interaction state ayrımı. Button için bağımsız editable `icon` recipe katmanı yoktur; ikon preview prop'udur, bu tur yeni token/katman eklemez.
+- [x] Input: root/control/label/description/error; invalid/readOnly katmanları. Error konum/ikon/örnek içerik Preview, hata tipografisi exact style; bu preview özellikleri token şemasına taşınmaz.
+- [x] Switch/Checkbox: checked/unchecked/invalid kombinasyonları; label/description/error ve focus ayrı.
+- [x] Badge/Text: tone/variant/size kapsamı, gerçek tüketilen tipografi ve yüzey renkleri; Text görsel varyantı semantik heading'i zorlamaz.
+- [~] Her komponentte alan/katman matrisi, specimen ve Develop referansı kontrol edilir. Yeni public prop/token gerekirse ayrı gerekçeli dilim; tüm schema/API/audit/source testleriyle birlikte.
+
+**Doğrulanmış baseline:** Button 18, Input 9, Switch 12, Checkbox 12, Badge 54, Card 9, Text 180 = 294 recipe. Bu sayı aynı eksenleri koruyan UX revizyonunun regresyonudur; tüm komponentler için tone/state çapraz çarpımı veya disabled/hover recipe eklemek gereği çıkarılmaz. Exact parts `components/recipes.ts` ve shared parts ilgili metadata'dan gelir; kod kimliği yerine UI etiketi uydurulmaz.
+
+**Çıkış:** Card'a özel çalışan tasarım değil, yedi komponentte tutarlı inspector; state preview sıfır token write; CSS/JSON/CLI parity ve contrast kapsamı korunur.
+
+### SF5 — System-only kabul ve veri güvenliği
+
+- [~] Yeni görev oturumu: seçili örnek ile size-based non-color/exact-color write scope ayrımı; Card, Text variant + altı tone, conditional Input/choice error, mixed reset, tek gesture history, Button state, theme, System export/import ve Develop teslimatı. Project oluşturma başarı ölçütü değildir.
+- [ ] Keyboard, VoiceOver Safari/Chrome, gerçek %200 zoom, uzun metin ve mobile native scroll/pinch. Not run/assisted/pass ayrımı; major/blocker varken tamamlandı denmez.
+- [~] System-only storage hata/retry, bozuk import ve iki sekme davranışı A'nın SF0 envanterinden itibaren izlenir, D tarafından test edilir; bu korumaların zaten tamamlandığı varsayılmaz. Eksikse A `systems.ts`/Studio persistence sınırında ayrı sınırlı düzeltme yapar; kullanıcıya in-memory System'i export etme yolu kalır. Project bundle yapılmaz. SF1'in getirdiği data-loss riski SF5'e ertelenmez; discovery anında rollout'u bloklar.
+- [x] CLI `0.2.1` baseline, local source consumer ve clean published consumer korunur. Preview state'i değişince aynı saved System'in CSS/JSON/ZIP semantic içeriği değişmez; captured snapshot pending seçim değişiminden etkilenmez. Dağıtılan kaynak değişirse immutable snapshot/resolver compatibility ayrı release kapısıdır; UI değişti diye CLI version artırılmaz. Pure resolver modüllerini değiştirmek fingerprint/pin uyumluluğunu etkileyebilir; yalnız UI taşımak için ortak dağıtım kodu yeniden yazılmaz.
+
+**Çıkış:** mevcut yedi komponent için yardımsız temel görevler ve ilgili manuel kabul kaydedilmiş, kaynak round-trip ve data-safety testleri geçmiş. Test sayısı tek başına kabul değildir.
+
+### SF6 — Figma kit pilotu ve teslimat
+
+- [~] **SF6.1 Eşleme sözleşmesi:** code component/axes/parts ↔ Figma component properties/layers/variables/text styles; shared geometry vs Light/Dark renk modları; CSS-only ve desteklenmeyen eşlemeler açık. E erken taslak üretebilir; SF4 sonrası code/API, registry source hash ve kullanılan System snapshot kimliğiyle yeniden doğrular. Font metrikleri, CSS rounding ve Figma variable/style sınırlamaları için kabul toleransı ve manuel eşlemeler pilot başlamadan yazılır.
+- [ ] **SF6.2 Card pilotu:** kullanıcı gerçek kit sahibi/tasarımcıyı, authoring aracını/erişimini ve inceleyeni atadıktan sonra başlar. Mevcut agent araçlarının Figma dosyası oluşturabildiği varsayılmaz; erişim yoksa blocked raporlanır. Auto layout, layer anatomy, sm/md/lg ve mevcut surface variants aynı token snapshot'ıyla web/Figma karşılaştırılır. Code'un tüm state/behavior'larının Figma'da çalıştığı iddia edilmez.
+- [ ] **SF6.3 Kit:** pilot kabulünden sonra yedi komponent, foundations, örnek kullanım ve sürüm uyumluluk tablosu. Her komponentin desteklenen eksen/katman, Light/Dark ve shared değer coverage matrisi doğrulanır; dosyayı import/duplicate edip layer/property düzenleme gerçekten denenir. Kaynak `.fig`/Community teslimatı, paylaşım yetkisi, font/icon/asset hakları ve lisans/attribution kit sahibi tarafından onaylanır; private Studio'nun tamamı MIT sayılmaz.
+- [ ] **SF6.4 Özel sistem aktarımı kararı:** standart starter kit ile kullanıcı JSON'unun kit'e uygulanması ayrı işler. İlk kit manuel eşleme rehberi olabilir; otomatik import/plugin ancak kullanıcı onayı ve teknik pilot sonrası. API key, network/maliyet ve Figma plan sınırlamaları araştırılmadan vaat yok.
+
+**Pilot çıkışı:** gerçek Card dosyası/linki + sabit snapshot'a karşı eşleme ve fark kaydı. **Kit çıkışı:** gerçek erişilebilir dosya/link + yedi komponent/foundations coverage'ı, import/duplicate/edit kanıtı ve inceleyen kişi kaydı. Card pilotu tek başına tam kit kapısını kapatmaz; yalnız doküman veya JSON üretmek kit teslimatı değildir. İki yönlü sync, real-time collaboration ve plugin ekosistemi kapsam dışı.
+
+### SF7 — Kanıta göre yeni komponentler
+
+- [ ] SF5 kabulü sonrası eksik kullanım senaryosuna göre bir komponent seçilir (Textarea/Select/Radio yalnız aday). Hepsini paralel ekleme yok.
+- [ ] Aynı API, token/katman/inspector/preview, Light/Dark, contrast, reset/import/export, registry/CLI ve Figma eşleme sözleşmesi tamamlanır.
+
+**Çıkış:** yeni komponent mevcut deneyimi bozmadan aynı kalite kapısını geçer. SF7'nin zorunlu ürün kapısı SF5'tir; Figma kit teslimatı zorunlu önkoşul değildir. SF5 sonrasında kullanıcı/koordinatör SF6 kit ve SF7'nin sırasını belirler. Kit yoksa Figma eşleme dokümanı gerekir, var olmayan kit parity'si geçti denmez. Agent kendiliğinden kapsam genişletmez.
+
+## 5. Paralel çalışma ve sıra
+
+`SF0 sözleşme freeze → [SF1 || SF2 || SF3] bağımsız geliştirme → SF1+SF2+SF3 entegrasyon/kabul → SF4 → SF5 → kullanıcı kararıyla SF6 kit ve/veya SF7`
+
+SF2/SF3, ayrılmış component dosyalarında SF1 ile paralel geliştirilebilir; System-only entegre kabulleri SF1 tamamlanmadan kapanmaz. Figma mapping araştırması ayrı read-only/dokümantasyon hattıdır.
+
+- SF6.1 dokümantasyon araştırması SF1–SF3 ile paralel yapılabilir; final kit ve otomatik aktarım implementasyonu yapılmaz.
+- SF2 ve SF3 yalnız selection/prop sınırları SF0'da sabitlenince paraleldir. `studio.tsx` ve ortak CSS entegrasyonu tek sahibindir.
+- QA agent'ı bağımsız test dosyaları yazar; feature agent'ının dosyalarını eşzamanlı düzeltmez. Ortak smoke dosyaları entegrasyon dalgasında tek yazıcıyla güncellenir.
+- Ayrı worktree/branch ile çalışma tercih edilir; agent'lar onaysız commit/branch/publish yapmaz. Tek çalışma ağacında disjoint write set zorunludur.
+- Ana build, generator ve consumer testleri tek çalışma ağacında seri çalıştırılır. Ortak write-set yalnız `.next/out` değildir: `public/registry`, `public/bambiui-source`, `app/studio/source-catalog-meta.json`, `packages/cli/dist` de paylaşımlıdır. D validation sırasını yönetir, A entegrasyon revizyonunu sabitler. Aynı dosyalarda edit sürerken final kabul çalıştırılmaz; browser süreçleri temizlenir.
+- Başlangıç görevleri, prompt'lar ve handoff formatı [uygulama planında](system-first-execution-plan.md).
+
+## 6. Askıya alınan işler
+
+Önceki ID'ler yalnız izlenebilirlik için korunur:
+
+| Eski iş | Yeni durum |
 | --- | --- |
-| Medium Card başlığının fontunu değiştirmek | System'de ilgili exact kombinasyon/katman; onu tüketen bağlı kullanımlar |
-| Yeni Card eklemelerinin başlangıç başlığını değiştirmek | System Parameters; yalnız sonraki built-in eklemeler |
-| Bir ekrandaki Card başlığını değiştirmek | Project Parameters; yalnız seçili instance |
-| Kartları iki sütuna dizmek, frame padding'i değiştirmek | Project layout/frame; diğer frame ve sistem değişmez |
-| Tekrar kullanılacak yeni bir kompozisyon tanımlamak | Gelecekte System component definition; bugünkü snapshot ile karıştırılmaz |
-| Sistem editöründe başka sisteme bakmak | Açık projenin systemId bağlantısını değiştirmez |
+| B01/B02 Project+System bundle/import | Askıda; mevcut veri silinmez. System JSON import/export aktif kalır. |
+| P01–P03 ekran şablonları / Project doğrulama | Askıda; System matrix ve consumer fixture'ları aktif doğrulama yolu. |
+| D03 seçili frame source | Askıda. CLI komponent kaynağıyla karıştırılmaz. |
+| R01–R03 custom definition / linked master | Askıda; mevcut built-in token editing tamamlanmadan başlanmaz. |
+| V01/V02 Project release pin/update UI | Askıda; CLI immutable registry pin/retention aktif kalır. |
+| B03 System storage safety | SF5'e daraltılarak taşındı; Project yeniden açılmaz. |
+| S01–S03 eski UX kabul | Kanıtları korunur; yeni SF2–SF5 kabulüyle tamamlanır. |
 
-- Project'in built-in komponentlerine yeniden kapsamlı yerel stil paneli eklenmez. Eski `appearance`/`parts` kayıtları korunur ve açık reset yolu kalır; layout/frame görünümü düzenlenebilir.
-- Reset bir override'ı kaldırır; bugünkü hesaplanan değeri kalıcılaştırmaz. Bakma, seçim, focus/blur ve no-op düzenleme kayıt/history üretmez.
-- Renkler tema bazlı; non-color değerler iki temada ortak kalır. Yeni alanlar yalnız gerçek CSS tüketicisi, import/reset/export/audit ve testleriyle eklenir.
-- Local-first ve statik dağıtım korunur. Kaydedilen JSON keyfi CSS/JS, callback veya executable kod kabul etmez.
-- Bağımsız frame'ler tek ağaca zorla dönüştürülmez. Çoklu responsive runtime eşlemesi ayrı karar olmadan uygulanmaz.
+Project yeniden açılacaksa ayrı kullanıcı kararı ve yeni roadmap gerekir. Figma kit için uygulama içinde page builder üretmek bu askıya alma kararını dolanmak olur.
 
-## 4. Sıralı iş listesi
+## 7. Doğrulama ve done tanımı
 
-Öncelik takvim tahmini değildir. Her madde küçük, doğrulanabilir PR'lara ayrılır. **Aktif çalışma sınırı: bir ürün dilimi;** bağımsız test/dokümantasyon işleri paralel ilerleyebilir. Genişletme işine geçmeden önce mevcut dilimin kabul kapısı kapanır.
-
-### M1 — System düzenleme deneyimini tamamla
-
-**Amaç:** daha fazla kontrol eklemek değil, mevcut kontrollerin neyi değiştirdiğini anlaşılır kılmak.
-
-- [~] **S01 · Kapsam, kaynak ve etki.** Seçili komponent/variant/size/katman bağlamını kısa ve tutarlı göster. Gerçek değer alanın içinde kalsın; kaynağı ve reset hedefini isteğe bağlı detayda açıkla. Exact styles, shared defaults, base/variant tokens ve eski instance override'ları aynı şeymiş gibi sunulmasın. Bağlı projelere etkisi anlaşılır olsun; her tuş vuruşunda onay penceresi çıkarma.
-- [~] **S02 · State inceleme akışı.** Hover/active/focus, disabled/loading, invalid/readonly gibi desteklenen durumları gerçek komponentlerde kolay incele. Mevcut 294 kombinasyonu gereksiz state eksenleriyle büyütme; geçici preview durumu, insertion defaults veya yeni recipe kaydı olmasın. Focus göstergesi dekoratif border'dan ayrı kalır.
-- [~] **S03 · Tutarlı inspector davranışı.** Birim, sayı sınırı, hata, mixed, reset ve klavye davranışlarını tüm stil alanlarında gözden geçir. Uzun shadow/değerler, küçük panel genişliği ve hesaplama sırasında devam eden draft'lar için görünürlük kabulü ekle.
-
-**Manuel oturum:** [System/Project kabul protokolü](studio-acceptance.md) T01–T06 görevlerini, ayrı klavye/VoiceOver/native zoom kontrollerini ve sonuç/issue kaydını tanımlar. Protokol hazırlanmıştır; gerçek katılımcı veya manuel erişilebilirlik sonucu henüz kaydedilmemiştir. S01–S03 bu yüzden kısmi kalır.
-
-**Kabul:** kullanıcı yalnız `outlined.md / Card.Title` fontunu değiştirir; hangi kullanımların etkilendiğini anlar; diğer size/variant/katmanlar korunur; reset/undo/tema değişimi doğru değeri gösterir. Input Error ve Button state senaryoları da geçer. Kaynak açıklaması computed CSS'ten tahmin edilmez; metadata/resolver sözleşmesiyle doğrulanır.
-
-**Dosya alanı:** `system-component-editor.tsx`, `component-matrix.tsx`, `studio.tsx` içindeki base/variant kontrolleri, ilgili CSS/copy ve testler. Resolver/model yalnız gerekli ve testli ölçüde genişler; schema yeniden yazılmaz.
-
-**S01 uygulama kaydı · 2026-10-14:** Exact/shared/base/insertion kapsam etiketleri ve kapalı başlayan read-only kaynak/reset açıklamaları eklendi. `style-sources.ts` direct exact/shared declaration ve height'tan üretilen minimum kaynağını ayırır; son component/parent CSS cascade'i tahmin edilen token yerine açık fallback sınırıdır. Card slot descendant ayrımı, tema kapsamı ve no-op/reset/history davranışı korunur; public API/token şeması değişmedi. 547 test, 94 System browser kontrolü, build/lint/TypeScript geçti. Workspace script'i iki çalıştırmada da 23 senaryoyu ve cleanup'ı başarıyla logladı, fakat terminal aracı komut kapanışında 240 saniyelik timeout bildirdi; temiz process-exit kabulü açık olarak kaydedilir. Gerçek kullanıcı görev testi ve manuel assistive-technology/native zoom kabulü yapılmadığı için S01 kısmi işaretli; sıradaki aşamalar otomatik başlatılmaz.
-
-**S02 uygulama kaydı · 2026-10-14:** Seçili Button/Input/Switch/Checkbox örneğinin altında kapalı başlayan `Test interaction states` eklendi. Tek gerçek komponent açıkken mount olur; hover/pressed/focus native etkileşimle, disabled/loading/readonly/indeterminate desteklenen public props ile incelenir. Button aktivasyonu focus'u koruyarak loading'e girer. Preview input/checked/condition verileri yalnız React oturum state'idir; kapanış/reset temizler, layer/theme/view değişimi aynı recipe oturumunu korur. Live recipe gerçek DOM state'inden okunur ama edit scope'u değiştirmez; inspector ve seçim işaretleri yalnız özgün `data-recipe-body` anatomisini kullanır. 294 katalog anahtarı, public API, token/import/export modeli değişmedi. Son doğrulama: 558 unit/SSR/source testi, 96 System browser kontrolü, production build, lint, TypeScript ve diff kontrolü geçti. Gerçek Chromium pointer hover/hold/release, loading focus/repeat-block, native Tab focus ring, Input typing/readonly ve choice disabled/readonly/indeterminate, reset ve sıfır token write test edildi. Desktop açık Button önizleme screenshot'ı incelendi; preview typography'sinin gerçek component system'inden geldiği test edildi. S02 turunda workspace/composer drag/ayrı consumer scriptleri yeniden çalıştırılmadı; S01'in workspace process-exit timeout'u ayrıca açık kalır. Gerçek kullanıcı/VoiceOver/native zoom/cross-browser kabulü henüz tamamlanmadığı için kısmi işaretlidir.
-
-**S03 uygulama kaydı · 2026-10-14:** Metadata-backed exact/shared System styles ve Project layout/frame appearance aynı draft validation/alan rehberi sözleşmesine bağlandı. Uzunluk px, lineHeight × ve opacity 0–1 göstergeleri; native read-only ⓘ tam değer/aralık/reset açıklamaları; dimension hug/fill önerileri; alana bağlı inline hata ve aria-describedby eklendi. Renk/shadow tam satır, açık yardım/hata grid genişliğine açılır; input remount edilmez. Unitless alanların yanlış pixel hata mesajı düzeldi; kesirler/sınırlar/allowlist ve serialized schema korunur. System reset başarısız olsa da bekleyen taslak blur ile kaydedilmez. Son doğrulama: 566 unit/SSR/source testi, 97 System ve 23 workspace browser kontrolü, production build, lint, TypeScript ve diff kontrolü geçti; workspace komutu bu turda temiz exit ile tamamlandı (S01'deki kapanış timeout'u son çalıştırmada tekrarlanmadı). Chromium'da doğru birim/sınır ve bağlı hata/hint ID'leri, full precision okuma, pending invalid draft reset/undo, sıfır help-write, 390px shadow satır sarma ve Project invalid/reset/theme akışı test edildi. Desktop tam değer yardımı ve mobil shadow screenshot'ları incelendi. Ayrı composer drag/source-consumer scriptleri bu turda yeniden çalıştırılmadı; gerçek kullanıcı/VoiceOver/native zoom kabulü açık olduğu için kısmi işaretlidir.
-
-### M2 — Geliştiricinin kullanabileceği kaynak çıktısını teslim et
-
-**Amaç:** CSS değişkenleri veya örnek import'un ötesine geçip gerçek uygulamaya taşınabilir çıktı vermek.
-
-**2026-10-15 kullanıcı kararı:** Ana yol **CLI + statik registry** oldu. [CLI sözleşmesi](cli-registry.md) güncel teslimat sınırıdır. D01/D02 ZIP çalışması korunur ama Develop'ta kapalı başlayan manual fallback'tir; D03 frame ZIP bekletildi.
-
-- [x] **C01 · CLI/registry sözleşmesi.** Node 22.15+, React/TypeScript/CSS Modules, explicit trusted registry URL, immutable pin + resolver fingerprint, local System JSON ve conflict/dry-run sınırları tanımlandı.
-- [x] **C02 · Statik registry üretimi.** Aynı source collector'dan `public/registry/index.json` + content-addressed release; dev/build hook, strict validation ve hash/byte kontrolü. Kullanıcı verisi upload edilmez.
-- [x] **C03 · Yerel CLI ve Develop akışı.** Ayrı `packages/cli` paketinde init/add/theme, exact closure, local file protection ve paketlenmiş executable. Hedef npm adı `bambiui`, başlangıç sürümü `0.2.0`; Next root package private kalır. Develop yerel komutları kopyalar ve yayın durumunu açıklar; ZIP ikincildir.
-- [~] **C04 · Public yayın ve temiz consumer kabulü.** Npm ownership/auth, lisans/attribution, üretim registry adresi ve eski immutable release URL'lerinin deployment retention'ı doğrulanır. Temiz React/Next dependency install, elle erişilebilirlik ve yayınlanmış `npx bambiui@0.2.0` kabulü yapılır. MIT kapsamı onaylandı; `prepublishOnly` doğru MIT notice/build ile geçer. Maintainer auth doğrulandı; incelenen 0.2.0 tarball'ı için publish isteği npm 2FA/EOTP ile reddedildi. Kullanıcı sonrasında yayını tamamladı: npm 0.2.0/MIT/latest ve SHA-512 eşitliği doğrulandı; public npm CLI ile init/add/theme + React/Next/browser tüketicisi geçti. Production registry index/release 200 JSON, SHA-256/byte eşitliği ve gerçek npm CLI init/add/theme ile doğrulandı. Git-tracked release arşivi ve temiz/future-release build retention regresyonu uygulandı; kullanıcı deploy'u tamamladı ve eski URL arşivle birebir aynı kaldı. Npm 0.2.1/MIT/latest ve tarball bütünlüğü doğrulandı; public CLI React/Next/browser consumer geçti. `npm run check:cli:clean` ile public 0.2.1 + production registry kaynakları repo dışındaki boş host/cache içinde sıfır npm install, bağımsız React/Vite type-check/build/browser ve ardından Next install/build/prerender/browser kontrollerini geçti. Farklı source release'ler arasında canlı retention gözlemi ve manuel kabul hâlâ açık.
-
-- [x] **D01 · Teslimat sözleşmesi.** [Kaynak teslimatı sözleşmesi](source-delivery.md) System/seçili frame dosya düzenini, dependency closure, snapshot-scoped iki tema, manifest/snapshot, React/Next kurulumu ve state/form sınırlarını tanımlar. İlk arşiv yöntemi browser ZIP STORE; yeni runtime bağımlılığı/server yok. D01 tasarım dilimidir; System indirmesinin uygulama kanıtı aşağıdaki D02 kaydındadır. Registry/CLI/npm release ilk adım değildir; public lisans kapısı açık.
-- [x] **D02 · System kaynak paketi.** System/Develop `React source` seçili komponenti veya mevcut yedi komponenti ZIP indirir; yalnız CSS değişkenleri olmadığı açıkça belirtilir. Ortak Node source collector + build-time immutable catalog + lazy browser assembler; browser'da node:fs/TypeScript AST veya gizli server yok. Scoped iki tema, populated example, snapshot, strict manifest, pinned dependency ve kurulum bilgisi pakete dahil. Store hazır olmadan indirme yok; capture/fetch/hash/ZIP storage/history'ye dokunmaz.
-- [ ] **D03 · Seçili frame kodu — bekletildi.** CLI/registry önceliği nedeniyle henüz uygulanmaz; komponent registry'si Project/frame backup formatına dönüştürülmez. Mevcut `composerFrameToPageDocument` adapter'ı ve aynı export motoruyla seçili frame'i Develop/download akışına bağla. Project'in bağlı sistemini kullan; System editörünün activeId'sini değil. Export başlamadan tek bir tutarlı frame+system snapshot'ı yakala.
-- [~] **D04 · Gerçek consumer kabulü.** Temiz React+TypeScript/CSS Modules uygulaması ve Next tüketicisiyle kurulumu doğrula. Node kaynakları, CSS, Light/Dark, exact recipe ve shared defaults, Card slotları ve form semantiği korunsun. Kaynak içeriğine Studio runtime/state/import sızmasın. Kaynak paketinin snapshot-scoped tema izolasyonu, mevcut normal CSS export'unun `:root` davranışından ayrımı, opt-in Google Fonts ve uygulama davranışının geliştirici tarafından bağlanacağı açıkça belgelenir.
-
-**Kabul:** kullanıcı bir Button/Card/Input sistemini ve bir frame'i indirip bambiui servisi olmadan derler ve render eder. Canvas koordinatları/clipping/selection overlay çıktıya taşınmaz; preview için konulan root yükseklik/padding varsayımları tüketiciye sessizce dayatılmaz. Tek frame export'u otomatik responsive çoklu-frame uygulaması diye sunulmaz. Hızlı kaynak consumer testi installed node_modules'u tekrar kullanır. Ayrı `check:cli:clean` public CLI/production registry ile fresh install ve React/Vite → Next build/browser kanıtını sağlar; seçili frame teslimatı ve manuel kabulü kapsamaz.
-
-**Güncel bağımlılık:** C01 → C02/C03 → C04. D01/D02'nin resolver/collector altyapısı yeniden kullanılır; D03 ayrı sonraki frame teslimatı işidir. D04'ün temiz consumer kabulü C04 CLI yoluna uyarlanır; mevcut installed-node_modules build/browser testleri bunun yerine geçmez.
-
-**D01 uygulama kaydı · 2026-10-14:** `source-delivery.md` teslim edildi; ZIP STORE yöntemi, build-time source catalog + lazy same-origin browser assembler, sabit güvenli dosya adları, deterministik manifest/hash ve snapshot scope'u kararlaştırıldı. Normal `exportCSS()` geriye uyumlu kalır; source paketi host `:root`/body'yi boyamaz, frame'e ek padding/min-height/canvas ölçüsü dayatmaz. 128 dosya / 5 MiB payload başlangıç sınırı D02 uygulama/test hedefidir; mevcut 1 MiB PageBundle sınırı değişmez. Prototip ölçümleri account-settings 23 dosya / 252.166 UTF-8 byte, design-safe 27 dosya / 259.497 byte. 11 source/bundle testi ve `node scripts/check-page-source.mjs --browser` geçti: React tip kontrolü, bağımsız Next build/prerender, Light/Dark CSS/native form/state/reflow ve yedi komponent hydration. Consumer kurulu node_modules'u kullanır; temiz kurulum veya yeni scoped ZIP kabulü değildir. Markdown yerel dosya bağlantıları ve diff kontrolü geçti. D02/D03/D04 henüz uygulanmadı; lisans/public dağıtım ve M1 manuel kabulü açık.
-
-**C01–C03 uygulama kaydı · 2026-10-15:** CLI + statik registry uygulandı; hedef paket `bambiui@0.2.0`, root Next package ayrı/private. Init/add/theme, local JSON resolver reuse, immutable registry/resolver pins, gerçek source closure (Card örnek bağımlılıkları hariç), safe file planning/rollback/conflict/dry-run ve explicit package.json dependency yönetimi eklendi. 581 unit/SSR/source ve 16 CLI testi geçti. Gerçek packed CLI ve local tarball üzerinden offline npm exec 0.2.0 doğrulandı; publish yapılmadı, license/build prepublish gate test edildi. CLI ile kurulan kaynaklar standalone React type-check + ayrı Next build/hydration, shared exact Card edge/title/Input error stilleri, Light/Dark ve native choice/reflow kontrollerini geçti; kurulu node_modules kullanır, C04 clean install değildir. Build/lint/TypeScript/catalog+registry freshness, 97 System ve altı CLI/source browser senaryo grubu temiz exit ile geçti. Develop primary CLI komut kopyalama, static HTTP release hash/bytes ve kapalı ZIP fallback doğrulandı; mobil screenshot incelendi. Eski first-code-block test varsayımı ayrıldı, gerçek download completion event'i beklenir. Project workspace/composer drag/legacy page-consumer bu turda yeniden çalıştırılmadı; D02 workspace exit timeout ve C04 public lisans/npm/prod registry retention kapıları açık.
-
-**D02 uygulama kaydı · 2026-10-15 (önceki ZIP turu):** Kaynak ZIP UI/motoru ve build hook/freshness testleri uygulandı. Node prototype ile tek import grafiği kullanılır; catalog yalnız indirmede same-origin yüklenir, kullanıcı snapshot'ı server'a gönderilmez. 581 unit/SSR/source testi (15 yeni source testi), production build, TypeScript, lint ve catalog freshness geçti. Standard Python ZIP reader Unicode/empty payload/CRC/corruption ve limitleri doğruladı. Yeni System consumer standalone React tip kontrolü, ayrı Next build/hydration, host/two-system/nested-theme izolasyonu, exact typography/native states/choice toggle ve 1440/768/390 geometriyi geçti; kurulu node_modules'u kullanır, D04 değildir. Gerçek Card/all-seven/Text ZIP browser indirmeleri, pending selection navigation, zero storage-write, missing catalog/retry ve mobile reflow geçti; mobil screenshot incelendi. Son kontrolde stale out preflight'ı sonrası güncel build alındı; generator'ın aynı descriptor/catalog'u yeniden yazmasını önleyen timestamp regresyonu eklendi. 97 System ve yeni source-download kontrolleri temiz exit ile geçti. Son workspace çalıştırması 23 senaryo ve cleanup başarısını logladı, fakat terminal komutu kapanışta 240 saniyelik timeout aldı; workspace process-exit kabulü yeniden açık (önceki temiz D02 çalıştırması bu son sonuç yerine geçmez). D03/D04, lisans/public dağıtım ve M1 manuel kabulü açık; eski page-consumer browser ve ayrı composer drag bu turda yeniden çalıştırılmadı.
-
-### M3 — Taşınabilir yedek ve sistem veri güvenliği
-
-**Amaç:** yapılan tasarımın yalnız bu tarayıcıya bağlı kalmaması; hatalı import veya ikinci sekmenin emeği kaybettirmemesi.
-
-- [ ] **B01 · Project bundle.** Ayrı sürümlü backup envelope: proje, sayfalar/frame'ler, assets ve bağlı sistemin tam snapshot'ı. Eski raw project JSON ve tek-page bundle için açık import/adaptasyon yolu; eksik sistem sessiz default ile değiştirilmez.
-- [ ] **B02 · Güvenli import.** Önce tüm paketi doğrula, sonra etki önizle. İlk öneri mevcutları değiştirmeden yeni proje+yeni sistem olarak almak; var olan sisteme bağlama açık seçim olsun. Project/system ID çakışmaları ayrı çözülür. Eski kayıtların üzerine sessiz yazma veya otomatik snapshot birleştirme yok.
-- [ ] **B03 · System kayıt güvenliği.** `systems.ts` koleksiyon kaydı için Project'teki korumalara denk stale-write/iki-sekme, quota, bozuk kayıt ve retry davranışını tamamla. Çok anahtarlı localStorage yazımını atomikmiş gibi sunma; project+system import'unun yarım kaldığı durumları tanımla ve kurtar. Geçmişin referans verdiği sistemleri silme/rebind politikası netleşmeden koruyucu engelleri kaldırma.
-
-**Kabul:** temiz browser profilinde yalnız paket import edilerek aynı sistem ve tüm frame'ler açılır. Bozuk/gelecek sürümlü paket, ID çakışması, yazma hatası veya eski sekme mevcut kayıtları bozmaz; in-memory çalışma indirilip kurtarılabilir. Import sonrası selection/history politikası açık ve testlidir.
-
-**Sıra:** B01 sözleşmesi D01 ile birlikte netleştirilebilir; B03 ve D02 bağımsızdır. **M2 + M3 + ilgili manuel kabul kapısı kapanmadan dış kullanıcı beta'sı tamamlandı denmez.**
-
-### M4 — Project'i sistem doğrulama alanı olarak güçlendir
-
-- [ ] **P01 · İsteğe bağlı gerçek ekran şablonları.** İlk iki görev: hesap/ayarlar formu ve kart/istatistik ağırlıklı basit dashboard. Mevcut registry ve System Parameters'ı kullan; otomatik demo proje oluşturma. Kullanıcının farklı sistemine bağlandığında şablon içeriği korunur ve gerçek komponentler yeni sistemi tüketir.
-- [ ] **P02 · Genişlik ve içerik stres testi.** Uzun Türkçe/İngilizce metin, hata mesajı, büyük tipografi, dar/geniş container ve iki tema ile doğrula. Taşma, kesilme ve geçersiz slotları yakala. Mevcut bağımsız frame kuralını koru; responsive ihtiyacı için önce tek frame içindeki intrinsic layout davranışını netleştir.
-- [ ] **P03 · Sistem değişikliğini gerçek ekranda kontrol et.** İlgili Project'e gidip aynı katmanı bulma/dönme akışını kolaylaştır. System değişimi sonrası iki bağlı projede etkiyi incele; içerik ve instance parametreleri değişmesin. Global token contrast sonucu yerel renk/opacity/nested surface için otomatik erişilebilirlik onayı sayılmaz.
-
-**Kabul:** kullanıcı kendi sistemini iki farklı ekranda dener; gerçek bir token/recipe sorunu bulup System'de düzeltir; projelerin içerik/layout'u bozulmadan sonucu görür ve M2 çıktısını kullanır. Yeni layout özelliği yalnız bu görevlerde eksikliği kanıtlanırsa eklenir.
-
-### M5 — System'e ait yeniden kullanılabilir komponent tanımları
-
-**Bu yeni bir ürün/veri modeli işidir; mevcut saved assets için otomatik migration değildir.**
-
-- [ ] **R01 · Definition/instance sözleşmesi.** System'e ait tanım kimliği, kök kompozisyon, izinli props/slotlar, varsayılan içerik, stil kapsamı ve referans kurallarını küçük bir örnek üzerinde tanımla. İlk örnek: Card + Text + Badge/Button'dan `AccountSummary` kompozisyonu. Raw JSX/callback, keyfi node kind veya built-in variant union'ına kontrolsüz string ekleme yok.
-- [ ] **R02 · Tanımla ve kullan.** System'de düzenlenen kompozisyon Project Assets'te eklenebilir olsun; örnekler tanımı izlesin, yalnız açılmış içerik/parametreleri değiştirsin. Project snapshot'ını tanıma dönüştürme ayrı açık işlem olsun; eski bağımsız kopyalar sessizce bağlanmasın.
-- [ ] **R03 · Değişiklik, koparma ve teslimat.** Tanım güncellemesi, silinen/yeniden adlandırılan slotlar, korunacak instance verileri, döngü/nesting limitleri ve detach davranışını test et. Renderer/export/backup/import/Undo aynı tanımı çözsün. Gerekirse yeni sürümlü tanım formatı getir; mevcut strict parser'a belirsiz kayıtlar sıkıştırma.
-
-**Kabul:** aynı tanım iki projede kullanılır; System'deki stil/kompozisyon düzenlemesi izin verilen şekilde ikisine ulaşır, her instance'ın başlık/metin değerleri korunur. Geçersiz yapısal değişiklik veri silmek yerine açıklanır/engellenir. Tanım ve instance'lar M2/M3 üzerinden bağımsız tüketicide ve temiz profilde korunur.
-
-**Başlama kapısı:** M2/M3 sözleşmeleri ve gerçek görevlerden ihtiyaç doğrulaması. İlk iterasyon tek kompozisyon, az sayıda açık prop/slot ile sınırlı; sınırsız component builder aynı PR'a alınmaz.
-
-### M6 — Kontrollü sistem sürümleri ve ihtiyaç odaklı kütüphane
-
-- [ ] **V01 · Draft/release sözleşmesi.** Schema sürümünden ayrı immutable sistem release'i tanımla. Mevcut projelerin canlı sistem davranışı varsayılan olarak korunur; release'e sabitleme açık seçimdir. Export manifesti kullanılan snapshot/release'i belirtebilir.
-- [ ] **V02 · Güncelleme önizlemesi.** Sabitlenmiş proje için token/recipe/component-definition farkı, örnek ekran etkisi, kabul ve geri dönüş akışı. Release değiştirmek instance içeriğini sessizce dönüştürmesin. Kırıcı slot/prop değişimleri için migration veya açık ret gerekir.
-- [ ] **L01 · Kanıta göre yeni komponentler.** Ön adaylar Textarea, Select ve Radio; sonra gerçek görev gerektirirse Dialog, Tabs ve Tooltip. Sıra bir taahhüt değildir. Her komponent aynı API, state/tema, inspector, token consumer, contrast, source export ve test sözleşmesini tamamlamadan teslim sayılmaz.
-
-**Kabul:** bir proje sabit sürümde kalırken diğeri canlı taslağı izler; güncelleme açık, geri alınabilir ve export'ta yeniden üretilebilir. Komponent sayısı artırmak mevcut token/çıktı doğruluğunun önüne geçmez.
-
-## 5. İlk uygulama partisi ve çalışma sınırı
-
-İlk partinin S01–S03 ve D01/D02 dilimleri uygulanmıştır; yeni kullanıcı kararıyla **C01–C03 CLI + statik registry** ana yol oldu. Sonraki kabul kapısı **C04 public 0.2.0 yayın hazırlığı/temiz kurulum**; npm 0.2.0 yayını artık doğrulandı; production registry deploy/retention ve temiz host kurulum kabulü açık. D03 seçili frame kaynak paketi bekletildi. M1 manuel kabul kapıları hâlâ açıktır. Gerçek kullanıcı kabulü ayrıca tamamlanmalıdır. İlk partinin referans sırası:
-
-1. S01 için Card title / Input error / Button frame görev akışını ve kapsam-kaynak metadata sözleşmesini yaz.
-2. Inspector'da kısa kapsam + isteğe bağlı kaynak/etki detayını uygula; canvas ve storage modelini yeniden tasarlama.
-3. Gerçek değer, reset, no-op, Light/Dark ve doğru recipe/katman izolasyonu için regresyon ekle; manuel görev kontrolü yap.
-4. Ardından S02/S03; bağımsız olarak D01'in dosya/manifest/kurulum sözleşmesini hazırla.
-5. D02–D04 ve B01–B03 ile ilk taşınabilir, güvenle kullanılabilir teslimatı kapat. Yeni master-component modeli bu teslimatın önüne geçmesin.
-
-M1–M3'te mevcut yedi komponent yeterli. Genel refactor, tüm Base UI kataloğunu ekleme veya yeniden canvas tasarlama bu partinin kapsamına dahil değil. Süre tahmini, ilk dilimin kapsamı ve ekip kapasitesi netleşince yapılır.
-
-## 6. Karar kapıları — gerektiği yerde netleştir
-
-| Karar | Önerilen varsayılan | Karar gereken iş |
-| --- | --- | --- |
-| İlk kullanıcı/görev | React developer/design engineer; form + basit dashboard | S01 görev kabulü ve P01 |
-| Kod teslim şekli | Kullanıcı kararı: CLI + statik registry; ZIP manual fallback. CSS Modules + scoped theme, host davranışı geliştiriciye ait | [CLI sözleşmesi](cli-registry.md); C04 lisans/npm/production registry ve immutable release retention kapısı |
-| Import çakışması | Yeni proje ve yeni sistem; mevcut sisteme bağlamak açık işlem | B01/B02 |
-| Sistem silme | Bağlı proje/history/okunamayan referans varken engelle; cascade-delete yok | B03 |
-| Kullanıcı komponenti | System-owned kompozisyon + sınırlı props/slotlar; eski saved asset bağımsız kalır | R01 |
-| Sistem sürümüne bağlanma | Mevcut live davranış değişmez; pin opt-in | V01 |
-| Çoklu-frame responsive export | Şimdilik yalnız seçili frame; otomatik ağaç birleştirme yok | Ayrı ihtiyaç/teknik karar |
-| Backend ve dağıtım | Local-first/statik kalır; cloud, sağlayıcı, lisans, hizmet maliyeti ayrıca değerlendirilir | Ayrı onay; M1–M4'ü bloklamaz |
-
-Bu öneriler uygulama yetkisi veya kesinleşmiş kullanıcı tercihi gibi sunulmaz. İlgili dilim başlamadan yalnız gerçekten belirsiz/riskli karar sorulur; onaylı Project/System ayrımı ve bağımsız frame sözleşmesi yeniden tartışmaya açılmaz.
-
-## 7. Her dilimin kalite kapısı
-
-- Var olan kayıtlar ve tarihi kesirli değerler korunur; parse/export/reset/history tutarlıdır; keyfi CSS/JS kabul edilmez.
-- Focus göstergesi korunur. Keyboard alternatifleri, seçim/focus geri dönüşü, native input undo/composition ve no-op writes test edilir.
-- System değişikliği yalnız doğru scope'u etkiler; Project kaynak çözümü her zaman bağlı systemId'den gelir.
-- Render/TSX/CSS gerçek consumer'la karşılaştırılır. Test sonucu, SSR markup eşitliği ve screenshot yakalama tam görsel veya WCAG kabulü diye sunulmaz.
-- [Erişilebilirlik checklist'i](accessibility-checklist.md) ve yeni System/Project görevleri birlikte değerlendirilir: VoiceOver, Safari/Chrome, native %200 zoom, forced-colors ve uzun metin. Manuel kabul ürünün sonuna ertelenmez.
-- 180 Text örneği ve üç dolu Project frame'iyle interaction profili al; inspector ölçümleri kamera hareketi başına tüm board'u gereksiz ölçmesin, pointermove storage/parse çalıştırmasın. Ölçmeden 60fps iddiası yok.
-
-### Son bilinen kanıt
-
-**Manuel kabul hazırlığı · 2026-10-16:** `studio-acceptance.md` eklendi: gerçek Figma kullanıcısına yönlendirmeden verilecek altı System/Project/CLI görevi, scope doğrulaması, ayrı keyboard/VoiceOver/native zoom/mobile kontrolleri, environment/build kaydı ve blocker/major/minor triage. Erişilebilirlik checklist'i güncel System/Project kapsamına bağlandı; tarihi specimen kanıtı ayrı işaretlendi. Bu dokümantasyon çalışması gerçek kullanıcı/VoiceOver oturumu yerine geçmez; hiçbir manuel sonuç pass olarak işaretlenmedi.
-
-**Workspace cleanup turu · 2026-10-15:** Başlangıçta eski 240s timeout birebir tekrarlanmadı; ölçüm Chrome ana prosesinin/CDP'nin ~32s'de kapanmasına rağmen stderr pipe'ının ~46s'ye kadar Node'u açık tuttuğunu gösterdi. Workspace artık Browser.close ister; POSIX'te yalnız kendisinin başlattığı izole Chrome grubuna bounded TERM/KILL uygular, ana proses çıkışını bekler ve detached helper'ın açık tutabileceği kendi stderr okuma ucunu kapatır. Kullanıcının diğer Chrome süreçleri/grupları sinyallenmez. Browser cleanup hata verse bile server/profil temizliği finally ile denenir. Beş proses regresyon testi (TERM-resistant child, detached inherited writer, launch failure, idempotence ve sahiplik sınırı) geçti. Düzeltme sonrası üç tam çalıştırmada 23/23 kontrol ve parent tarafından ayrı gözlenen exit/stdio close ~31s, exit=0 oldu; cleanup sonrası açık browser pipe'ı yok. Eksik Chrome executable hata yolu 158ms'de exit=1 + cleanup ile bitti. Lint/diff geçti; bu turda başlangıç production build alındı, uygulama/CLI runtime kodu değişmedi. Workspace process-exit alt kapısı bu kanıtla kapandı; manuel erişilebilirlik kabulü açık.
-
-**Temiz consumer turu · 2026-10-15:** Yeni opt-in `check:cli:clean`, public 0.2.1 CLI + production registry ile repo dışındaki boş host/cache içinde npm install yaptı; Next olmadan React/Vite build/type-check/browser ve ardından Next 16.3.6 install/static build/prerender/hydration/browser geçti. Consumer node_modules'u symlink değil, kendi tsc/Next/Vite executable'ları kullanıldı; lifecycle scriptleri çalıştırılmadı, geçici host/cache temizlendi. Light/Dark, Card title/edge/corner kesirleri, Input error, native choice ve 390px reflow doğrulandı. Vite `use client` ignore uyarıları verdi; runtime hata yok. Refactor sonrası mevcut hızlı `check:cli` de geçti. Clean-install alt kapısı kapandı; C04/D04 manuel kabul, frame teslimat kapsamı ve workspace exit timeout'u açık.
-
-**0.2.1 yayın/deploy doğrulaması · 2026-10-15:** Kullanıcı yayını ve deployment'ı tamamladı. Npm 0.2.1/MIT/latest ve incelenen tarball SHA-512 eşitliği, public npm exec version/help doğrulandı. Production index/release 200; ilk public release 210.376 byte ve tracked arşivle birebir aynı. Public npm 0.2.1 registry flag'siz init, yedi komponent/layout add ve idempotence geçti. Public CLI standalone React/Next build + browser consumer geçti; bu consumer yerel registry/kurulu node_modules kullanır. Develop/clipboard komutları 0.2.1'e güncellendi; bu son UI değişikliği yeni deploy ister. Farklı source release'ler arasında canlı retention henüz gözlemlenmedi (integration testi var). C04 clean dependency install, manuel kabul ve workspace exit timeout'u açık. Yayın-sonrası UI değişikliğinde lint, production build, TypeScript, diff kontrolü ve altı CLI/source browser senaryo grubu geçti.
-
-**Retention / 0.2.1 patch turu · 2026-10-15:** İlk canlı release'in exact 210.376 byte snapshot'ı `registry/releases/` ve envantere alındı. Temiz build geçmiş release'leri latest index'ten önce kopyalar; snapshot hash/size/source/symlink kontrolü ve bozuk arşivde fail vardır. 26 CLI/arşiv testi, 582 app unit/SSR/source testi, standalone React/Next/browser consumer, gerçek npm 0.2.0 → yerel 0.2.1 clean-output/pin/local-edit/fractional-theme regresyonu geçti. Son production build, registry freshness, TypeScript ve lint geçti; `out` içindeki eski release arşivle byte-byte aynı. 0.2.1 production registry default'u, entry-relative import ve package-manager önerileri ekler; config/resolver değişmez. İncelenen tarball 25 dosya / 40.627 byte; local tarball npm exec version/help geçti. Yayın isteği EOTP ile durdu; 0.2.1 yayımlandı denmez, Develop 0.2.0'da kalır. Arşiv henüz commit/deploy edilmedi. Clean dependency install, manuel kabul ve önceki workspace process-exit timeout'u açık.
-
-**Yayın sonrası doğrulama · 2026-10-15:** `bambiui@0.2.0` npm'de MIT ve latest olarak doğrulandı; SHA-512 incelenen tarball ile aynı. Public npm'den --version/--help ve gerçek init/add/theme + standalone React/Next build/hydration/browser geçti. Develop public npx komutlarına geçirildi. Registry geçici yerel host'tu ve React/Base UI node_modules'u yeniden kullanıldı; production deploy/retention ve clean install/manual kabul kapısı kapanmadı. 0.2.0 help'indeki eski preview cümlesi sonraki patch'te düzeltilecek; yayımlanmış CLI kaynakları bu turda değiştirilmedi.
-
-**MIT/yayın turu · 2026-10-15:** Kullanıcı MIT'yi onayladı. CLI ve explicit ortak-source allowlist'i MIT, diğer Studio dosyaları private; standart LICENSE/NOTICE dağıtılır, kullanıcı verisi yeniden lisanslanmaz. Kaynak grafiği license-scope gate'i ve MIT registry doğrulaması eklendi. Npm hesabı package maintainer'ıyla eşleşti; 0.2.0 tarball'ı 24 dosya / 39.379 byte olarak incelendi. Publish denemesi EOTP/2FA ile durdu; başarılı yayın/deploy iddiası yok. OTP/token yalnız kullanıcının kendi npm akışında işlenir.
-
-**Güncel CLI turu:** 581 unit/SSR/source + 16 CLI testi; actual npm pack/local offline npm exec; CLI-installed React/Next build + Chromium; production build, lint/TypeScript/catalog+registry freshness; 97 System ve altı CLI/source browser senaryo grubu geçti. Npm target 0.2.0 hazır fakat publish/deploy yapılmadı; temiz dependency install ve license/production registry retention kapısı açık. Project workspace bu turda yeniden çalıştırılmadı; önceki D02 kapanış timeout'u çözülmüş sayılmaz. Ayrıntı [CLI kanıt kaydı](cli-registry.md).
-
-S03'ün son uygulama turunda 566 unit/SSR/source testi, 97 System ve 23 workspace smoke kontrolü, production build, lint, TypeScript ve diff kontrolü geçti. Workspace son çalıştırmaları temiz exit ile tamamlandı; S01'deki terminal kapanış timeout'u bu turda tekrarlanmadı. Desktop/mobil yardım screenshot'ları incelendi. Ayrı composer drag/source-consumer scriptleri bu turda yeniden çalıştırılmadı; onların önceki sonuçları yeni kanıt değildir. Manuel VoiceOver/native zoom/cross-browser kabulü hâlâ açık.
-
-D01 dokümantasyon turundaki 11 hedefli source/bundle testi ve eski page-consumer sonucu tarihsel kanıttır. **En güncel D02 turunda** 581 unit/SSR/source testi, production build, TypeScript/lint/catalog freshness, 97 System smoke, yeni System consumer React/Next build + browser izolasyon ve dört source-download browser senaryo grubu temiz exit ile geçti. Son workspace çalıştırması 23 senaryo/cleanup başarısını logladı ama terminal kapanışında 240 saniyelik timeout aldı; temiz workspace exit kabulü açık. System consumer kurulu bağımlılıkları kullanır; D04 fresh install/full parity değildir. Mobil download screenshot'ı incelendi. D03, public lisans ve manuel kabul kapıları açık.
-
-Temel doğrulama komutları:
+Her dilim: hedefli unit/SSR + davranış browser testi, lint/TypeScript, gerekli production static build ve diff kontrolü. Public token/API değişirse AGENTS'taki docs/specimen/audit/source güncellemeleri aynı dilimde. UI-only dilimde dağıtılan component kaynakları ve registry hash'i gereksiz değişmez.
 
 ```sh
 node --test app/studio/*.test.mjs app/studio/composer/*.test.mjs app/studio/page-document/*.test.mjs app/examples/page-editor/*.test.mjs
-npm run lint
-npx tsc --noEmit --incremental false
-npm run build
-node scripts/studio-smoke.mjs
+npm run test:cli
 npm run test:browser-process
-node scripts/studio-workspace-smoke.mjs
-node scripts/studio-composer-smoke.mjs
-node scripts/check-page-source.mjs --browser
+npm run lint
+npm run build
+npx tsc --noEmit --incremental false
 node scripts/generate-source-catalog.mjs --check
 node scripts/generate-registry.mjs --check
-npm run test:cli
+# Run after the stable main production build:
+npm run test:system-only
+node scripts/studio-smoke.mjs
+node scripts/studio-source-smoke.mjs
 npm run check:cli
+# Retention regression includes a published npm client; requires network:
 npm run check:registry
-node scripts/check-system-source.mjs --browser
-node scripts/studio-source-smoke.mjs --screenshots
-git --no-pager diff --check
+# Explicit network acceptance; published baseline, not unpublished local edits:
+npm run check:cli:clean
 ```
 
-Node 22.15+ gerekir. Browser kontrolleri taze `out/` ister. Kaynak fixture oluşturan unit/consumer testlerini ana production build ile aynı anda çalıştırma; geçici dosyalar `.next` altında olabilir. Kullanıcı görevi ve kabul kriteri geçmeden yalnız test sayısına bakıp bir işi kapatma.
+SF1 System-only smoke eklendi ve mevcut System/source smoke'un route varsayımları güncellendi. Yukarıdaki komut gerçek `test:system-only` script'idir; browser check kendi build başlatmaz. Workspace/composer browser scriptleri eski public route'a göre çalıştığı için varsayılan yeni UI gate'i olamaz. D eski senaryoları `System-only'a taşındı / legacy model testiyle korunuyor / authoring askıda` olarak tek tek eşler; askıya alınmış browser senaryosunu geçti saymaz. Internal test fixture gerekirse static public export'a dahil edilmez; query/env bayrağıyla public Project açma yolu yok. Eski model/unit/SSR testleri tutulur. Başarısız testi sırf yeşile çevirmek için silme veya geniş skip ekleme yok.
 
-## 8. Şimdilik yapmayacaklarımız
+Done: değişiklik özeti, değişen dosyalar, test komutları/sonuçları, manuel kanıt veya açık eksik, data/compatibility etkisi ve sonraki bağımlılık handoff'ta yazılı. Publish, commit, deploy ve gerçek Figma oturumu yapılmadıysa açıkça belirtilir.
 
-Backend/auth, hesap zorunluluğu, Supabase entegrasyonu, AI/MCP, realtime collaboration/CRDT, yorumlar, sayfa hosting/publishing, billing, tasarım plugin ekosistemi, vektör çizim ve kapsamlı prototip animasyonları. Bunlar teknik olarak yasak değil; mevcut developer teslimat döngüsünü tamamlamadan öncelik değiller. Sağlayıcı, ücretlendirme veya open-source lisansı bu planla seçilmiş sayılmaz.
+## 8. Güncel uygulama kanıtı ve açık kapılar
+
+**Size-scope amendment · 2026-10-16:** UI-only `recipe-edit-scope.ts` mevcut exact kayıtlar üzerinde color/exact ve non-color/size-group yazım/reset kapsamını uygular. Tüm yedi komponent ve her consumed field/recipe/part/target için üyelik testi; Text variant koruması ve conditional error kapsamı mevcut. Inspector seçili örneğin gerçek değerini ve ayrı write scope'u gösterir. Seçili kayıtta override yokken yalnız peer override'ı için de reset/clear çalışır; inspection/import tarihi farkları normalize etmez. Tek callback/Undo grubu kullanılır.
+
+- 637 app unit/SSR/source + 26 CLI/arşiv testi; build/TypeScript/lint ve catalog/registry freshness geçti. Yeni size token/schema/pure resolver/public API değişmedi; registry source release aynı kaldı.
+- 99 System browser kontrolü: Button outline.sm non-color alanları altı small variant'ta paint+stored eşitliği, md/lg ve diğer parts korunması; Text paragraph.sm fontlarının altı tone'a yayılması, diğer tipografik variant/size'ların korunması; exact/theme renkleri, scoped reset, tek-adım Undo/Redo. Animasyonlu Button color paint assertion'ı transition sonrasını bounded wait ile doğrular.
+- 17 System-only ve 7 source/CLI browser senaryo grubu geçti. Card md grubunda üç surface variant güncellenir; divergent eski kayıtlar yalnız inspection'da aynı kalır ve Undo ile aynen geri gelir. Preview export izolasyonu korunur.
+- Yeni davranış commit/deploy edilmedi; manuel task/VoiceOver/native zoom kabulü ve Figma authoring açık. Eski kapsam baseline'ı aşağıdadır.
+
+### System-only ilk dilim baseline'ı
+
+**Kanıt sınırı:** Aşağıdaki kayıtların tarih/sayı/hash kimlikleri korunmuştur; superseding kullanıcı amendment'ından önceki uygulamayı anlatırlar. Yeni fan-out/reset/scope davranışı için henüz yeni doğrulama iddiası yoktur.
+
+**System-only ilk dilim · 2026-10-16:** A/B/C/D/E ayrılmış alanlarda çalıştı; koordinatör SF0'ı QA review sonrası dondurdu ve entegrasyonu doğruladı. SF1 ve SF2 uygulaması tamam; SF3 browser performans profiling ve SF4 tüm kombinasyonlarda insan kabulü açık. Generic inspector yedi komponenti destekler; bu, tüm 294 kombinasyonda insan görsel kabulü yapıldığı anlamına gelmez.
+
+- 615 app unit/SSR/source testi, 26 CLI/arşiv testi ve 5 browser-process regresyonu geçti; eski composer/page-document model testleri korundu.
+- Production static build, TypeScript, lint ve source-catalog/registry freshness geçti. Registry release hâlâ `f8c9659b67ea08923f7300577db326c63baa61cad3b04e9576ae0b10c945a709`; dağıtılan component/pure resolver kodu değişmedi.
+- 17 yeni System-only browser senaryosu: route/tek shell/404, legacy bytes/recovery/privacy/error, fail-closed refs, unrelated-system deletion, Cancel/Escape/focus, double-accept, gerçek ikinci-sekme yazımı açık delete dialog'unu bloklama; Card exact/filter/pointer-draft/session-preview CSS/JSON izolasyonu ve 390px.
+- Desktop Card.Title inspector, 390px overlay inspector ve 390px recovery ekranı screenshot'ları `.next/color-review/system-first-*.png` altında yakalanıp görsel olarak incelendi. Bu, piksel-regresyonu veya gerçek cihaz/native zoom kabulü değildir.
+- 97 System smoke kontrolü ve 7 source/CLI browser senaryo grubu geçti. ZIP'in tüm üyeleri session Preview öncesi/sonrası aynı saved snapshot'la eşleşti. Native delete confirmation yeni controlled Base UI dialog'una taşındı; fixed delay ile hatayı maskeleme yapılmadı.
+- Yerel CLI React/Next/browser tüketicisi, published 0.2.0 → local 0.2.1 archived-pin retention regresyonu ve tekrar fresh npm React/Vite → Next published 0.2.1 consumer geçti. Sonuncusu yayımlanmış baseline'ı test eder, private UI deployment kanıtı değildir.
+- Legacy workspace/composer/page-editor authoring browser scriptleri açık dormant mesajıyla normal çağrıda exit=2, help'te exit=0; bunlar geçti sayılmadı. Yeni UI gate `npm run test:system-only`.
+- System stale-tab overwrite/quota/retry sağlamlaştırması ve gerçek kullanıcı/VoiceOver/native zoom/IME kabulü açık. Figma dokümanı [figma-kit-contract.md](figma-kit-contract.md); gerçek kit ve authoring erişimi yok. Commit/publish/deploy yapılmadı.
+
+### Önceki yayın baseline'ı
+
+- npm 0.2.1/MIT/latest ve production registry doğrulandı; Develop deploy'u 0.2.1 komutlarını sunuyor.
+- Fresh npm consumer: React/Vite ve ardından Next build/browser geçti; workspace cleanup sonrası üç tam koşu 23/23 + temiz exit, beş proses regresyonu geçti.
+- Önceki yayın kanıtı tek başına System-only kabulü değildir; güncel uygulama sonucu yukarıda ayrı kaydedildi. [Aktif kabul protokolü](studio-acceptance.md) hedef System-only görevlerini içerir; SF0 sonrası D gerçek aday UI ile eşler. [Eski Project protokolü](studio-acceptance-history-2026-10-16.md) arşivdir, yapılmış kullanıcı testi değildir; yeni kabul kapısı olarak kullanılmaz.
+- Manuel VoiceOver/native zoom/gerçek kullanıcı kabulü yapılmış değildir. Önceki detaylar [tarihsel roadmap](roadmap-history-2026-10-16.md) ve [CLI kayıtları](cli-registry.md).

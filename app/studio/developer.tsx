@@ -373,12 +373,12 @@ function InsertionParameters({ selected, system }: { selected: ComponentId; syst
   const resolved = resolveComponentDefaults(selected, system.componentDefaults);
   const authored = system.componentDefaults?.[selected];
   return <details className={styles.reference} data-insertion-parameters-reference>
-    <summary>System Parameters — new insertions only</summary>
-    <p>These are the current insertion parameters, not React API defaults or shared styles. They seed new built-in components only. Existing instances and saved component snapshots keep their content and props; Project Parameters edits the selected instance.</p>
-    {selected === "card" && <p>A new Card includes Header with Title and Description, Content with Text, and Footer with Button. Slot copy comes from Card parameters; the Text and Button use their own insertion parameters. Layout primitives remain empty.</p>}
+    <summary>Saved sample defaults — export reference</summary>
+    <p>These are saved System sample defaults, not React API defaults or shared styles. The matrix uses these unless you change temporary Preview options. Preview options are session-only: they never enter System CSS/JSON, the manual ZIP or CLI output. Project editing and insertion-default authoring are paused; existing saved values are preserved.</p>
+    {selected === "card" && <p>The populated Card ZIP example includes Header with Title and Description, Content with Text, and Footer with Button. Slot copy comes from saved Card defaults; nested Text and Button use their own saved defaults. Layout primitives remain empty.</p>}
     <ScrollRegion label={`${reference[selected].name} insertion parameters`}>
       <table className={styles.table}>
-        <caption>{reference[selected].name} new-instance parameters</caption>
+        <caption>{reference[selected].name} saved sample defaults</caption>
         <thead><tr><th scope="col">Parameter</th><th scope="col">Source</th><th scope="col">Value</th></tr></thead>
         <tbody>{componentDefaultFields(selected).map(({ source, key, label }) => {
           const value = source === "text" ? resolved.text : source === "props" ? resolved.props[key] : resolved.slots?.[key as ComponentDefaultSlot];
@@ -387,7 +387,7 @@ function InsertionParameters({ selected, system }: { selected: ComponentId; syst
         })}</tbody>
       </table>
     </ScrollRegion>
-    <p>Field names are generated per insertion, never shared parameters. Optional omitted props retain their component behavior. Changing a parameter does not synchronize existing copies.</p>
+    <p>The manual ZIP populated example uses this saved snapshot. The CLI copies component sources with their unchanged React API defaults; it does not rewrite those defaults. Optional omitted props retain their component behavior.</p>
   </details>;
 }
 
@@ -435,9 +435,9 @@ function RecipeStyles({ selected, theme, mode, variables }: {
       .map((field) => ({ recipe, part, target, field, name: componentRecipeVariable(selected, recipe.key, part.key, field.key) })))));
   return <details className={styles.reference} data-component-recipes-reference>
     <summary>Exact component recipes — authored fields</summary>
-    <p>System Styles edits a matrix combination and layer, not insertion Parameters. This component has {options.length} exact recipes; the full catalog has 294. A recipe applies to every linked instance with matching variant/state, tone where supported, and size. Other combinations and parts are unchanged. Parameters only seed new insertions; they do not select the matrix edit scope or rewrite existing instances.</p>
+    <p>System Styles edits a matrix combination and layer, not temporary Preview content. This component has {options.length} exact recipes; the full catalog has 294. Each stored recipe applies to matching variant/state, tone where supported, and size. Studio writes non-color edits to every supported combination at the selected size and layer; Text retains its typographic variant and shares across tones. Colors stay on the selected combination and theme. Other sizes and layers are unchanged. Existing differences are preserved until the field is edited or reset. Preview options do not select the matrix edit scope, rewrite saved defaults or change exports.</p>
     <p>Frame edits geometry, spacing, fill, decorative border and effects; Text edits typography and ink. They share a part record but never an editable field. Only authored, CSS-consumed fields in the {mode} theme are listed below, not unset fields or generated box/state helpers.</p>
-    <p>Per property: local <code>appearance</code> / field <code>parts</code> → native <code>style</code> → exact recipe → legacy shared part style → component variant/state, theme tokens and parent inheritance. Reset removes the recipe key to restore that fallback, not a snapshot. A transparent recipe surface reveals its parent rather than the older fill. No recipe can replace the global accessible focus outline.</p>
+    <p>Per property: local <code>appearance</code> / field <code>parts</code> → native <code>style</code> → exact recipe → legacy shared part style → component variant/state, theme tokens and parent inheritance. Studio reset removes each field in its editing group: same-size layer non-colors across supported combinations, or the selected combination color. The exact declarations below each restore their own fallback, not a snapshot. A transparent recipe surface reveals its parent rather than the older fill. No recipe can replace the global accessible focus outline.</p>
     {(selected === "button" || selected === "badge") && <p>The <code>root</code> frame paints the surface; <code>text</code> styles the inner label, not root icons or a Badge dot. Unset label typography inherits the root, including legacy shared root styles. Local root typography still wins on the label. A surrounding Card Content/Footer recipe can override label typography before this component’s own recipe.</p>}
     {selected === "button" && <p>Recipe fill is the resting surface. Hover and active retain variant feedback fills; recipe label ink and decorative borders persist. Local inline paint keeps its existing precedence.</p>}
     {selected === "input" && <p>Keys are <code>default.size</code>, <code>invalid.size</code> and <code>readonly.size</code>; readonly wins over invalid. The control is the Input shell, whose typography reaches the native input. Placeholder ink stays global mutedForeground. Default hover uses the hover state fill and border color, while recipe ink and border width persist; invalid/readonly select their own recipes. Error fields are available only in invalid and readonly recipes, never default.</p>}
@@ -501,7 +501,7 @@ export function DeveloperView({ selected, system, mode, cssOutput, ready }: Deve
           <ReactUsage key={selected} selected={selected} />
           <details className={styles.reference}>
             <summary>{copy.propsAndDefaults}</summary>
-            <p>{copy.propsDescription} These are React API defaults, separate from System Parameters for new insertions.</p>
+            <p>{copy.propsDescription} These are React API defaults, separate from saved System sample defaults and temporary Preview options.</p>
             <ScrollRegion label={copy.propsRegion(component.name)}>
               <table className={styles.table}>
                 <caption>{component.name} {copy.propReference}</caption>

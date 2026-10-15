@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Badge, Button, Card, Checkbox, Input, Switch, Text } from "./components";
 import { Icon } from "./icons";
 import { resolveComponentDefaults, type ComponentDefaults } from "./component-defaults";
@@ -7,6 +7,10 @@ import {
   type ComponentRecipeOption, type ComponentRecipeSelection, type SharedComponentId,
 } from "./component-recipes";
 import { hasInteractionPreview, InteractionPreview } from "./interaction-preview";
+import {
+  changeMatrixFilters, createMatrixState, disableMatrixBodyTabStops, emptyMatrixFilters,
+  matchesMatrixFilters, matrixSelectionKey, reconcileMatrixSelection, type MatrixFilters,
+} from "./component-matrix-state";
 import styles from "./component-matrix.module.css";
 
 const title = (value: string) => value.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, letter => letter.toUpperCase());
@@ -47,26 +51,47 @@ function rootSelection(component: SharedComponentId, recipe: string): ComponentR
   return { component, recipe, part: "root", target: componentRecipeParts(component)[0].target };
 }
 
-export function ComponentMatrix({ component, defaults, selection, onSelect }: {
+export function ComponentMatrix({ component, defaults, selection: incomingSelection, onSelect, onClearSelection }: {
   component: SharedComponentId; defaults?: ComponentDefaults; selection: ComponentRecipeSelection | null;
   onSelect: (selection: ComponentRecipeSelection) => void;
+  onClearSelection?: () => void;
 }) {
   const root = useRef<HTMLDivElement>(null);
+  const [storedState, setState] = useState(() => createMatrixState(component, incomingSelection));
+  // Adjust local state before children render, avoiding an effect that could race a filter's clear callback.
+  const state = reconcileMatrixSelection(storedState, component, incomingSelection);
+  if (state !== storedState) setState(state);
+  const selection = state.dismissed && state.dismissed === matrixSelectionKey(incomingSelection) ? null : incomingSelection;
   const options = componentRecipeOptions(component);
-  const rows = useMemo(() => options.filter(option => option.size === "sm").map(option => ({
-    key: [option.variant, option.tone].filter(Boolean).join("."),
-    label: [title(option.variant), option.tone && title(option.tone)].filter(Boolean).join(" / "),
-    options: options.filter(candidate => candidate.variant === option.variant && candidate.tone === option.tone),
-  })), [options]);
+  const visible = useMemo(() => options.filter(option => matchesMatrixFilters(option, state.filters)), [options, state.filters]);
+  const axes = useMemo(() => ({
+    variant: [...new Set(options.map(option => option.variant))],
+    tone: [...new Set(options.flatMap(option => option.tone ? [option.tone] : []))],
+    size: [...new Set(options.map(option => option.size))],
+  }), [options]);
+  const rows = useMemo(() => {
+    const groups = new Map<string, { key: string; label: string; options: ComponentRecipeOption[] }>();
+    for (const option of visible) {
+      const key = [option.variant, option.tone].filter(Boolean).join(".");
+      if (!groups.has(key)) groups.set(key, { key, label: [title(option.variant), option.tone && title(option.tone)].filter(Boolean).join(" / "), options: [] });
+      groups.get(key)!.options.push(option);
+    }
+    return [...groups.values()];
+  }, [visible]);
+  const changeFilters = (filters: MatrixFilters) => {
+    const next = changeMatrixFilters(state, filters, incomingSelection);
+    setState(next.state);
+    // Event-time only: no duplicate clear in Strict Mode, and no implicit replacement target.
+    if (next.clear) onClearSelection?.();
+  };
+  const stateAxis = ["input", "switch", "checkbox"].includes(component);
+  const activeFilters = Object.values(state.filters).some(Boolean);
 
-  useEffect(() => {
-    const region = root.current;
-    if (!region) return;
-    // Examples are design hit targets. Keyboard users select their frame button, then a layer in the inspector.
-    for (const element of region.querySelectorAll<HTMLElement>("[data-recipe-body] :is(a, button, input, select, textarea, [tabindex])")) element.tabIndex = -1;
-  }, [component, defaults]);
+  useLayoutEffect(() => {
+    for (const body of root.current?.querySelectorAll<HTMLElement>("[data-recipe-body]") ?? []) disableMatrixBodyTabStops(body);
+  }, [component, defaults, visible, selection]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const region = root.current;
     if (!region || selection?.component !== component) return;
     const example = Array.from(region.querySelectorAll<HTMLElement>("[data-recipe-example]")).find(element => element.dataset.recipeExample === selection.recipe);
@@ -78,23 +103,39 @@ export function ComponentMatrix({ component, defaults, selection, onSelect }: {
     }
     element?.setAttribute("data-system-selected-part", selection.target);
     return () => element?.removeAttribute("data-system-selected-part");
-  }, [component, selection, defaults]);
+  }, [component, selection, defaults, visible]);
 
-  return <div ref={root} className={styles.matrix} data-component-matrix={component}>
+  return <div ref={root} className={styles.matrix} data-component-matrix={component} style={{ "--matrix-size-count": state.filters.size ? 1 : axes.size.length } as CSSProperties}>
     <header className={styles.heading}>
-      <div><h2>{title(component)}</h2><p>Select a frame or a text layer to edit that exact combination.</p></div>
-      <span>{options.length} combinations</span>
+      <div><h2>{title(component)}</h2><p>Select an example, then choose its layer in the inspector. Design samples are read-only.</p></div>
+      <span role="status" aria-live="polite">{activeFilters ? `${visible.length} of ${options.length}` : options.length} combinations</span>
     </header>
-    <div className={styles.columns} aria-hidden="true"><span>Variant{component === "text" || component === "badge" ? " / tone" : " / state"}</span>{Object.values(sizes).map(size => <span key={size}>{size}</span>)}</div>
+    <fieldset className={styles.filters}>
+      <legend>Filter combinations <span>(optional)</span></legend>
+      {(["variant", "tone", "size"] as const).filter(axis => axes[axis].length > 1).map(axis => <label key={axis}>
+        <span>{axis === "variant" ? stateAxis ? "State" : "Variant" : title(axis)}</span>
+        <select aria-label={`Filter ${axis === "variant" && stateAxis ? "state" : axis}`} value={state.filters[axis]} data-system-context-change="matrix-filter"
+          onChange={event => changeFilters({ ...state.filters, [axis]: event.target.value })}>
+          <option value="">All {axis === "variant" && stateAxis ? "states" : `${axis}s`}</option>
+          {axes[axis].map(value => <option key={value} value={value}>{axis === "size" ? sizes[value as keyof typeof sizes] : title(value)}</option>)}
+        </select>
+      </label>)}
+      <button type="button" disabled={!activeFilters} data-system-context-change="matrix-filter" onClick={() => changeFilters(emptyMatrixFilters())}>Clear filters</button>
+    </fieldset>
+    <p className={styles.context}>{selection?.component === component
+      ? `Selected: ${options.find(option => option.key === selection.recipe)?.label ?? selection.recipe} / ${componentRecipeParts(component).find(part => part.key === selection.part)?.label ?? title(selection.part)} / ${title(selection.target)}`
+      : "No layer selected. Use an example selector, then the inspector layer controls."}</p>
+    {!visible.length && <div className={styles.empty} role="status"><h3>No combinations match these filters</h3><p>Clear filters to show all {options.length} combinations. No new layer is selected automatically.</p><button type="button" data-system-context-change="matrix-filter" onClick={() => changeFilters(emptyMatrixFilters())}>Clear filters</button></div>}
+    <div className={styles.columns} aria-hidden="true"><span>{stateAxis ? "State" : "Variant"}{axes.tone.length ? " / tone" : ""}</span>{axes.size.filter(size => !state.filters.size || size === state.filters.size).map(size => <span key={size}>{sizes[size]}</span>)}</div>
     <div className={styles.rows}>
       {rows.map(row => <section key={row.key} className={styles.row} aria-label={`${title(component)} ${row.label}`}>
         <h3>{row.label}</h3>
         {row.options.map(option => {
           const selected = selection?.component === component && selection.recipe === option.key;
           return <div className={styles.example} key={option.key} data-recipe-example={option.key} data-selected={selected || undefined}>
-            <button type="button" className={styles.exampleLabel} aria-label={`Select ${title(component)} ${row.label} ${sizes[option.size]} ${component === "text" ? "text" : "frame"}`} aria-pressed={selected && selection.part === "root"}
+            <button type="button" className={styles.exampleLabel} data-system-context-change="matrix-selection" aria-label={`Select ${title(component)} ${row.label} ${sizes[option.size]} ${component === "text" ? "text" : "frame"}`} aria-pressed={selected && selection.part === "root"}
               onClick={() => onSelect(rootSelection(component, option.key))}>{sizes[option.size]}<span aria-hidden="true">↗</span></button>
-            <div className={styles.body} data-recipe-body aria-hidden="true"
+            <div className={styles.body} data-recipe-body aria-hidden="true" data-system-context-change="matrix-selection" ref={disableMatrixBodyTabStops}
               onPointerDownCapture={event => { if (event.button === 0) event.preventDefault(); }}
               onClickCapture={event => {
                 event.preventDefault(); event.stopPropagation();

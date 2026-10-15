@@ -56,7 +56,7 @@ export function styleSourceInfo(theme: ThemeTokens, scope: StyleSourceScope, fie
   return {
     current: overridden ? {
       kind: exact ? "recipe" : "shared", label: exact ? "This combination" : `Shared ${label(scope.part as ComponentStylePart)}`, variable: ownVariable(field.key),
-      description: exact ? "Authored for this exact combination and layer, not other sizes or variants." : "Authored for this shared layer. Exact combination overrides may mask it in the canvas.",
+      description: exact ? "Stored on this exact combination and layer. Studio edits group non-colors by size (and Text variant); colors remain combination-specific. Historical records may still differ until edited." : "Authored for this shared layer. Exact combination overrides may mask it in the canvas.",
     } : afterReset,
     afterReset, overridden,
     themeSpecific: ["background", "color", "borderColor"].includes(field.key),

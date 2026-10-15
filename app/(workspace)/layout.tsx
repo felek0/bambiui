@@ -1,11 +1,8 @@
 import type { ReactNode } from "react";
-import Studio from "../studio/studio";
+import { WorkspaceShell } from "./workspace-shell";
 
 export default function WorkspaceLayout({ children }: { children: ReactNode }) {
   return (
-    <>
-      <Studio />
-      {children}
-    </>
+    <WorkspaceShell>{children}</WorkspaceShell>
   );
 }

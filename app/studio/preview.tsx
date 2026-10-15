@@ -30,6 +30,7 @@ import {
 import styles from "./preview.module.css";
 import { ComponentMatrix } from "./component-matrix";
 import type { ComponentRecipeSelection } from "./component-recipes";
+import type { ComponentDefaults } from "./component-defaults";
 
 
 function DemoButton({
@@ -402,13 +403,15 @@ function ThemePane({ theme, mode, children, copy }: {
   );
 }
 
-export function Preview({ selected, system, mode, active = true, onSelectColorRole, onEditToken, recipeSelection, onSelectRecipe }: {
+export function Preview({ selected, system, mode, active = true, onSelectColorRole, onEditToken, recipeSelection, onSelectRecipe, previewDefaults, onClearRecipeSelection }: {
   selected: "colors" | "spacing" | ComponentId;
   system: DesignSystem;
   mode: PaletteMode;
   active?: boolean;
   onSelectColorRole?: (role: ColorScaleRole) => void;
   onEditToken?: (selection: "colors" | "spacing", inputId: string) => void;
+  previewDefaults?: ComponentDefaults;
+  onClearRecipeSelection?: () => void;
   recipeSelection: ComponentRecipeSelection | null;
   onSelectRecipe: (selection: ComponentRecipeSelection) => void;
 }) {
@@ -757,7 +760,7 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
             </section>
           </div>}
           {selected !== "colors" && selected !== "spacing" && <section key={selected} className={styles.componentBoard} data-specimen={selected} data-canvas-unit={selected} data-selected aria-label={`${selected} preview`}>
-            <ComponentMatrix component={selected} defaults={system.componentDefaults} selection={recipeSelection} onSelect={onSelectRecipe} />
+            <ComponentMatrix component={selected} defaults={previewDefaults ?? system.componentDefaults} selection={recipeSelection} onSelect={onSelectRecipe} onClearSelection={onClearRecipeSelection} />
             {selected !== "text" && <details className={styles.interactions} data-interaction-examples>
               <summary>Interaction & state previews</summary>
               <p>Try keyboard and pointer behavior here. Disabled, loading and radius examples inherit the same recipes; they are not separate style scopes.</p>

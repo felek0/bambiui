@@ -1,8 +1,5 @@
-import example from "../../studio/page-document/account-settings.json";
-import { createPageBundle } from "../../studio/page-document/bundle";
-import { defaultSystem } from "../../studio/tokens";
-import PageEditor from "./page-editor";
+import { ProjectSuspended } from "../../studio/project-suspended";
 
 export default function PageEditorExample() {
-  return <PageEditor initialBundle={createPageBundle(example, defaultSystem)} />;
+  return <ProjectSuspended />;
 }

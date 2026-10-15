@@ -164,3 +164,28 @@ test("default updates preserve typed preview values until explicit reset; initia
   assert.equal(control(tree).props.appearance, undefined);
   assert.equal(control(tree).props.parts, undefined);
 });
+
+test("effective session samples flow through existing defaults without persisting state or selecting a recipe", () => {
+  const defaults = { input: { props: { label: "Session label", defaultValue: "Session value", error: "Session error", errorPosition: "above", errorIcon: "warning", size: "lg" } } };
+  const before = structuredClone(defaults), writes = [];
+  const tree = capture("input", "invalid.sm", [open,
+    tree => control(tree).props.onValueChange("Local interaction only"),
+  ], { defaults, onDefaultsChange: next => writes.push(next), onSelectionChange: next => writes.push(next) });
+  const input = control(tree).props;
+  assert.equal(input.label, "Session label"); assert.equal(input.value, "Local interaction only");
+  assert.equal(input.error, "Session error"); assert.equal(input.errorPosition, "above"); assert.equal(input.errorIcon, "warning");
+  assert.equal(input.size, "sm"); assert.equal(tree.props["data-edit-recipe"], "invalid.sm");
+  assert.deepEqual(defaults, before); assert.deepEqual(writes, []);
+});
+
+test("session copy updates do not replace checked interaction state or change the inspector recipe", () => {
+  const tree = capture("checkbox", "invalidUnchecked.md", [open,
+    tree => control(tree).props.onCheckedChange(true),
+    (_tree, props) => { props.defaults = { checkbox: { props: { label: "Session copy", errorPosition: "above", errorIcon: "info" } } }; },
+  ]);
+  assert.equal(control(tree).props.label, "Session copy");
+  assert.equal(control(tree).props.checked, true);
+  assert.equal(control(tree).props.errorIcon, "info");
+  assert.equal(liveRecipe(tree), "invalidChecked.md");
+  assert.equal(tree.props["data-edit-recipe"], "invalidUnchecked.md");
+});

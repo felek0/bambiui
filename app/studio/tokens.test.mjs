@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
 import * as appearance from "./components/appearance.ts";
+import { applyScopedRecipePatch, recipeEditTargets } from "./recipe-edit-scope.ts";
 import {
   componentRecipeOptions, componentRecipeParts, componentRecipeFields, componentRecipeVariables,
 } from "./component-recipes.ts";
@@ -16,6 +17,36 @@ import {
 import { contrastRatio, deriveRoleColors, generatePalette, mixColors, paletteRoles } from "./color-engine.ts";
 
 const modes = ["light", "dark"];
+for (const from of modes) test(`${from}: Studio size-group edits and resets export through existing exact records in both themes`, () => {
+  const other = from === "light" ? "dark" : "light";
+  for (const component of componentIds) {
+    const system = fresh();
+    const recipe = componentRecipeOptions(component).find(option => option.size === "sm" && (component !== "text" || option.variant === "paragraph")).key;
+    const selection = { component, recipe, part: "root", target: "frame" };
+    system.themes[from].componentRecipes = applyScopedRecipePatch(undefined, selection, { paddingLeft: 13.375, shadow: "lg", background: "#123456" });
+    const shared = shareNonColorTokens(system, from);
+    for (const mode of modes) {
+      const variables = toCSSVariables(shared.themes[mode], mode);
+      for (const peer of recipeEditTargets(selection, "paddingLeft")) {
+        assert.equal(shared.themes[mode].componentRecipes[component][peer.key].root.paddingLeft, 13.375);
+        const slug = peer.key.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`).replaceAll(".", "-");
+        assert.equal(variables[`--${component}-recipe-${slug}-root-padding-left`], "13.375px");
+        assert.equal(variables[`--${component}-recipe-${slug}-root-shadow`], "var(--ds-shadow-lg)");
+      }
+    }
+    assert.equal(shared.themes[from].componentRecipes[component][recipe].root.background, "#123456");
+    assert.equal(shared.themes[other].componentRecipes[component][recipe].root.background, undefined);
+    assert.deepEqual(parse(shared), shared);
+    assert.match(exportCSS(shared), /13\.375px/);
+    shared.themes[from].componentRecipes = applyScopedRecipePatch(shared.themes[from].componentRecipes, selection, { paddingLeft: null });
+    const reset = shareNonColorTokens(shared, from);
+    for (const mode of modes) for (const peer of recipeEditTargets(selection, "paddingLeft")) {
+      assert.equal(reset.themes[mode].componentRecipes[component][peer.key].root.paddingLeft, undefined);
+      assert.equal(reset.themes[mode].componentRecipes[component][peer.key].root.shadow, "lg");
+    }
+    assert.deepEqual(parse(reset), reset);
+  }
+});
 const fresh = () => structuredClone(defaultSystem);
 const parse = (value) => parseDesignSystem(JSON.stringify(value));
 const kebab = (key) => key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
