@@ -1,6 +1,6 @@
 # bambiui · CLI ve statik registry
 
-Tarih: 2026-10-15 · CLI hedefi: `bambiui@0.2.0` · Registry/config formatı: v1.
+Tarih: 2026-10-15 · Yayımlanan CLI: `bambiui@0.2.0` · Patch adayı: `0.2.1` · Registry/config formatı: v1.
 
 ## Ürün kararı ve durum
 
@@ -24,7 +24,7 @@ bambiui theme --system ./bambiui-tokens.json
 
 İki init satırı alternatiftir; mevcut kurulumda ikinci init çalıştırılmaz. İkinci sistem JSON'u `theme` ile uygulanır. Yayımlanmış public giriş `npx bambiui@0.2.0 init ...` / `npx bambiui@0.2.0 add button` olarak doğrulandı.
 
-İlk sürümde varsayılan production origin uydurulmaz. Noninteractive `init` explicit `--registry` ister; TTY'da eksikse URL sorulur. System/Develop mevcut uygulama origin'inin `/registry/index.json` adresini kullanır. HTTPS gerekir; HTTP yalnız localhost/127.0.0.1/IPv6 loopback için geliştirme istisnasıdır. Credentials/query/fragment ve HTTP redirect reddedilir.
+Yayımlanan `0.2.0` sürümünde noninteractive `init` explicit `--registry` ister; TTY'da eksikse URL sorulur. `0.2.1` adayı varsayılan olarak doğrulanmış `https://bambiui.com/registry/index.json` adresini kullanır: `bambiui init` yeterlidir, `--registry` özel registry için korunur. Mevcut proje pinleri değişmez. System/Develop mevcut uygulama origin'inin `/registry/index.json` adresini kullanır. HTTPS gerekir; HTTP yalnız localhost/127.0.0.1/IPv6 loopback için geliştirme istisnasıdır. Credentials/query/fragment ve HTTP redirect reddedilir.
 
 ### init
 
@@ -40,7 +40,7 @@ bambiui theme --system ./bambiui-tokens.json
 - Registry'den yalnız gerçek kaynak dependency closure'ı kopyalanır. Card'ın örneğinde Button/Text bulunması onları Card'ın gerçek bağımlılığı yapmaz. Shared component CSS tam kalır; unused TSX kaynakları kurulmaz.
 - `ui/index.ts` kurulu public item'ları dışa açar; Field/Spinner gibi internal yardımcıları public API diye sunmaz.
 - Gerekli Base UI host'ta eksikse package.json'a registry'nin test edilen exact sürümü eklenir. Mevcut deklarasyonlar korunur; farklı range için advisory verilir. React otomatik yükseltilmez.
-- Paket yöneticisi, lifecycle/install script'i veya lockfile değiştirme çalıştırılmaz. Host entry/layout otomatik yamalanmaz; stylesheet import ve ThemeScope kurulumu README'de açıkça verilir.
+- Paket yöneticisi, lifecycle/install script'i veya lockfile değiştirme çalıştırılmaz. Host entry/layout otomatik yamalanmaz. `0.2.1` adayı Next/React entry dosyasını bulup entry-relative stylesheet/ThemeScope importlarını stdout ve README'de gösterir; entry bulunamazsa örneklerin proje köküne göre olduğu belirtilir. Eksik Base UI eklendiğinde packageManager/lockfile'a göre npm/pnpm/yarn/bun install önerilir, otomatik çalıştırılmaz.
 
 ### theme
 
@@ -69,7 +69,9 @@ Index strict `bambiui.registry-index` v1 metadata'sıdır. İçinde immutable re
 
 `bambiui.json` formatı `bambiui.project` v1'dir. Output directory, installed item listesi, immutable registry URL/byte/hash, resolver hash, system hash ve CLI'nin yazdığı dosyaların hash'lerini içerir. Kendisini veya host package.json'ını self-hash etmez. `add`, floating index'i tekrar okuyup sürümü değiştirmez; kaybolan pin için latest fallback yoktur.
 
-Generator aynı içerik için index/release dosyalarını yeniden yazmaz. Yerelde eski immutable release klasörleri temizlenmez. **Fakat Git-ignored generated klasörlerin temiz CI build'lerinde otomatik kalacağı varsayılmaz.** Public yayından önce üretim dağıtımı eski release URL'lerini koruyacak şekilde kurulmalıdır; kalıcı release archive/retention kabulü açık bir yayın kapısıdır. Bu dilim bir CDN/cloud sağlayıcısı veya backend eklemez.
+Generator aynı içerik için index/release dosyalarını yeniden yazmaz. Kalıcı geçmiş artık [registry/](../registry/README.md) altında Git'te tutulur: releases.json envanteri ve hash klasöründeki exact JSON byte'ları. Her temiz dev/build, envanterdeki tüm snapshot'ları public/registry ve out/registry altına yeniden taşır; current index en son güncellenir. Eksik/bozuk/listelenmemiş/symlink snapshot build'i durdurur. Eski component ID'leri veya resolver hash'leri bugünkü şemaya göre migrate/filtre edilmez.
+
+`npm run registry:snapshot` yeni source release'ini explicit arşivler; snapshot ve envanter birlikte Git'e alınmalıdır. Normal build geçmişi prune etmez veya yeniden lisanslamaz. İlk public release canlı hash'le karşılaştırılarak arşivlendi. Bu kodun production retention sağlaması için arşiv dosyaları commit edilip yeni build deploy edilmelidir; otomatik commit/deploy yapılmaz. Ayrı backend/CDN sağlayıcısı gerekmez.
 
 ## Dosya ve veri güvenliği
 
@@ -87,10 +89,12 @@ Generator aynı içerik için index/release dosyalarını yeniden yazmaz. Yereld
 Repo kökünde:
 
 ```sh
+npm run registry:snapshot
 npm run registry:build
 npm run cli:build
 npm run test:cli
 npm run check:cli
+npm run check:registry
 npm run build
 node scripts/generate-registry.mjs --check
 node scripts/studio-source-smoke.mjs --screenshots
@@ -124,6 +128,15 @@ Yerel geliştirmede CLI bin'i, React host'un cwd'sinden bu repodaki `packages/cl
 - Yayın sonrası UI turunda 582 unit/SSR/source testi, production build, lint/TypeScript ve altı source/CLI browser senaryo grubu geçti. Mobil public CLI screenshot'ı incelendi; yayımlanan CLI dosyaları değiştirilmedi.
 - Registry bu testte geçici yerel statik host'tu, production endpoint değildi. Host React/Base UI bağımlılıkları kurulu node_modules'tan yeniden kullanıldı; tam temiz dependency install veya manuel erişilebilirlik kabulü değildir.
 - CLI 0.2.0 --help çıktısında eski “unpublished preview” cümlesi kalmıştır; sürüm/komutlar çalışır. Immutable 0.2.0 yeniden yayımlanmaz; bu yalnız metin düzeltmesi sonraki patch'e bırakılır.
+
+## Retention ve 0.2.1 patch adayı · 2026-10-15
+
+- Production index/release 200 JSON ve SHA-256/byte eşitliği doğrulandı. Npm 0.2.0 ile gerçek production init/add (yedi komponent + layout), Card closure, idempotence ve local fractional/Dark theme kontrolü geçti.
+- İlk public release `f8c9659b67ea08923f7300577db326c63baa61cad3b04e9576ae0b10c945a709`, 210.376 byte olarak exact arşivlendi. Son production static build'in out/registry kopyası arşivle byte-byte aynı. Bu retention kodu henüz commit/deploy edilmedi.
+- `npm run check:registry`: public npm 0.2.0 ile pin oluşturma → temiz output + future/incompatible latest → eski/yeni CLI ile eski pin'den add → local source değişikliğini koruma → 0.2.1 ile kesirli theme uygulama geçti. Fresh init uyumsuz latest'i reddetti. Simülasyon production registry'yi değiştirmez.
+- 26 CLI/arşiv testi, 582 unit/SSR/source testi, standalone React ve Next build/browser consumer, son lint/TypeScript/production build ve registry freshness geçti. Consumer kurulu node_modules kullanır; clean dependency install ve manuel kabul açık.
+- 0.2.1 tarball: 25 dosya, 40.627 byte packed / 143.232 byte unpacked; yalnız bin/lib/dist/package/README/LICENSE/NOTICE. MIT/runtime publication gate ve tarball üzerinden offline npm exec version/help geçti. SHA-512: `sha512-zSehso13Wox8C396f4vZb+bHGFp1yfzurxcI9S5KQMsRV28zdTRTAQXEU9e2tlNOopiTrHDsK0lU9EBxyj2axg==`.
+- İncelenen paket `artifacts/npm/bambiui-0.2.1.tgz` altında (Git ignored, `.next` dışında). Maintainer eşleşti, npm latest hâlâ 0.2.0 idi; 0.2.1 yayın denemesi EOTP ile durdu. Kullanıcı kendi terminalinde `npm publish ./artifacts/npm/bambiui-0.2.1.tgz --access public --registry=https://registry.npmjs.org/` çalıştırarak npm browser/2FA akışını tamamlamalı. OTP/token sohbete konmaz. Metadata/integrity ve public consumer doğrulanmadan Develop pin'i değiştirilmez.
 
 ## Public 0.2.0 yayın kapısı
 

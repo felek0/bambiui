@@ -1,0 +1,10 @@
+{
+  "format": "bambiui.registry-archive",
+  "version": 1,
+  "releases": [
+    {
+      "sha256": "f8c9659b67ea08923f7300577db326c63baa61cad3b04e9576ae0b10c945a709",
+      "bytes": 210376
+    }
+  ]
+}

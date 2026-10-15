@@ -11,6 +11,7 @@ import { createRegistryRelease } from "../../../scripts/generate-registry.mjs";
 import { defaultSystem } from "../../../app/studio/tokens.ts";
 import { createThemeSourceFiles } from "../../../app/studio/source-theme.ts";
 import { canonicalJSON } from "../../../app/studio/source-files.ts";
+import { DEFAULT_REGISTRY_URL } from "../lib/registry.mjs";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const binary = join(root, "packages/cli/bin/bambiui.mjs");
@@ -78,12 +79,60 @@ after(async () => { server.closeAllConnections(); await new Promise((done) => se
 test("CLI help/version and strict arguments do not mutate a project", async () => {
   const directory = await host(), before = await tree(directory);
   assert.match((await ok(["--help"], directory)).stdout, /theme --system/);
-  assert.equal((await ok(["--version"], directory)).stdout.trim(), "0.2.0");
+  assert.equal((await ok(["--version"], directory)).stdout.trim(), "0.2.1");
+    const help = (await ok(["--help"], directory)).stdout;
+    assert.ok(help.includes(DEFAULT_REGISTRY_URL)); assert.doesNotMatch(help, /unpublished preview/);
   await failed(["wat"], directory, /Unknown command/);
   await failed(["init", "--typo"], directory, /Unknown option/);
-  await failed(["init"], directory, /No public default registry/);
+  await failed(["init", "--registry"], directory, /missing value/);
   await failed(["add", "text", "text"], directory, /unique components/);
   assert.deepEqual(await tree(directory), before);
+});
+
+test("init without --registry uses production without prompting or writing during dry-run", async () => {
+  const directory = await host(), oldDirectory = process.cwd(), originalFetch = globalThis.fetch, calls = [];
+  const before = await tree(directory);
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    if (String(url) === DEFAULT_REGISTRY_URL) return new Response(release.index);
+    assert.equal(String(url), new URL(`releases/${release.sha256}/registry.json`, DEFAULT_REGISTRY_URL).href);
+    return new Response(release.text);
+  };
+  try {
+    process.chdir(directory);
+    const { init } = await import("../lib/commands.mjs");
+    await init({ dryRun: true }, () => {});
+    assert.equal(calls[0], "https://bambiui.com/registry/index.json");
+    assert.equal(calls.length, 2);
+    assert.deepEqual(await tree(directory), before);
+  } finally { globalThis.fetch = originalFetch; process.chdir(oldDirectory); }
+});
+
+test("Next setup hints use actual entry-relative imports and preserve the entry file", async () => {
+  const directory = await host(), pkg = JSON.parse(await readFile(join(directory, "package.json"), "utf8"));
+  pkg.dependencies.next = "16.3.6"; pkg.packageManager = "pnpm@10.32.1";
+  await writeFile(join(directory, "package.json"), JSON.stringify(pkg));
+  await mkdir(join(directory, "src/app"), { recursive: true });
+  await writeFile(join(directory, "src/app/layout.tsx"), "// preserve layout\n");
+  const result = await init(directory);
+  assert.match(result.stdout, /Host setup \(src\/app\/layout.tsx\)/);
+  assert.ok(result.stdout.includes('import "../components/bambiui/styles.css";'));
+  assert.ok(result.stdout.includes('import { ThemeScope } from "../components/bambiui/ThemeScope";'));
+  const added = await ok(["add", "button"], directory);
+  assert.ok(added.stdout.includes("Next: pnpm install"));
+  assert.equal(await readFile(join(directory, "src/app/layout.tsx"), "utf8"), "// preserve layout\n");
+});
+
+test("React setup hints and fallback paths are explicit; lockfile manager hints do not run installs", async () => {
+  const directory = await host(); await mkdir(join(directory, "src"));
+  await writeFile(join(directory, "src/main.tsx"), "// preserve React entry\n");
+  await writeFile(join(directory, "yarn.lock"), "# test lockfile\n");
+  const result = await init(directory);
+  assert.ok(result.stdout.includes('import "./components/bambiui/styles.css";'));
+  const added = await ok(["add", "button"], directory);
+  assert.ok(added.stdout.includes("Next: yarn install"));
+  assert.equal(await exists(join(directory, "node_modules")), false);
+  assert.equal(await readFile(join(directory, "src/main.tsx"), "utf8"), "// preserve React entry\n");
 });
 
 test("init creates scoped foundation/config only, never installs components or modifies the host entry", async () => {
@@ -246,12 +295,12 @@ test("A mismatched CLI resolver cannot apply a theme or mutate an existing proje
   assert.equal(requests.length, requestStart); assert.deepEqual(await tree(directory), before);
 });
 
-test("MIT release is 0.2.0; missing/incorrect notices and corrupted builds still block publication", async () => {
+test("MIT release is 0.2.1; missing/incorrect notices and corrupted builds still block publication", async () => {
   const packageRoot = join(root, "packages/cli");
   const manifest = JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8"));
-  assert.equal(manifest.version, "0.2.0"); assert.equal(manifest.publishConfig.access, "public");
+  assert.equal(manifest.version, "0.2.1"); assert.equal(manifest.publishConfig.access, "public");
   assert.equal(manifest.license, "MIT");
-  assert.equal(await checkRelease(packageRoot), "bambiui@0.2.0");
+  assert.equal(await checkRelease(packageRoot), "bambiui@0.2.1");
   const directory = await mkdtemp(join(base, "release-"));
   await cp(join(packageRoot, "dist"), join(directory, "dist"), { recursive: true });
   await cp(join(packageRoot, "bin"), join(directory, "bin"), { recursive: true });
@@ -260,7 +309,7 @@ test("MIT release is 0.2.0; missing/incorrect notices and corrupted builds still
   await writeFile(join(directory, "LICENSE"), "Incorrect license notice");
   await assert.rejects(checkRelease(directory), /approved MIT license text/);
   await writeFile(join(directory, "LICENSE"), await readFile(join(packageRoot, "LICENSE"), "utf8"));
-  assert.equal(await checkRelease(directory), "bambiui@0.2.0");
+  assert.equal(await checkRelease(directory), "bambiui@0.2.1");
   await writeFile(join(directory, "dist/system/tokens.mjs"), "// corrupt runtime\n");
   await assert.rejects(checkRelease(directory), /missing or stale/);
 });
@@ -279,5 +328,5 @@ test("Packed CLI executes init/add outside this repo without node_modules or Typ
   assert.equal(await exists(join(directory, "node_modules")), false);
   assert.equal(await exists(join(destination, "package/node_modules")), false);
   const exec = await child("npm", ["exec", "--offline", "--ignore-scripts", "--cache", join(destination, "exec-cache"), "--package", join(destination, data.filename), "--", "bambiui", "--version"], directory);
-  assert.equal(exec.code, 0, exec.stderr); assert.equal(exec.stdout.trim(), "0.2.0");
+  assert.equal(exec.code, 0, exec.stderr); assert.equal(exec.stdout.trim(), "0.2.1");
 });

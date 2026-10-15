@@ -8,9 +8,13 @@ import ts from "typescript";
 import { createRegistryRelease } from "./generate-registry.mjs";
 import { defaultSystem } from "../app/studio/tokens.ts";
 import { withSourceBrowser } from "./source-browser-session.mjs";
+import cliManifest from "../packages/cli/package.json" with { type: "json" };
 
-assert.ok(process.argv.slice(2).every((arg) => ["--browser", "--published"].includes(arg)), "Only --browser and --published are supported");
-const published = process.argv.includes("--published");
+const arguments_ = process.argv.slice(2);
+assert.ok(arguments_.every((arg) => ["--browser", "--published"].includes(arg) || /^--published=\d+\.\d+\.\d+$/.test(arg)), "Use --browser, --published or --published=<version>");
+const publishedArgument = arguments_.find((arg) => arg === "--published" || arg.startsWith("--published="));
+const published = publishedArgument !== undefined;
+const publishedVersion = publishedArgument?.split("=")[1] ?? cliManifest.version;
 const root = fileURLToPath(new URL("../", import.meta.url));
 let fixture, server;
 async function command(executable, args, cwd, timeout = 30_000) {
@@ -26,9 +30,9 @@ try {
   await writeFile(join(fixture, "package.json"), '{"private":true,"type":"module","dependencies":{"react":"19.2.8","react-dom":"19.2.8"}}\n');
   const cli = join(root, "packages/cli/bin/bambiui.mjs");
   const runCLI = (args) => published
-    ? command("npm", ["exec", "--yes", "--ignore-scripts", "--registry=https://registry.npmjs.org/", "--cache", join(root, ".next/npm-published-check"), "--package=bambiui@0.2.0", "--", "bambiui", ...args], fixture, 60_000)
+    ? command("npm", ["exec", "--yes", "--ignore-scripts", "--registry=https://registry.npmjs.org/", "--cache", join(root, ".next/npm-published-check"), `--package=bambiui@${publishedVersion}`, "--", "bambiui", ...args], fixture, 60_000)
     : command(process.execPath, [cli, ...args], fixture);
-  console.log(`Checking ${published ? "published bambiui@0.2.0 from npm" : "local CLI build"} against a temporary static registry.`);
+  console.log(`Checking ${published ? `published bambiui@${publishedVersion} from npm` : `local bambiui@${cliManifest.version} build`} against a temporary static registry.`);
   await runCLI(["init", "--registry", `http://127.0.0.1:${server.address().port}/registry/index.json`, "--dir", "system"]);
   await runCLI(["add", "--all"]);
   await runCLI(["add", "layout"]);

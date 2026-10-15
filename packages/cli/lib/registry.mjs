@@ -3,6 +3,7 @@ import { distributionLicense } from "../dist/system/distribution-license.mjs";
 import runtime from "../dist/runtime.json" with { type: "json" };
 import { parseSourceCatalog, sourceRecord, isHash } from "../dist/system/source-catalog.mjs";
 
+export const DEFAULT_REGISTRY_URL = "https://bambiui.com/registry/index.json";
 export const cliRuntimeSha256 = runtime.sha256;
 export const digest = (content) => createHash("sha256").update(content).digest("hex");
 export const MAX_REGISTRY_BYTES = 8 * 1024 * 1024;

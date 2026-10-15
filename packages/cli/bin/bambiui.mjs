@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-import { createInterface } from "node:readline/promises";
+
 import manifest from "../package.json" with { type: "json" };
 
 const help = `bambiui — editable React sources from a static registry
 
-  bambiui init --registry <url> [--system <json>] [--dir <path>]
+  bambiui init [--registry <url>] [--system <json>] [--dir <path>]
   bambiui add button [card input ...]
   bambiui add --all
   bambiui theme --system <json>
@@ -14,7 +14,8 @@ const help = `bambiui — editable React sources from a static registry
   --help        Show this help
   --version     Show CLI version
 
-Registry is explicit during this unpublished preview. HTTPS is required except
+Default registry: https://bambiui.com/registry/index.json
+Override with --registry for another trusted host. HTTPS is required except
 loopback development servers. No npm install, host-entry edits or publishing
 runs automatically. Software is MIT licensed; Studio and user designs are separate.
 `;
@@ -39,10 +40,7 @@ try {
       }
       const allowed = command === "init" ? ["dryRun", "overwrite", "registry", "system", "dir"] : command === "add" ? ["dryRun", "overwrite", "all"] : ["dryRun", "overwrite", "system"];
       if (Object.keys(options).some((key) => !allowed.includes(key)) || command !== "add" && names.length) throw new Error(`Unsupported argument for ${command}. Use --help.`);
-      if (command === "init" && !options.registry && process.stdin.isTTY && process.stdout.isTTY) {
-        const prompt = createInterface({ input: process.stdin, output: process.stdout });
-        try { options.registry = (await prompt.question("Static registry index URL: ")).trim(); } finally { prompt.close(); }
-      }
+
       const commands = await import("../lib/commands.mjs");
       if (command === "add") await commands.add(names, options); else await commands[command](options);
     }
