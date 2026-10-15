@@ -10,9 +10,11 @@
     "registry:build": "node scripts/generate-registry.mjs",
     "registry:snapshot": "node scripts/snapshot-registry.mjs",
     "check:registry": "node scripts/build-cli.mjs && node scripts/check-registry-retention.mjs",
+    "test:browser-process": "node --test scripts/disposable-browser-process.test.mjs",
     "cli:build": "node scripts/build-cli.mjs",
     "test:cli": "node scripts/generate-registry.mjs && node scripts/build-cli.mjs && node --test packages/cli/test/*.test.mjs",
     "check:cli": "node scripts/generate-registry.mjs && node scripts/build-cli.mjs && node scripts/check-cli-source.mjs --browser",
+    "check:cli:clean": "node scripts/check-cli-source.mjs --published=0.2.1 --clean-install --browser",
     "start": "next start",
     "lint": "eslint"
   },

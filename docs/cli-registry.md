@@ -100,11 +100,22 @@ node scripts/generate-registry.mjs --check
 node scripts/studio-source-smoke.mjs --screenshots
 # Explicit public npm verification (requires network):
 node scripts/check-cli-source.mjs --published --browser
+# Fresh dependency installation + production registry (network required):
+npm run check:cli:clean
 ```
 
 Yerel geliştirmede CLI bin'i, React host'un cwd'sinden bu repodaki `packages/cli/bin/bambiui.mjs` dosyasının absolute path'iyle Node üzerinden çalıştırılabilir. `npm pack` ile üretilen yerel tarball `npm exec --package <local-tarball> -- bambiui ...` yolunu da destekler. Testler paketlenmiş CLI'yi repo/TypeScript/node_modules dışında ve yerel tarball üzerinden offline npm exec ile çalıştırır; gerçek npm yayını yapmaz.
 
 `check:cli`, gerçek child-process init/add/theme çıktısını standalone React olarak type-check eder; ayrı Next tüketicisiyle build/prerender ve Chromium hydration, tema renkleri/ortak kesirli geometry/katman fontları, Input Error, choice controls ve narrow reflow'u doğrular. Kurulu bağımlılıklar tekrar kullanılır; temiz remote install veya tam görsel/erişilebilirlik kabulü değildir. Source/unit fixture'larını ana build ile paralel çalıştırma.
+
+`check:cli:clean`, public npm `bambiui@0.2.1` ve varsayılan production registry ile çalışır. Repo dışındaki yeni geçici host/cache içinde init/add/theme yapılır; npm bağımlılıkları sıfırdan kurulur (`--ignore-scripts`, audit/fund kapalı). Host node_modules'u symlink değildir; kendi TypeScript executable'ıyla kontrol edilir. Next kurulu değilken React/Vite bundle ve Chromium senaryoları çalışır, ardından aynı host'a Next eklenip static build/prerender/hydration ve aynı browser kontrolleri tekrarlanır. Host/cache başarı ve hatada temizlenir. Root bağımlılıkları/lockfile değişmez, npm publish yoktur. Registry/latest source değişirse test uyumsuzluğu açıkça yakalar; otomatik pin migration yapmaz.
+
+## Temiz consumer kabulü · 2026-10-15
+
+- `npm run check:cli:clean` geçti: public npm 0.2.1, production registry, React/react-dom 19.2.8, Base UI registry sürümü, TypeScript 5.9.3 ve Vite 7.3.7 ile sıfırdan install/type-check/build/browser. Ardından Next 16.3.6 kurulup static build/prerender ve browser kontrolleri geçti. Orkestrasyon script'i repo araçlarını kullanır; consumer derleyicileri ve runtime bağımlılıkları yalnız yeni host'tan çözülür.
+- Her iki bundle'da Light/Dark, Card.Title 19.375px/635 ve bağımsız tema renkleri, tek kenar padding/corner kesirleri, Input Error 12.625px, readonly/invalid, Switch/Checkbox etkileşimleri, host izolasyonu ve 1440/390px reflow doğrulandı.
+- Vite, standalone bundle'da Base UI/component `use client` direktiflerinin yok sayılmasına dair uyarılar verdi; bundle ve runtime kontrolleri geçti. Bunlar Next client boundary'lerinin kaynaklardan kaldırılması gerektiği anlamına gelmez.
+- Mevcut `npm run check:cli` de refactor sonrasında geçti. Manuel VoiceOver/native zoom/cross-browser ve tam görsel kabul bu testle kapanmaz. Workspace exit sorunu ayrı cleanup turunda ele alındı: browser group/stdio cleanup ve beş proses regresyon testi sonrası üç tam 23-check koşusu ~31s'de exit=0 ile kapandı; ayrıntı roadmap'in son kanıt kaydında.
 
 ## Uygulama kanıtı · 2026-10-15
 

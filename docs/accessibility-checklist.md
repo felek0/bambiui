@@ -2,9 +2,17 @@
 
 ## Scope
 
-This checklist primarily covers the existing **Studio specimen workflow**. Its 20-route smoke coverage excludes the new `/examples/account-settings` prototype. The page-document tests verify selected validation/serialization cases, fixture TSX types and renderer/export SSR HTML parity with real components. Attribute order and React IDs/references are normalized; CSS modules are stubbed. These are not browser reflow, browser DOM/hydration/CSS equivalence, assistive technology or complete HTML-semantic acceptance. A separate copied-source consumer type-checks React and prerenders Light/Dark in Next with real CSS, reusing installed dependencies. Its optional `--browser` check passed in Chrome for hydration/runtime errors, painted theme colors, 1440/375px Grid reflow/gaps/overflow, Switch pointer/Space and native form validation/FormData/GET. This fixed-fixture check is not complete preview/export visual equivalence; custom props/themes, other browsers, native mobile/zoom and assistive-technology acceptance remain open. See [the roadmap](roadmap.md) for the phase gates.
+Current acceptance covers **System exact-combination/layer editing, Project composition and developer handoff**, not only component specimens. Start with [the task-session protocol](studio-acceptance.md): six participant tasks, a separate keyboard/VoiceOver/native-zoom pass, environment records and issue triage. All manual results are still **not run**. Use disposable browser data; Project JSON alone does not back up the linked System.
 
-## Automated evidence
+The detailed specimen checks below remain relevant, but the dated 20-route/125-test baseline is historical evidence, not a description of today's whole application. Project workflows at `/` and `/pages` must be checked separately from System routes such as `/card`. Source SSR checks, static builds, Chromium emulation and accessibility-tree assertions do not prove assistive-technology behavior or complete visual/HTML-semantic parity. See [the roadmap](roadmap.md) for current phase gates.
+
+## Current automated evidence and its limits
+
+- Workspace: 23 checks cover Project/page/frame creation, exact Card/Input layer recipes, instance versus insertion-default isolation, history, themes, snapshots and export/reload. Browser process cleanup has five regression tests; three full runs exited cleanly after the cleanup fix. This is not evidence of human discoverability or screen-reader acceptance.
+- `npm run check:cli:clean` uses public npm `bambiui@0.2.1` and the production registry in an isolated host with fresh npm dependencies. React/Vite and then Next builds/browser checks cover Light/Dark, layer typography, fractional edges/corners, Input errors, choice controls and narrow reflow. This is not a full accessibility audit.
+- Current results and exact command scope are recorded in [the roadmap](roadmap.md) and [CLI evidence](cli-registry.md). Do not substitute a historical run or another fixture for the environment under review.
+
+### Specimen coverage and historical baseline
 
 - Unit tests check inheritance, migration, generated contrast, derived roles and finite color-audit pairs. The default light/dark palettes pass 150 modeled pairs per theme at 4.5:1 normal-text and 3:1 non-text thresholds, including Input, Switch and Checkbox states; configured visible borders are audited. Manual overrides and imports can fail and are reported.
 - `node scripts/studio-smoke.mjs --screenshots` runs against the static export after `npm run build`, using Chromium/CDP and a disposable browser profile. Captures are written to `.next/color-review/`; screenshot capture alone is not visual acceptance.
@@ -20,14 +28,23 @@ Automated validation (2026-09-29): production build, lint, TypeScript no-emit ch
 
 ## Manual acceptance still required
 
-Record browser/OS, assistive technology, scenario, result and issues before closing this gate.
+Record browser/OS, build, assistive technology, scenario, result and issues using [the session record](studio-acceptance.md#session-record) before closing this gate. Keep **not run** distinct from **pass** and record assisted completion explicitly.
+
+### System / Project editing scope
+
+- [ ] Reach `outlined.md / Card.Title` without a pointer through available navigation/layer controls; understand selection, effective values and whether an edit affects one recipe or all combinations.
+- [ ] Switch root/text selection, edit independent padding/corners and title typography, and operate reset/Undo/Redo without losing focus or changing unrelated layers.
+- [ ] Reach exact invalid Input error styling, field help and validation feedback by keyboard and VoiceOver; associate announcements with the owning control.
+- [ ] Create Project/page/frame and insert a populated Card by keyboard. Edit local copy without changing shared styles or insertion defaults. Verify linked-system style changes on a matching instance.
+- [ ] Operate Layers expand/collapse/selection, panel toggles, frame menu and System/Project switching; overlays dismiss on Escape and return focus appropriately. No essential task depends on dragging alone.
+- [ ] Inspect temporary interaction states without mistaking them for saved token/default edits. Selected recipe, live state and theme remain understandable.
 
 ### VoiceOver with Safari and Chrome
 
 - [ ] Navigate landmarks and headings. Skip-to-workspace reaches main; the hidden workspace panel and the inspector in Develop are absent from reading order. There is only one theme pane, not an inactive second preview.
 - [ ] Component and Design/Develop navigation announce links and the current page, not tabs. Tab reaches each link and Enter navigates. Verify all seven component targets, direct opening, Back/Forward, focus placement and route-change announcements.
 - [ ] Light and Dark theme controls announce their selected state in Design and Develop and identify the inspector's editing target in Design; switching retains the same interactive demo state across themes and routes.
-- [ ] Explore all seven expanded specimens and the Colors and Text foundation areas. Canvas help, zoom output, Fit and Reset zoom are understandable; focused-canvas arrow panning and zoom controls provide alternatives to pointer dragging. Interactive specimen controls do not initiate panning; check text selection separately in real browsers.
+- [ ] Explore all seven component matrices, optional interaction previews and the Colors and Text foundation areas. Canvas help, zoom output, Fit and Reset zoom are understandable; focused-canvas arrow panning and zoom controls provide alternatives to pointer dragging. Interactive specimen controls do not initiate panning; check text selection separately in real browsers.
 - [ ] Develop usage, prop references, token tables and local scroll regions are readable and keyboard reachable; Copy React code announces success or failure without moving focus unexpectedly.
 - [ ] Input labels, helper text, required state and errors are announced. Read-only controls stay focusable; disabled controls cannot activate.
 - [ ] Switch/Checkbox names and checked/mixed states are announced; decorative icons do not duplicate names.

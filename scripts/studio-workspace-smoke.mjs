@@ -2,7 +2,7 @@
 // No packages, app build, fixture injection, or persistent browser state. Evidence goes to stdout.
 // Run after the parent finishes the static export: node scripts/studio-workspace-smoke.mjs
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawnDisposableBrowser, stopDisposableBrowser } from './disposable-browser-process.mjs';
 import { createServer } from 'node:http';
 import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -425,7 +425,7 @@ async function start() {
   });
   await bounded(new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); }), 'static server');
   profile = await mkdtemp(resolve(tmpdir(), 'bambiui-workspace-smoke-'));
-  chrome = spawn(process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', ['--headless=new', `--user-data-dir=${profile}`, '--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1', '--no-first-run', '--no-default-browser-check', '--disable-background-networking', 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
+  chrome = spawnDisposableBrowser(process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', ['--headless=new', `--user-data-dir=${profile}`, '--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1', '--no-first-run', '--no-default-browser-check', '--disable-background-networking', 'about:blank']);
   let stderr = '', spawnError, port;
   chrome.on('error', error => { spawnError = error; }); chrome.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-4000); });
   for (let i = 0; i < 100 && !port && !aborted; i++) {
@@ -456,16 +456,22 @@ async function start() {
   await wait(`${q('[aria-label="New project name"]')} && !${q('[aria-label="New project name"]')}.disabled`, 'project hydration');
 }
 async function cleanup() {
+  let graceful = false;
+  if (!aborted && socket?.readyState === 1) {
+    try { await bounded(send('Browser.close'), 'browser close request', 1000); graceful = true; }
+    catch { /* A disconnected browser still receives bounded process cleanup below. */ }
+  }
   socket?.close();
   for (const task of pending.values()) { clearTimeout(task.timer); task.reject(new Error('CDP cleanup')); }
   pending.clear();
-  if (chrome?.pid && chrome.exitCode === null && chrome.signalCode === null) {
-    const exited = new Promise(resolve => chrome.once('exit', resolve));
-    chrome.kill('SIGTERM'); await Promise.race([exited, delay(2000)]);
-    if (chrome.exitCode === null && chrome.signalCode === null) { chrome.kill('SIGKILL'); await bounded(exited, 'Chrome cleanup', 2000); }
+  try { await stopDisposableBrowser(chrome, 2000, graceful); }
+  finally {
+    try {
+      if (server?.listening) { server.closeAllConnections(); await bounded(new Promise(resolve => server.close(resolve)), 'server cleanup', 2000); }
+    } finally {
+      if (profile) await rm(profile, { recursive: true, force: true, maxRetries: 4, retryDelay: 200 });
+    }
   }
-  if (server?.listening) { server.closeAllConnections(); await bounded(new Promise(resolve => server.close(resolve)), 'server cleanup', 2000); }
-  if (profile) await rm(profile, { recursive: true, force: true, maxRetries: 4, retryDelay: 200 });
 }
 
 try {
@@ -1079,7 +1085,7 @@ try {
   }
   if (errors.length) evidence('browser-errors', errors);
 } finally {
-  try { await cleanup(); console.log('CLEANUP disposable Chrome/profile/server removed; no app or smoke files changed by the run (optional screenshot retained)'); }
+  try { await cleanup(); console.log('CLEANUP owned Chrome group/stdio/profile/server released; no app or smoke files changed by the run (optional screenshot retained)'); }
   catch (error) { console.error(`FAIL cleanup: ${error.message}`); process.exitCode = process.exitCode || 1; }
   clearTimeout(watchdog); process.removeListener('SIGINT', interrupt); process.removeListener('SIGTERM', interrupt);
 }
