@@ -30,7 +30,7 @@ export function SourceDownloadPanel({ selected, system, ready }: { selected: "co
       setStatus({ busy: false, text: error instanceof Error ? error.message : "Could not create source ZIP. Retry when connected.", error: true });
     } finally { pending.current = false; }
   }
-  const commands = origin ? `npx bambiui@0.2.0 init --registry "${origin}/registry/index.json" --system ./bambiui-tokens.json\nnpx bambiui@0.2.0 add ${component ?? "--all"}` : "";
+  const commands = origin ? `npx bambiui@0.2.1 init --registry "${origin}/registry/index.json" --system ./bambiui-tokens.json\nnpx bambiui@0.2.1 add ${component ?? "--all"}` : "";
   async function copyCommands() {
     try { await navigator.clipboard.writeText(commands); setCopyStatus("CLI commands copied."); }
     catch { setCopyStatus("Could not copy commands. Select the code and copy it manually."); }
@@ -40,7 +40,7 @@ export function SourceDownloadPanel({ selected, system, ready }: { selected: "co
       <h3 id="system-source-title">Install with the CLI</h3>
       <Button disabled={!ready || !commands} onClick={copyCommands}>Copy CLI commands</Button>
     </div>
-    <p><code>bambiui@0.2.0</code> is available on npm under MIT. Install editable React and CSS Modules sources directly into your project.</p>
+    <p><code>bambiui@0.2.1</code> is available on npm under MIT. Install editable React and CSS Modules sources directly into your project.</p>
     <pre className={styles.cliCommands}><code>{commands}</code></pre>
     <p>Export this System as <code>bambiui-tokens.json</code> from the header first. The CLI reads it locally, copies editable React/CSS Modules sources and never uploads your system. Without <code>--system</code>, init uses the default system.</p>
     <p className={styles.systemName}>Registry: <code>{origin ? `${origin}/registry/index.json` : ""}</code>. Imports and package-manager installation remain explicit. Distributed software is MIT licensed; Studio remains private.</p>

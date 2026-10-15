@@ -37,8 +37,8 @@ try {
     await click('[data-cli-install] > div button');
     await wait('document.querySelector("[data-cli-copy-status]").textContent.includes("commands copied")');
     const commands = await evaluate('navigator.clipboard.readText()');
-    assert.ok(commands.includes(`npx bambiui@0.2.0 init --registry "${origin}/registry/index.json" --system ./bambiui-tokens.json`));
-    assert.ok(commands.includes("npx bambiui@0.2.0 add card"));
+    assert.ok(commands.includes(`npx bambiui@0.2.1 init --registry "${origin}/registry/index.json" --system ./bambiui-tokens.json`));
+    assert.ok(commands.includes("npx bambiui@0.2.1 add card"));
     assert.equal(await evaluate('document.querySelector("[data-cli-install] details").open'), false);
     await click('[data-cli-install] details > summary');
     console.log("PASS: published npm CLI commands use the served static registry; ZIP fallback stays collapsed.");
