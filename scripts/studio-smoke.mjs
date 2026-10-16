@@ -59,7 +59,7 @@ async function wheel(point, deltaX, deltaY, modifiers = 0) {
 }
 async function canvasBackground() {
   // Locate a real empty hit target; specimen inputs and controls must remain interactive.
-  return evaluate(`(()=>{const e=${q(canvas)},r=e.getBoundingClientRect();for(let y=r.top+12;y<Math.min(r.bottom,innerHeight)-12;y+=8)for(let x=r.left+12;x<Math.min(r.right,innerWidth)-12;x+=8){const t=document.elementFromPoint(x,y);if(t && e.contains(t) && !t.closest('[data-specimen],[data-foundation],button,a,input,textarea,select,label,summary'))return {x,y};}throw Error('No visible canvas background')})()`);
+  return evaluate(`(()=>{const e=${q(canvas)},r=e.getBoundingClientRect();for(let y=r.top+12;y<Math.min(r.bottom,innerHeight)-12;y+=8)for(let x=r.left+12;x<Math.min(r.right,innerWidth)-12;x+=8){const safe=(px,py)=>{const t=document.elementFromPoint(px,py);return t && e.contains(t) && !t.closest('[data-specimen],[data-foundation],button,a,input,textarea,select,label,summary')};if(safe(x,y)&&safe(x+12,y+12))return {x,y};}throw Error('No visible canvas background')})()`);
 }
 async function stableCamera() {
   await delay(500);
@@ -132,7 +132,7 @@ async function assertRecipeSelection(id, recipe, part, target) {
   await wait(`${q(controls)}?.dataset.recipe===${JSON.stringify(recipe)} && ${q(controls)}?.dataset.part===${JSON.stringify(part)} && ${q(controls)}?.dataset.target===${JSON.stringify(target)}`);
   assert.equal(await evaluate('location.pathname'),href('design',id));
   assert.equal(await evaluate(`document.querySelectorAll('${controls}').length`),1);
-  assert.equal(await evaluate(`${named('[aria-label="Component editor"] [role="tab"]','Styles')}.getAttribute('aria-selected')`),'true');
+  await stylesInspector();
   assert.deepEqual(await evaluate(`[...document.querySelectorAll('${matrix(id)} [data-recipe-example][data-selected]')].map(e=>e.dataset.recipeExample)`),[recipe]);
   const prefix = `system-recipe-${id}-${recipe}-${part}-${target}-`;
   const gap = id!=='text' && ['root','header','content','footer','row','error'].includes(part) || id==='input' && part==='control';
@@ -199,10 +199,9 @@ async function select(selector, value) {
   await evaluate(`(()=>{const e=${q(selector)};e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('change',{bubbles:true}))})()`);
   await wait(`${q(selector)}.value===${JSON.stringify(value)}`);
 }
-async function componentTab(tab) {
-  const target=named('[aria-label="Component editor"] [role="tab"]',tab);
-  if (!await evaluate(`(${target})?.getAttribute('aria-selected')==='true'`)) await click(target);
-  await wait(`(${target})?.getAttribute('aria-selected')==='true'`);
+async function stylesInspector() {
+  await wait(`${q('#token-editor [data-style-inspector]')}`);
+  assert.equal(await evaluate(`!!${q('#token-editor [role="tablist"]')}`),false,'style editing no longer shares tabs with sample args');
 }
 async function positionCanvas(expression) {
   if (!await evaluate(`innerWidth>760 && !!(${expression}).closest('[data-canvas]')`)) return;
@@ -419,10 +418,9 @@ try {
       } else assert.equal(computed,value,`${selector} uses ${constant}`);
     }
   });
-  await check('System puts exact Styles first, with session Preview and collapsed shared/base defaults separate',async()=>{
+  await check('System separates the style inspector from Playground and collapses shared/base defaults',async()=>{
     await navigate('design','button');
-    assert.deepEqual(await evaluate(`[...document.querySelectorAll('[aria-label="Component editor"] [role="tab"]')].map(e=>e.textContent.trim())`),['Styles','Preview']);
-    assert.equal(await evaluate(`${named('[aria-label="Component editor"] [role="tab"]','Styles')}.getAttribute('aria-selected')`),'true');
+    await stylesInspector();
     assert.equal(await evaluate(`!!${q('[data-system-recipe-controls]')}`),false,'no recipe is selected by insertion defaults');
     assert.ok(await evaluate(`${q('#token-editor')}.textContent.includes('Select a component layer')`));
     for(const selector of ['[data-system-shared-defaults]','[data-system-base-tokens]']) assert.equal(await evaluate(`${q(selector)}.open`),false);
@@ -431,11 +429,10 @@ try {
     await click(q('[data-system-base-tokens] > summary'));
     assert.equal(await evaluate(`${q('[data-system-base-tokens]')}.open && ${q('#token-paddingX')}.checkVisibility()`),true);
     await click(q('[data-system-base-tokens] > summary'));
-    await componentTab('Preview');
-    assert.equal(await evaluate(`${q('[aria-label="Preview Text"]')}.value`),'Continue');
-    assert.equal(await evaluate(`!!${q('[aria-label="Default Variant"], [aria-label="Default Size"], [aria-label="Preview Variant"], [aria-label="Preview Size"]')}`),false,'session samples cannot compete with matrix axes');
-    assert.equal(await evaluate(`!!${q('#token-editor [data-system-recipe-controls], #token-editor [data-system-shared-defaults], #token-editor [data-system-base-tokens]')}`),false,'Preview does not expose style controls');
-    await componentTab('Styles');
+    assert.equal(await evaluate(`${q('[data-component-playground="button"] [aria-label="Playground Text"]')}.value`),'Continue');
+    assert.equal(await evaluate(`!!${q('#token-editor [aria-label^="Playground "]')}`),false,'args stay outside the style inspector');
+    assert.ok(await evaluate(`!!${q('[data-playground-pane] [aria-label="Playground Variant"]')} && !!${q('[data-playground-pane] [aria-label="Playground Size"]')}`),'Playground exposes independent public axes');
+    await stylesInspector();
     assert.equal(await evaluate(`${q('[data-system-base-tokens]')}.open`),false);
     assert.equal(await evaluate(`!!${q('[aria-label="System component part"]')}`),false);
     await select('[aria-label="Shared default layer"]','root');
@@ -468,7 +465,7 @@ try {
       assert.equal(await evaluate(`${q(`${recipePart('card','outlined.md',part)} ${child}`)}.dataset.systemSelectedPart`),'text');
     }
     await capture('studio-matrix-card-footer');
-    await componentTab('Preview');
+    await click(q('[data-component-playground="card"] [aria-label="Playground Title"]'));
     await click(q(recipePart('card','outlined.md','title')));
     await assertRecipeSelection('card','outlined.md','title','text');
   });
@@ -549,9 +546,8 @@ try {
     await click(q('[data-system-base-tokens] > summary'));
     await click(q('[data-system-scope-details="base"] > summary'));
     assert.ok(await evaluate(`${q('[data-system-scope-details="base"]')}.textContent.includes('across all sizes') && ${q('[data-system-scope-details="base"]')}.textContent.includes('does not clear shared layer styles')`));
-    await componentTab('Preview');
-    assert.equal(await evaluate(`${q('[data-system-edit-scope="preview"]')}.textContent`),'Temporary preview');
-    await componentTab('Styles');
+    assert.ok(await evaluate(`${q('[data-component-playground]')}.textContent.includes('unsaved args')`));
+    await stylesInspector();
     await navigate('design','card'); await click(q(recipePart('card','outlined.md','title')));
     assert.equal(await evaluate(`localStorage.getItem('bambiui.design-system.v1')`),bytes);
     assert.deepEqual(await evaluate(`[...document.querySelectorAll('.canvas-history button')].map(e=>e.disabled)`),history);
@@ -1488,13 +1484,13 @@ try {
   await check('contrast actions distinguish legacy shared layers from exact recipe text scopes',async()=>{
     await navigate('design','card');
     const before = await stored();
-    await componentTab('Styles');
+    await stylesInspector();
     await select('[aria-label="Shared default layer"]','title');
     const shared = '[id="system-shared-card-title-color"]';
     await fill(shared,'#123456'); await key('Enter');
     await wait(`JSON.parse(localStorage.getItem('bambiui.design-system.v1')).themes[document.documentElement.dataset.studioTheme].componentStyles?.card?.title?.color==='#123456'`);
     await select('[aria-label="Shared default layer"]','description');
-    await componentTab('Preview');
+    await click(q('[data-component-playground="card"] [aria-label="Playground Title"]'));
     await navigate('design','colors');
     await click(q('.editor-title-actions button[aria-label*="System color pairs"]'));
     await click(named('[data-contrast-check="card.outlined.title.text"] button','Edit Card shared title color'));
@@ -1633,6 +1629,9 @@ try {
     const arrow=await evaluate(cameraState);
     await key('ArrowRight');
     await wait(`${cameraState}.x < ${arrow.x}-10`);
+    // The matrix now occupies half the central area; fit it to expose real blank drag space.
+    await click(named('[aria-label="Canvas zoom"] button','Fit'));
+    await stableCamera();
     const point=await canvasBackground();
     const before=await evaluate(cameraState);
     await send('Input.dispatchMouseEvent',{type:'mousePressed',...point,button:'left',clickCount:1});

@@ -550,7 +550,7 @@ try {
     assert.deepEqual(await snapshot(main), before); assert.deepEqual(await audit(main), writes);
     await noProjectMutation(main, entries);
   });
-  await check('Card filters clear hidden selection without writes; preview samples stay session-only', async () => {
+  await check('Card filters clear hidden selection without writes; independent playground stays session-only', async () => {
     await seed(main, systemsFixture(), '/card'); await systemReady(main, 'Card');
     await chooseCard(main);
     const before = await snapshot(main), writes = await audit(main);
@@ -564,20 +564,24 @@ try {
     assert.deepEqual(await snapshot(main), before); assert.deepEqual(await audit(main), writes);
     await chooseCard(main);
     const css = await exportTokens(main, 'CSS'), json = await exportTokens(main, 'JSON');
-    await click(main, named('[aria-label="Component editor"] [role="tab"]', 'Preview'));
-    const previewTitle = '#system-default-card-title';
+    const previewTitle = '[data-component-playground="card"] [data-playground-controls] [aria-label="Playground Title"]';
+    await wait(main, `!!${q(previewTitle)}`);
+    const matrixBefore = await main.evaluate(`${q('[data-component-matrix="card"]')}.innerHTML`);
+    const historyBefore = await main.evaluate(`[...document.querySelectorAll('[aria-label="Undo change"], [aria-label="Redo change"]')].map(e=>e.disabled)`);
     const originalTitle = await main.evaluate(`${q(previewTitle)}.value`);
     await fill(main, previewTitle, 'QA temporary title — 雪 🦌');
-    await wait(main, `[...document.querySelectorAll('[data-component-matrix="card"] [data-component-part="title"]')].some(e=>e.textContent.includes('QA temporary title'))`);
+    await wait(main, `${q('[data-component-playground="card"] [data-playground-preview] [data-component-part="title"]')}.textContent==='QA temporary title — 雪 🦌'`);
+    assert.equal(await main.evaluate(`${q('[data-component-matrix="card"]')}.innerHTML`), matrixBefore, 'Playground never changes matrix copy, recipes, selection or filters');
+    assert.deepEqual(await main.evaluate(`[...document.querySelectorAll('[aria-label="Undo change"], [aria-label="Redo change"]')].map(e=>e.disabled)`), historyBefore, 'Playground never creates token history');
     assert.deepEqual(await snapshot(main), before); assert.deepEqual(await audit(main), writes);
     assert.equal(await exportTokens(main, 'CSS'), css);
     assert.deepEqual(await exportTokens(main, 'JSON'), json);
-    await click(main, named('button', 'Reset preview'));
+    await click(main, named('[data-component-playground="card"] button', 'Reset playground'));
     await wait(main, `${q(previewTitle)}.value===${JSON.stringify(originalTitle)}`);
     await fill(main, previewTitle, 'QA discarded on reload');
     const time = await main.evaluate('performance.timeOrigin'); await main.send('Page.reload');
     await wait(main, `performance.timeOrigin!==${time}`); await systemReady(main, 'Card');
-    await click(main, named('[aria-label="Component editor"] [role="tab"]', 'Preview'));
+    await wait(main, `!!${q(previewTitle)}`);
     assert.equal(await main.evaluate(`${q(previewTitle)}.value`), originalTitle);
     assert.deepEqual(await snapshot(main), before); assert.deepEqual(await audit(main), writes);
   });
@@ -619,5 +623,5 @@ try {
     if (profile) await rm(profile, { recursive: true, force: true, maxRetries: 4, retryDelay: 200 });
   } catch (error) { process.exitCode = 1; console.error(`FAIL fixture cleanup: ${error.stack || error}`); }
   console.log(`RESULT ${checks} checks passed, ${failures.length} checks failed; ${process.exitCode ? 'FAILED (no skips)' : 'PASS'}`);
-  console.log('SCOPE Controlled Chromium fixtures, not human/VoiceOver/native zoom acceptance. Includes representative Card size-group/filter/pointer-draft/session-preview CSS/JSON isolation, not full seven-component acceptance. ZIP isolation is in studio-source-smoke; adapter limit/error matrix belongs to A unit tests. No build/generator is run by this script.');
+  console.log('SCOPE Controlled Chromium fixtures, not human/VoiceOver/native zoom acceptance. Includes representative Card size-group/filter/pointer-draft/independent-playground CSS/JSON isolation, not full seven-component acceptance. ZIP isolation is in studio-source-smoke; adapter limit/error matrix belongs to A unit tests. No build/generator is run by this script.');
 }

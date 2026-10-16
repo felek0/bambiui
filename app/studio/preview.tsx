@@ -30,7 +30,7 @@ import {
 import styles from "./preview.module.css";
 import { ComponentMatrix } from "./component-matrix";
 import type { ComponentRecipeSelection } from "./component-recipes";
-import type { ComponentDefaults } from "./component-defaults";
+import { ComponentPlayground } from "./component-playground";
 
 
 function DemoButton({
@@ -403,15 +403,15 @@ function ThemePane({ theme, mode, children, copy }: {
   );
 }
 
-export function Preview({ selected, system, mode, active = true, onSelectColorRole, onEditToken, recipeSelection, onSelectRecipe, previewDefaults, onClearRecipeSelection }: {
+export function Preview({ selected, system, mode, active = true, onSelectColorRole, onEditToken, recipeSelection, onSelectRecipe, onClearRecipeSelection, tools }: {
   selected: "colors" | "spacing" | ComponentId;
   system: DesignSystem;
   mode: PaletteMode;
   active?: boolean;
   onSelectColorRole?: (role: ColorScaleRole) => void;
   onEditToken?: (selection: "colors" | "spacing", inputId: string) => void;
-  previewDefaults?: ComponentDefaults;
   onClearRecipeSelection?: () => void;
+  tools?: ReactNode;
   recipeSelection: ComponentRecipeSelection | null;
   onSelectRecipe: (selection: ComponentRecipeSelection) => void;
 }) {
@@ -621,6 +621,9 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
   }, [selected, selectedRecipe, active, moveCamera]);
 
   return (
+    <div className={styles.workspace} data-preview-split={selected !== "colors" && selected !== "spacing" || undefined}>
+    <div className={styles.matrixPane} data-matrix-pane>
+    {tools}
     <ThemePane theme={system.themes[mode]} mode={mode} copy={copy}>
       <div className={styles.canvasControls} role="group" aria-label="Canvas zoom">
         <button type="button" onClick={() => changeZoom(zoom - 0.1)} disabled={zoom <= 0.2} aria-label="Zoom out">−</button>
@@ -760,7 +763,7 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
             </section>
           </div>}
           {selected !== "colors" && selected !== "spacing" && <section key={selected} className={styles.componentBoard} data-specimen={selected} data-canvas-unit={selected} data-selected aria-label={`${selected} preview`}>
-            <ComponentMatrix component={selected} defaults={previewDefaults ?? system.componentDefaults} selection={recipeSelection} onSelect={onSelectRecipe} onClearSelection={onClearRecipeSelection} />
+            <ComponentMatrix component={selected} defaults={system.componentDefaults} selection={recipeSelection} onSelect={onSelectRecipe} onClearSelection={onClearRecipeSelection} />
             {selected !== "text" && <details className={styles.interactions} data-interaction-examples>
               <summary>Interaction & state previews</summary>
               <p>Try keyboard and pointer behavior here. Disabled, loading and radius examples inherit the same recipes; they are not separate style scopes.</p>
@@ -770,5 +773,10 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
         </div>
       </div>
     </ThemePane>
+    </div>
+    {selected !== "colors" && selected !== "spacing" && <div className={styles.playgroundPane} data-playground-pane>
+      <ComponentPlayground key={selected} component={selected} system={system} mode={mode} active={active} />
+    </div>}
+    </div>
   );
 }

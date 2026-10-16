@@ -16,6 +16,25 @@ Date: 2026-10-16. Status: **frozen for implementation** after Agent D read-only 
 - The separate **All combinations** shared section remains broad across **all sizes**; it is not the selected-size write group. Exact declarations still override it through the unchanged cascade.
 - Distributed component/pure resolver graphs remain untouched. Production build, catalog/registry freshness and CLI tests passed with unchanged source identities. No version changes or publish. The UI-only helper `recipe-edit-scope.ts` and inspector integration were tested over all seven components' consumed field allowlists. The 99-check System smoke includes real Button six-variant small geometry/shadow/typography, Text six-tone paragraph small typography, exact colors/theme isolation, grouped reset and single-step Undo/Redo. The 17-check System-only smoke verifies Card medium grouping and preservation of historical divergent records until edit. Full app suite: 637 tests. This does not close manual acceptance.
 
+## Superseding user amendment — independent split Playground
+
+This amendment supersedes the original inspector Preview wiring and **session sample defaults** lifecycle column below. The earlier interface description is retained as historical integration context, not the active Studio contract. The size-based write policy above is unchanged.
+
+- Desktop component workspace is a 50/50 split: canonical variant/state/tone/size matrix and a separate Storybook-style Playground. Narrow screens stack them; Foundations stay full width. History/theme/camera tools belong to the matrix pane. Playground has its own scrolling and is outside camera pointer/wheel handling.
+- Matrix always receives saved `system.componentDefaults`; Playground owns detached ephemeral args. Neither edits nor reset of those args affect matrix DOM, selection, tokens, saved defaults, history, storage or CSS/JSON/source ZIP/CLI output. Both previews consume current System tokens and the selected theme.
+- Active `SystemComponentEditor` uses `showPreview={false}`: style controls only, no duplicate Preview tab. Optional legacy inspector Preview props remain for internal compatibility/tests, without active Studio state/write wiring. `Preview` no longer accepts session `previewDefaults`.
+- Playground exposes every supported public variant/size/tone and metadata-backed scalar/content/state option for all seven components. Value and Checked edit controlled live state, replacing duplicate defaultValue/defaultChecked controls. Safe fixed icon presets and populated Card slots are supported. Arbitrary JSX/styles, executable callbacks/render functions and names are not editable; no public API/token/schema is added. Submit is prevented; reset clears action count and remounts native form state.
+
+| Event | Playground args | Matrix/inspector |
+| --- | --- | --- |
+| Component/System change, import, reload | Initialize from saved component defaults; clear actions/native state | Existing selection/draft lifecycle remains |
+| Matrix recipe/part/target/filter or contrast navigation within component | Preserve | Existing exact selection/filter/draft guards remain |
+| Theme or Design/Develop | Preserve | Existing theme/view draft discard remains |
+| Token edits, Undo/Redo, component-style reset | Preserve; repaint with live tokens | Existing scoped writes/history remain |
+| Reset playground | Restore latest saved defaults; clear actions/native state | No change or writes |
+
+The per-recipe **Test interaction states** disclosures remain separate legacy sandboxes with their documented close/recipe reset behavior; they are not the independent Playground lifecycle. Human usability, VoiceOver and native zoom acceptance remain open.
+
 ## Routes and shell
 
 - `/` and `/colors`: System Design / Colors. Existing `/spacing`, seven component Design routes and Develop routes remain.

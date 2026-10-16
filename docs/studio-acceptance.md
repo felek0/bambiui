@@ -6,6 +6,8 @@ Status: **not run**. This is a session protocol, not evidence of user or accessi
 
 **Superseding scope amendment:** This protocol now targets the [user-requested size-based editor policy](system-first-sf0-contract.md#superseding-user-amendment--size-based-editor-write-groups). Implementation and automated checks passed for this amendment: 637 unit/SSR/source tests, 99 System browser checks and 17 System-only checks, including Button/Text grouping and Card historical-value preservation. Source delivery checks also passed with unchanged catalog/registry identities. No participant, VoiceOver or native-zoom session result is claimed; the result table remains Not run.
 
+**Split Playground amendment:** The active candidate replaces inspector Preview with an independent central Playground beside the canonical matrix (stacked on narrow screens). Props/content/state changes repaint only its live sample; matrix selection/content and all saved/exported data remain unchanged. Args survive matrix/filter/theme/view/token changes; component/System/import/reload/Reset playground reinitialize them. Apply this lifecycle instead of the original inspector Preview lifecycle. Human results below remain Not run.
+
 ## Purpose and safety
 
 Validate that a regular Figma user can distinguish selected-example inspection, selected-size non-color write groups, exact recipe/theme colors, all-combination/all-size defaults and temporary preview content without learning bambiui's implementation. Run the task session before explaining the inspector. Follow with keyboard, VoiceOver and native-zoom checks from [the accessibility checklist](accessibility-checklist.md).
@@ -67,8 +69,8 @@ Facilitator checks:
 **Participant goal:** “Try a much longer title on your Card without saving new default content. Then return to the original example and check that your typography edits remain.”
 
 Facilitator checks:
-- The participant finds session-only Preview options rather than a Project or insertion-default editor.
-- Preview/reset/close behavior matches the SF0 lifecycle table. Temporary text is clearly distinguished from saved styles.
+- The participant finds the central Playground, not a Project, insertion-default editor or inspector Preview tab. The canonical matrix title never changes while trying a longer Playground title.
+- Playground axes/content/state are independent of matrix selection. Changing the selected recipe/layer/filter, theme or Design/Develop preserves args; changing component/System, importing, reloading or Reset playground restores saved defaults. Temporary text is clearly distinguished from saved styles.
 - T01/T02 typography and geometry remain unchanged; preview actions do not enter token Undo or persist after reload/system switch.
 - Exported System JSON and source example still use the saved System/defaults, not session text. The participant understands the distinction; perform exact data comparisons in automated fixtures, not by forcing a user to inspect raw hashes.
 
@@ -77,7 +79,7 @@ Facilitator checks:
 **Participant goal:** “Make an Input show an error above the field with a warning icon. Make medium Input error messages 12.625px wherever an error is supported.”
 
 Facilitator checks:
-- Preview owns temporary error content, icon and position. Selecting `invalid.md` error/text writes saved typography into invalid.md and readonly.md in both themes, never default.md. Export is not promised to reproduce temporary props.
+- Playground owns temporary error content, icon and position. Selecting `invalid.md` error/text writes saved typography into invalid.md and readonly.md in both themes, never default.md. Export is not promised to reproduce temporary props.
 - Root, control text, label, description and error selection are distinguishable. The canonical invalid recipe exposes its error layer; preview props must not silently change the inspector's edit recipe.
 - Other sizes, normal Input text and unrelated component recipes remain unchanged. Repeat on Switch/Checkbox: error typography reaches only invalidChecked/invalidUnchecked at that size, never valid checked/unchecked entries; unsupported error records are not invented.
 - Read-only and disabled are not mistaken for styling-only preview effects.
@@ -87,10 +89,10 @@ Facilitator checks:
 **Participant goal:** “Try a Button's loading and disabled behavior. Then return to the original component and explain whether you changed your saved design.”
 
 Facilitator checks:
-- The participant discovers the optional interaction preview and understands its temporary state.
+- The participant discovers Playground's supported Loading/Disabled props and understands their temporary state. The older optional per-recipe interaction disclosure remains available separately.
 - A real loading action cannot be repeatedly activated and keeps understandable focus; disabled controls do not activate.
 - Hover, pressed and keyboard focus can be inspected without confusing the live state with the inspector's selected recipe.
-- Closing/resetting the preview clears temporary interaction data without authoring insertion defaults or tokens.
+- Reset playground clears temporary interaction data without authoring insertion defaults or tokens. The Playground and matrix scroll independently; matrix pan/zoom does not transform or scroll Playground.
 
 ### T06 — Themes, persistence and developer handoff
 

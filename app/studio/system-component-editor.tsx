@@ -22,6 +22,7 @@ export type SystemComponentEditorProps = {
   theme: ThemeTokens;
   mode: PaletteMode;
   defaults?: ComponentDefaults;
+  showPreview?: boolean;
   previewDefaults?: ComponentDefaults;
   onPreviewDefaultsChange?: (next: ComponentDefaults | undefined) => void;
   tab: ComponentEditorTab;
@@ -366,10 +367,18 @@ function SharedDefaults({ component, theme, mode = "light", initialPart = "root"
   </details>;
 }
 
-export function SystemComponentEditor({ component, theme, mode, defaults, previewDefaults, onPreviewDefaultsChange, tab, selection, sharedPart, onSharedPartChange, onTabChange, onSelectionChange, onStylesChange, onRecipesChange, children }: SystemComponentEditorProps) {
+export function SystemComponentEditor({ component, theme, mode, defaults, showPreview = true, previewDefaults, onPreviewDefaultsChange, tab, selection, sharedPart, onSharedPartChange, onTabChange, onSelectionChange, onStylesChange, onRecipesChange, children }: SystemComponentEditorProps) {
   if (!component) return children;
   const recipe = selection?.component === component ? componentRecipeOptions(component).find(entry => entry.key === selection.recipe) : undefined;
   const validSelection = selection && recipe && componentRecipeFields(component, selection.part, selection.target, selection.recipe).length > 0 ? selection : null;
+  const styleContent = <>
+      {validSelection && recipe ? <RecipeStyles key={`${component}-${validSelection.recipe}-${validSelection.part}-${validSelection.target}-${mode}`} selection={validSelection} recipe={recipe} theme={theme} mode={mode}
+        onSelectionChange={next => { onSelectionChange(next); onTabChange("styles"); }} onChange={onRecipesChange} />
+        : <div className={styles.emptySelection}><h3>Select a component layer</h3><p className={fields.note}>Choose a layer in a canvas example to style that exact variant and size.</p></div>}
+      <SharedDefaults key={`${component}-${mode}-${sharedPart ?? "root"}`} component={component} theme={theme} mode={mode} initialPart={sharedPart} onPartChange={onSharedPartChange} onChange={onStylesChange} />
+      <details className={`${fields.group} ${styles.baseTokens}`} data-system-base-tokens><summary>Base & variant tokens · all sizes</summary><p className={styles.scopeLabel} data-system-edit-scope="base">Base / variant defaults · all sizes</p><p className={fields.note}>Shared across sizes, not limited to the selection above. Exact combination and shared layer overrides may mask these defaults.</p><details className={styles.sourceDetails} data-system-scope-details="base"><summary>Scope &amp; reset behavior</summary><p>Variant/state tokens affect the selected variant or state across all sizes. Component base tokens supply defaults across combinations. Both affect System components where those defaults are consumed.</p><p>Resetting a base or variant token removes only its own override and restores its global or derived default. It does not clear shared layer styles, exact combination styles or local instance styles. Accessible focus outlines remain global.</p></details>{children}</details>
+    </>;
+  if (!showPreview) return <div className={styles.editor} data-style-inspector>{styleContent}</div>;
   return <Tabs.Root value={tab} onValueChange={value => {
     if (value !== "styles" && value !== "preview" || value === tab) return;
     if (tab === "preview") onPreviewDefaultsChange?.(undefined);
@@ -378,13 +387,7 @@ export function SystemComponentEditor({ component, theme, mode, defaults, previe
     <Tabs.List aria-label="Component editor" className={styles.tabs}>
       <Tabs.Tab value="styles" data-inspector-discard-drafts={tab !== "styles" || undefined} className={styles.tab}>Styles</Tabs.Tab><Tabs.Tab value="preview" data-inspector-discard-drafts={tab !== "preview" || undefined} className={styles.tab}>Preview</Tabs.Tab>
     </Tabs.List>
-    <Tabs.Panel value="styles" className={styles.panel}>
-      {validSelection && recipe ? <RecipeStyles key={`${component}-${validSelection.recipe}-${validSelection.part}-${validSelection.target}-${mode}`} selection={validSelection} recipe={recipe} theme={theme} mode={mode}
-        onSelectionChange={next => { onSelectionChange(next); onTabChange("styles"); }} onChange={onRecipesChange} />
-        : <div className={styles.emptySelection}><h3>Select a component layer</h3><p className={fields.note}>Choose a layer in a canvas example to style that exact variant and size.</p></div>}
-      <SharedDefaults key={`${component}-${mode}-${sharedPart ?? "root"}`} component={component} theme={theme} mode={mode} initialPart={sharedPart} onPartChange={onSharedPartChange} onChange={onStylesChange} />
-      <details className={`${fields.group} ${styles.baseTokens}`} data-system-base-tokens><summary>Base & variant tokens · all sizes</summary><p className={styles.scopeLabel} data-system-edit-scope="base">Base / variant defaults · all sizes</p><p className={fields.note}>Shared across sizes, not limited to the selection above. Exact combination and shared layer overrides may mask these defaults.</p><details className={styles.sourceDetails} data-system-scope-details="base"><summary>Scope &amp; reset behavior</summary><p>Variant/state tokens affect the selected variant or state across all sizes. Component base tokens supply defaults across combinations. Both affect System components where those defaults are consumed.</p><p>Resetting a base or variant token removes only its own override and restores its global or derived default. It does not clear shared layer styles, exact combination styles or local instance styles. Accessible focus outlines remain global.</p></details>{children}</details>
-    </Tabs.Panel>
+    <Tabs.Panel value="styles" className={styles.panel}>{styleContent}</Tabs.Panel>
     <Tabs.Panel value="preview" className={styles.panel}><fieldset className={styles.previewFields} disabled={!onPreviewDefaultsChange}><legend className={styles.previewLegend}>Session samples</legend><PreviewSamples key={`${component}-${selection?.recipe ?? "none"}`} component={component} defaults={defaults} previewDefaults={previewDefaults} onChange={onPreviewDefaultsChange} /></fieldset></Tabs.Panel>
   </Tabs.Root>;
 }

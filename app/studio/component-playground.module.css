@@ -1,0 +1,17 @@
+.playground { display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; min-height: 0; width: 100%; max-width: 100%; overflow: hidden; background: var(--studio-color-surface); color: var(--studio-color-text); font: 12px/1.5 var(--studio-font-family); color-scheme: var(--studio-color-scheme); }
+.playground[hidden] { display: none; }
+.header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 16px; border-bottom: 1px solid var(--studio-color-border); }
+.header h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.header p { margin: 4px 0 0; color: var(--studio-color-text-muted); }
+.header button { max-width: 100%; padding: 6px 10px; border: 1px solid var(--studio-color-border); border-radius: 4px; background: var(--studio-color-surface); color: inherit; font: inherit; cursor: pointer; }
+.scroll { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 16px; }
+.preview { min-width: 0; overflow: auto; padding: 24px; border: 1px solid var(--ds-border); border-radius: 6px; background: var(--ds-background); color: var(--ds-foreground); font-family: var(--ds-font-family); }
+.sample { display: grid; align-items: center; justify-items: start; min-height: 120px; min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.sample > * { min-width: 0; max-width: 100%; }
+.status { display: block; margin-block: 12px; color: var(--studio-color-text-muted); overflow-wrap: anywhere; }
+.controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 12px; min-width: 0; }
+.field { display: flex; flex-direction: column; align-items: stretch; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.field input:not([type="checkbox"]), .field select { width: 100%; min-width: 0; max-width: 100%; min-height: 34px; padding: 6px 8px; border: 1px solid var(--studio-color-border); border-radius: 4px; background: var(--studio-color-surface); color: var(--studio-color-text); font: inherit; }
+.field input[type="checkbox"] { align-self: flex-start; width: 18px; height: 18px; accent-color: var(--studio-color-accent); }
+.controls :is(input, select):focus-visible, .header button:focus-visible { outline: var(--studio-focus-ring); outline-offset: 2px; }
+.note { margin: 16px 0 0; color: var(--studio-color-text-muted); overflow-wrap: anywhere; }

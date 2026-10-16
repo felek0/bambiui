@@ -80,6 +80,19 @@ test("Styles comes first; temporary Preview and collapsed shared/base controls s
   assert.equal(panel(null), "<p>Variant paint controls</p>", "foundation workflows pass through unchanged");
 });
 
+test("active styles-only inspector keeps all style controls without duplicate Preview tabs", () => {
+  for (const component of componentIds) {
+    const selection = selectionFor(component);
+    const html = panel(component, "preview", selection, { showPreview: false });
+    assert.match(html, /data-style-inspector/);
+    assert.match(html, /data-system-recipe-controls/);
+    assert.match(html, /data-system-shared-defaults/);
+    assert.match(html, /data-system-base-tokens/);
+    assert.match(html, /Variant paint controls/);
+    assert.doesNotMatch(html, /role="tablist"|role="tabpanel"|system-default-|aria-label="Preview /);
+  }
+});
+
 test("scope/source details stay opt-in and separate exact, shared, base and insertion effects", () => {
   const selection = selectionFor("card", "outlined.md", "title", "text");
   const html = panel("card", "styles", selection);

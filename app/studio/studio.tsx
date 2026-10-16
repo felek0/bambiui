@@ -52,7 +52,6 @@ import {
 } from "./tokens";
 import { loadSystems, saveSystems, SYSTEMS_KEY, type SystemCollection } from "./systems";
 import { readLegacyProjectReferences, legacySystemDeletionBlock, type LegacyProjectReferences } from "./legacy-project-recovery";
-import type { ComponentDefaults } from "./component-defaults";
 import shell from "./composer/workspace-shell.module.css";
 import { SystemComponentEditor, type ComponentEditorTab } from "./system-component-editor";
 import type { ComponentStylePart } from "./component-styles";
@@ -366,21 +365,18 @@ export default function Studio() {
   const [selectedVariantColor, setSelectedVariantColor] = useState<string>(componentVariantKeys.button[0]);
   const [componentEditorTab, setComponentEditorTab] = useState<ComponentEditorTab>("styles");
   const [recipeSelection, setRecipeSelection] = useState<ComponentRecipeSelection | null>(null);
-  const [previewDefaults, setPreviewDefaults] = useState<ComponentDefaults | undefined>(undefined);
+
   const [sampleComponent, setSampleComponent] = useState(selection);
-  // Reset in the render that changes context; an outgoing sample must never reach a new component.
+  // Clear an outgoing recipe in the render that changes component context.
   if (sampleComponent !== selection) {
     setSampleComponent(selection);
     if (recipeSelection?.component !== selection) setRecipeSelection(null);
-    setPreviewDefaults(undefined);
   }
   function clearRecipeSelection() {
     setRecipeSelection(null);
-    setPreviewDefaults(undefined);
   }
   const [sharedStyleTarget, setSharedStyleTarget] = useState<{ component: ComponentId; part: ComponentStylePart } | null>(null);
   function editComponentRecipe(next: ComponentRecipeSelection) {
-    if (recipeSelection?.component !== next.component || recipeSelection?.recipe !== next.recipe) setPreviewDefaults(undefined);
     setComponentEditorTab("styles"); setRecipeSelection(next); showInspector();
     if (selection !== next.component) router.push(`/${next.component}`, { scroll: false });
   }
@@ -394,7 +390,6 @@ export default function Studio() {
         ? `variant-color-${target.selection}-${variantSlug}-${target.key}` : `token-${target.key}`;
     setComponentEditorTab("styles");
     if (target.recipe !== undefined) {
-      if (recipeSelection?.component !== target.selection || recipeSelection?.recipe !== target.recipe) setPreviewDefaults(undefined);
       setRecipeSelection({ component: target.selection, recipe: target.recipe, part: target.part, target: target.target });
     } else {
       clearRecipeSelection();
@@ -1116,6 +1111,8 @@ export default function Studio() {
 
             <section hidden={view !== "design"} aria-label={t.design} className="workspace-panel workspace-panel--design preview-canvas">
               <div className="preview-frame">
+                <Preview key={`${collection.activeId}-${importRevision}`} selected={selection} system={system} mode={activeTheme} active={view === "design"} onSelectColorRole={setScaleRole} onEditToken={(nextSelection, inputId) => { showInspector(); setEditTarget({ selection: nextSelection, inputId }); }}
+                  recipeSelection={recipeSelection} onSelectRecipe={editComponentRecipe} onClearRecipeSelection={clearRecipeSelection} tools={<>
                 <div className="canvas-history" role="group" aria-label="Edit history">
                   <Button iconOnly aria-label={t.undo} title={t.undo} disabled={!ready || historyCounts.undo === 0} onClick={() => travel("undo")}><Icon name="undo" size={16} /></Button>
                   <Button iconOnly aria-label={t.redo} title={t.redo} disabled={!ready || historyCounts.redo === 0} onClick={() => travel("redo")}><Icon name="redo" size={16} /></Button>
@@ -1126,8 +1123,7 @@ export default function Studio() {
                     <SegmentedControl.Item value="dark" aria-label={t.dark} title={t.dark}><Icon name="moon" size={16} /></SegmentedControl.Item>
                   </SegmentedControl>
                 </div>
-                <Preview key={`${collection.activeId}-${importRevision}`} selected={selection} system={system} mode={activeTheme} active={view === "design"} onSelectColorRole={setScaleRole} onEditToken={(nextSelection, inputId) => { showInspector(); setEditTarget({ selection: nextSelection, inputId }); }}
-                  recipeSelection={recipeSelection} onSelectRecipe={editComponentRecipe} previewDefaults={previewDefaults} onClearRecipeSelection={clearRecipeSelection} />
+                </>} />
               </div>
             </section>
             <section hidden={view !== "develop"} aria-label={t.develop} className="workspace-panel workspace-panel--develop">
@@ -1169,7 +1165,7 @@ export default function Studio() {
             tab={componentEditorTab} selection={recipeSelection} onTabChange={setComponentEditorTab} onSelectionChange={editComponentRecipe}
             sharedPart={sharedStyleTarget?.component === component ? sharedStyleTarget.part : undefined}
             onSharedPartChange={part => setSharedStyleTarget({ component, part })}
-            previewDefaults={previewDefaults} onPreviewDefaultsChange={setPreviewDefaults}
+            showPreview={false}
             onRecipesChange={componentRecipes => updateTheme({ ...theme, componentRecipes })}
             onStylesChange={componentStyles => updateTheme({ ...theme, componentStyles })}>
           {!isGlobal && variantComponent && <section className="token-section component-variant-editor" id="variant-colors">
