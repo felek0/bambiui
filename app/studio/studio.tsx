@@ -77,9 +77,7 @@ const spacingGroups: { label: string; keys: readonly (keyof TokenValues)[] }[] =
 ];
 
 const componentGroups: { label: string; ids: readonly ComponentId[] }[] = [
-  { label: "Actions", ids: ["button"] },
-  { label: "Forms", ids: ["input", "switch", "checkbox"] },
-  { label: "Content", ids: ["card", "badge", "text"] },
+  { label: "Components", ids: ["button", "input", "switch", "checkbox", "card", "badge", "text"] },
 ];
 
 function workspaceHref(view: View, selection: Selection) {
@@ -345,16 +343,30 @@ export default function Studio() {
   const [query, setQuery] = useState("");
   const [activeTheme, setActiveTheme] = useState<PaletteMode>("light");
   const compact = useSyncExternalStore(subscribeCompact, getCompact, getServerCompact);
-  const [panelsHidden, setPanelsHidden] = useState(false);
+  const [componentMode, setComponentMode] = useState<"variants" | "playground">("variants");
+  const [playgroundHost, setPlaygroundHost] = useState<HTMLDivElement | null>(null);
+  const playgroundMode = selection !== "colors" && selection !== "spacing" && componentMode === "playground";
   const [leftHidden, setLeftHidden] = useState(false);
   const [rightHidden, setRightHidden] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"left" | "right" | null>(null);
-  const leftVisible = !panelsHidden && (compact ? mobilePanel === "left" : !leftHidden);
-  const rightVisible = !panelsHidden && view === "design" && (compact ? mobilePanel === "right" : !rightHidden);
+  const leftVisible = compact ? mobilePanel === "left" : !leftHidden;
+  const rightVisible = view === "design" && (compact ? mobilePanel === "right" : !rightHidden);
 
   function showInspector() {
-    setPanelsHidden(false); setRightHidden(false); setMobilePanel("right");
+    setRightHidden(false); setMobilePanel("right");
   }
+  useEffect(() => {
+    if (!compact || !mobilePanel) return;
+    const id = mobilePanel === "left" ? "workspace-sidebar" : "workspace-inspector";
+    // Portal controls have their React ancestry in Preview, not their visible panel.
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || !(event.target instanceof Node) || !document.getElementById(id)?.contains(event.target)) return;
+      setMobilePanel(null);
+      document.querySelector<HTMLButtonElement>(`[aria-controls="${id}"]`)?.focus();
+    };
+    document.addEventListener("keydown", dismiss);
+    return () => document.removeEventListener("keydown", dismiss);
+  }, [compact, mobilePanel]);
   useEffect(() => {
     const root = document.documentElement;
     root.dataset.studioTheme = activeTheme;
@@ -370,6 +382,7 @@ export default function Studio() {
   // Clear an outgoing recipe in the render that changes component context.
   if (sampleComponent !== selection) {
     setSampleComponent(selection);
+    setComponentMode("variants");
     if (recipeSelection?.component !== selection) setRecipeSelection(null);
   }
   function clearRecipeSelection() {
@@ -377,7 +390,7 @@ export default function Studio() {
   }
   const [sharedStyleTarget, setSharedStyleTarget] = useState<{ component: ComponentId; part: ComponentStylePart } | null>(null);
   function editComponentRecipe(next: ComponentRecipeSelection) {
-    setComponentEditorTab("styles"); setRecipeSelection(next); showInspector();
+    setComponentMode("variants"); setComponentEditorTab("styles"); setRecipeSelection(next); showInspector();
     if (selection !== next.component) router.push(`/${next.component}`, { scroll: false });
   }
   const [editTarget, setEditTarget] = useState<{ selection: Selection; inputId: string } | null>(null);
@@ -388,7 +401,7 @@ export default function Studio() {
     const inputId = target.recipe ? `system-recipe-${target.selection}-${target.recipe}-${target.part}-${target.target}-${target.key}`
       : target.part ? `system-shared-${target.selection}-${target.part}-${target.key}` : variant
         ? `variant-color-${target.selection}-${variantSlug}-${target.key}` : `token-${target.key}`;
-    setComponentEditorTab("styles");
+    setComponentMode("variants"); setComponentEditorTab("styles");
     if (target.recipe !== undefined) {
       setRecipeSelection({ component: target.selection, recipe: target.recipe, part: target.part, target: target.target });
     } else {
@@ -807,7 +820,7 @@ export default function Studio() {
   }
 
   return (
-    <div className={`studio-shell ${shell.shell}`} data-view={view} data-workspace="system" data-left-hidden={!leftVisible || undefined} data-right-hidden={!rightVisible || undefined}>
+    <div className={`studio-shell ${shell.shell}`} data-view={view} data-workspace="system" data-component-mode={playgroundMode ? "playground" : "variants"} data-left-hidden={!leftVisible || undefined} data-right-hidden={!rightVisible || undefined}>
       <a className="skip-link" href="#workspace">
         {t.skip}
       </a>
@@ -837,6 +850,7 @@ export default function Studio() {
               <button type="button" onClick={() => addSystem(false)}>{t.newSystem}</button>
               <button type="button" onClick={() => addSystem(true)}>{t.duplicateSystem}</button>
               <button type="button" onClick={() => { importAsNew.current = true; switcherRef.current?.removeAttribute("open"); importRef.current?.click(); }}>{t.importAsNew}</button>
+              <button type="button" aria-label={t.importAria} disabled={!ready} onClick={() => { importAsNew.current = false; switcherRef.current?.removeAttribute("open"); importRef.current?.click(); }}>Replace from JSON…</button>
               {collection.systems.length > 1 && <button type="button" data-system-delete-trigger aria-haspopup="dialog" aria-expanded={deletionRequest !== null} aria-controls="system-delete-dialog" disabled={deletionRequest !== null || !!systemDeletionBlock} title={systemDeletionBlock || undefined} onClick={openSystemDeletion}>{t.deleteSystem}</button>}
               {collection.systems.length > 1 && systemDeletionBlock && <p className="p-2 text-xs studio-text-muted">{systemDeletionBlock}</p>}
             </div>
@@ -878,15 +892,7 @@ export default function Studio() {
           <Link href={workspaceHref("design", selection)} aria-current={view === "design" ? "page" : undefined} data-active={view === "design" || undefined}>{t.design}</Link>
           <Link href={workspaceHref("develop", selection)} aria-current={view === "develop" ? "page" : undefined} data-active={view === "develop" || undefined}>{t.develop}</Link>
         </nav>
-        {view === "develop" && <div className="header-workspace-controls"><SegmentedControl aria-label={t.theme} value={activeTheme} onValueChange={(next) => setActiveTheme(next as PaletteMode)}>
-          <SegmentedControl.Item value="light" aria-label={t.light} title={t.light}><Icon name="sun" size={14} /></SegmentedControl.Item>
-          <SegmentedControl.Item value="dark" aria-label={t.dark} title={t.dark}><Icon name="moon" size={14} /></SegmentedControl.Item>
-        </SegmentedControl></div>}
-        <div className={shell.panelControls} role="group" aria-label="Workspace panels">
-          <Button variant="ghost" iconOnly aria-label={leftVisible ? "Hide left panel" : "Show left panel"} title={leftVisible ? "Hide left panel" : "Show left panel"} aria-expanded={leftVisible} aria-controls="workspace-sidebar" onClick={() => { setPanelsHidden(false); if (compact) setMobilePanel(leftVisible ? null : "left"); else setLeftHidden(leftVisible); }}><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" aria-hidden="true"><rect x="2" y="3" width="16" height="14" rx="2" /><path d="M7 3v14" /></svg></Button>
-          {view === "design" && <Button variant="ghost" iconOnly aria-label={rightVisible ? "Hide inspector" : "Show inspector"} title={rightVisible ? "Hide inspector" : "Show inspector"} aria-expanded={rightVisible} aria-controls="workspace-inspector" onClick={() => { setPanelsHidden(false); if (compact) setMobilePanel(rightVisible ? null : "right"); else setRightHidden(rightVisible); }}><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" aria-hidden="true"><rect x="2" y="3" width="16" height="14" rx="2" /><path d="M13 3v14" /></svg></Button>}
-          <Button variant="ghost" iconOnly aria-label={panelsHidden ? "Show panels" : "Focus canvas"} title={panelsHidden ? "Show panels" : "Focus canvas"} aria-pressed={panelsHidden} onClick={() => { setPanelsHidden(!panelsHidden); if (panelsHidden) { setLeftHidden(false); setRightHidden(false); if (compact) setMobilePanel("left"); } }}><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" aria-hidden="true"><path d="M7 2H2v5m11-5h5v5M2 13v5h5m11-5v5h-5" /></svg></Button>
-        </div>
+
         <div className="header-actions">
 
           <span className="save-status">
@@ -895,14 +901,7 @@ export default function Studio() {
             />
             {t[status]}
           </span>
-          <Button
-            aria-label={t.importAria}
-            disabled={!ready}
-            startIcon={<Icon name="upload" />}
-            onClick={() => { importAsNew.current = false; importRef.current?.click(); }}
-          >
-            {t.import}
-          </Button>
+
           <input
             ref={importRef}
             className="hidden"
@@ -1012,7 +1011,8 @@ export default function Studio() {
         </div>
       </header>
 
-      <aside className="studio-sidebar" id="workspace-sidebar" hidden={!leftVisible} aria-label={t.library} onKeyDown={event => { if (compact && event.key === "Escape" && !event.defaultPrevented) { setMobilePanel(null); document.querySelector<HTMLButtonElement>('[aria-controls="workspace-sidebar"]')?.focus(); } }}>
+      <aside className="studio-sidebar" id="workspace-sidebar" hidden={!leftVisible} aria-label={t.library}>
+        <div className={shell.libraryHeading}><h2>Library</h2><span>7 components</span></div>
         <div className="sidebar-navigation">
           <div className="sidebar-section-label sidebar-foundations-label">{t.sidebarFoundations.toUpperCase()}</div>
           <NavItem icon={<Icon name="colors" />} href={workspaceHref(view, "colors")} current={selection === "colors"}
@@ -1038,7 +1038,7 @@ export default function Studio() {
               const matches = group.ids.filter((id) => t.componentNames[id].toLowerCase().includes(query.toLowerCase().trim()));
               if (!matches.length) return null;
               return <div className="component-group" role="group" aria-label={group.label} key={group.label}>
-                <div className="component-group-label" aria-hidden="true">{group.label}</div>
+
                 {matches.map((id) => {
                   const overridden = Object.keys(theme.components[id]).length > 0;
                   const issues = ready ? componentIssueCount(id) : 0;
@@ -1079,14 +1079,28 @@ export default function Studio() {
       </aside>
 
       <main className={`studio-main studio-main--${view}`} id="workspace" tabIndex={-1}>
-        {view === "design" ? (
-          <h1 className="sr-only">{selection === "colors" ? "Colors" : selection === "spacing" ? "Shape & spacing" : t.componentTitle(t.componentNames[selection])}</h1>
-        ) : (
-          <div className="workspace-heading">
-            <h1>{selection === "colors" ? "Colors documentation" : selection === "spacing" ? "Shape & spacing documentation" : `${t.componentNames[selection]} documentation`}</h1>
-            <p>{selection === "colors" || selection === "spacing" ? "Live token values and CSS references for your design system." : "React usage, props and resolved theme tokens for your design system."}</p>
+        <div className={shell.workbenchToolbar} data-workbench-toolbar>
+          <div className={shell.workbenchHeading}>
+            <Button variant="ghost" iconOnly aria-label={leftVisible ? "Hide left panel" : "Show left panel"} title="Library" aria-expanded={leftVisible} aria-controls="workspace-sidebar" onClick={() => { if (compact) setMobilePanel(leftVisible ? null : "left"); else setLeftHidden(leftVisible); }}><Icon name="box" size={16} /></Button>
+            <h1>{selection === "colors" ? "Colors" : selection === "spacing" ? "Shape & spacing" : t.componentNames[selection]}</h1>
           </div>
-        )}
+          {view === "design" && !isGlobal && <div className={shell.workbenchModes} role="group" aria-label="Component workspace">
+            {(["variants", "playground"] as const).map(next => <button type="button" key={next} aria-pressed={componentMode === next} aria-controls={next === "variants" ? "component-variants" : "component-playground"} data-workbench-mode={next} data-system-context-change="workbench-mode" onClick={() => { setComponentMode(next); setRightHidden(false); setMobilePanel(null); }}>{next === "variants" ? "Variants" : "Playground"}</button>)}
+          </div>}
+          <div className={shell.workbenchActions}>
+            {view === "design" && !playgroundMode && <div className="canvas-history" role="group" aria-label="Edit history">
+              <Button iconOnly aria-label={t.undo} title={t.undo} disabled={!ready || historyCounts.undo === 0} onClick={() => travel("undo")}><Icon name="undo" size={16} /></Button>
+              <Button iconOnly aria-label={t.redo} title={t.redo} disabled={!ready || historyCounts.redo === 0} onClick={() => travel("redo")}><Icon name="redo" size={16} /></Button>
+            </div>}
+            <div className="canvas-theme">
+              <SegmentedControl aria-label={t.theme} value={activeTheme} onValueChange={(next) => setActiveTheme(next as PaletteMode)}>
+                <SegmentedControl.Item value="light" aria-label={t.light} title={t.light}><Icon name="sun" size={16} /></SegmentedControl.Item>
+                <SegmentedControl.Item value="dark" aria-label={t.dark} title={t.dark}><Icon name="moon" size={16} /></SegmentedControl.Item>
+              </SegmentedControl>
+            </div>
+            {view === "design" && <Button variant="ghost" className={shell.contextToggle} aria-label={rightVisible ? "Hide inspector" : "Show inspector"} aria-expanded={rightVisible} aria-controls="workspace-inspector" onClick={() => { if (compact) setMobilePanel(rightVisible ? null : "right"); else setRightHidden(rightVisible); }}><Icon name="sliders" size={14} /><span>{playgroundMode ? "Props" : "Styles"}</span></Button>}
+          </div>
+        </div>
         <div className="workspace-tabs workspace-views">
           <div
             className={`workspace-content workspace-content--${view}`}
@@ -1112,18 +1126,7 @@ export default function Studio() {
             <section hidden={view !== "design"} aria-label={t.design} className="workspace-panel workspace-panel--design preview-canvas">
               <div className="preview-frame">
                 <Preview key={`${collection.activeId}-${importRevision}`} selected={selection} system={system} mode={activeTheme} active={view === "design"} onSelectColorRole={setScaleRole} onEditToken={(nextSelection, inputId) => { showInspector(); setEditTarget({ selection: nextSelection, inputId }); }}
-                  recipeSelection={recipeSelection} onSelectRecipe={editComponentRecipe} onClearRecipeSelection={clearRecipeSelection} tools={<>
-                <div className="canvas-history" role="group" aria-label="Edit history">
-                  <Button iconOnly aria-label={t.undo} title={t.undo} disabled={!ready || historyCounts.undo === 0} onClick={() => travel("undo")}><Icon name="undo" size={16} /></Button>
-                  <Button iconOnly aria-label={t.redo} title={t.redo} disabled={!ready || historyCounts.redo === 0} onClick={() => travel("redo")}><Icon name="redo" size={16} /></Button>
-                </div>
-                <div className="canvas-theme">
-                  <SegmentedControl aria-label={t.theme} value={activeTheme} onValueChange={(next) => setActiveTheme(next as PaletteMode)}>
-                    <SegmentedControl.Item value="light" aria-label={t.light} title={t.light}><Icon name="sun" size={16} /></SegmentedControl.Item>
-                    <SegmentedControl.Item value="dark" aria-label={t.dark} title={t.dark}><Icon name="moon" size={16} /></SegmentedControl.Item>
-                  </SegmentedControl>
-                </div>
-                </>} />
+                  recipeSelection={recipeSelection} onSelectRecipe={editComponentRecipe} onClearRecipeSelection={clearRecipeSelection} componentMode={componentMode} playgroundControlsTarget={playgroundHost} />
               </div>
             </section>
             <section hidden={view !== "develop"} aria-label={t.develop} className="workspace-panel workspace-panel--develop">
@@ -1134,12 +1137,13 @@ export default function Studio() {
 
       </main>
 
-      <div className={shell.inspector} id="workspace-inspector" hidden={!rightVisible} onKeyDown={event => { if (compact && event.key === "Escape" && !event.defaultPrevented) { setMobilePanel(null); document.querySelector<HTMLButtonElement>('[aria-controls="workspace-inspector"]')?.focus(); } }}>
+      <div className={shell.inspector} id="workspace-inspector" hidden={!rightVisible}>
 
+      <div ref={setPlaygroundHost} className={shell.playgroundProps} data-playground-host hidden={view !== "design" || !playgroundMode} />
       <aside
         className="token-editor"
-        key={`${collection.activeId}-${selection}-${activeTheme}-${view}`}
-        hidden={view !== "design"}
+        key={`${collection.activeId}-${selection}-${activeTheme}-${view}-${componentMode}`}
+        hidden={view !== "design" || playgroundMode}
         id="token-editor"
         tabIndex={-1}
         aria-label={t.editor}

@@ -8,12 +8,28 @@
 .tab[data-active] { background: var(--studio-color-selection); color: var(--studio-color-on-selection); }
 .tab:focus-visible, .panel:focus-visible { outline: var(--studio-focus-ring); outline-offset: 2px; }
 .panel[hidden] { display: none; }
-.selectionHeading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding-top: 14px; }
-.selectionHeading > div { min-width: 0; }
+.selectionHeading { display: grid; gap: 4px; padding-top: 10px; }
 .selectionHeading h3, .emptySelection h3 { min-width: 0; margin: 0; color: var(--studio-color-text); font-size: 12px; font-weight: 600; line-height: 1.6; overflow-wrap: anywhere; }
-.target { flex: none; padding: 2px 6px; border: 1px solid var(--studio-color-border-subtle); border-radius: 4px; color: var(--studio-color-text-subtle); font-size: 9px; line-height: 1.5; }
+.selectionHeading h3 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.selectionMeta { color: var(--studio-color-text-subtle); font-size: 11px; font-weight: 400; }
+.selectionActions { flex-wrap: wrap; min-width: 0; padding: 0; }
+.selectionActions > span { font-size: 11px; overflow-wrap: anywhere; }
+.selectionActions button { min-height: 24px; font-size: 10px; }
+.scopeSummary { display: grid; gap: 3px; margin: 8px 0; color: var(--studio-color-text-subtle); font-size: 10px; line-height: 1.6; }
+.scopeSummary > div { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 6px; }
+.scopeSummary dt { color: var(--studio-color-text); font-weight: 500; }
+.scopeSummary dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.layerControls { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; padding: 4px 0 8px; }
+.layerPicker { min-width: 0; margin: 0; }
+.layerPicker select { height: 32px; }
+.targetPicker { display: grid; gap: 5px; color: var(--studio-color-text-subtle); font-size: 10px; }
+.targetPicker > div { display: flex; gap: 2px; padding: 2px; border-radius: 5px; background: var(--studio-color-surface-hover); }
+.targetPicker button { min-width: 44px; min-height: 28px; padding: 4px 7px; border: 1px solid transparent; border-radius: 3px; color: var(--studio-color-text-subtle); font: 11px/1.5 var(--studio-font-family); }
+.targetPicker button:hover { color: var(--studio-color-text); }
+.targetPicker button[aria-pressed="true"] { border-color: var(--studio-color-selection-border); background: var(--studio-color-selection); color: var(--studio-color-on-selection); }
+.targetPicker button:focus-visible { outline: var(--studio-focus-ring); outline-offset: 1px; }
 .emptySelection { padding: 16px 0 10px; }
-.layers { padding-block: 8px; }
+.layers { padding-block: 6px; }
 .layerList { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
 .layerList li { display: flex; gap: 3px; min-width: 0; }
 .layerList li[data-child] { padding-inline-start: 12px; }
@@ -30,7 +46,10 @@
 .textarea:focus-visible { outline: var(--studio-focus-ring); outline-offset: -1px; }
 .textarea[aria-invalid="true"] { border-color: var(--studio-color-warning); }
 .baseTokens > section { margin-block: 14px; }
-.fieldScope { display: block; margin-top: 4px; color: var(--studio-color-text-subtle); font-size: 9px; line-height: 1.5; overflow-wrap: anywhere; }
+.fieldScope { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.groupScope { display: grid; gap: 4px; margin: -2px 0 10px; color: var(--studio-color-text-subtle); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.groupScope p { margin: 0; }
+.groupScope strong { color: var(--studio-color-text); font-weight: 500; }
 .scopeLabel { margin: 6px 0; color: var(--studio-color-text-subtle); font-size: 10px; font-weight: 600; line-height: 1.6; overflow-wrap: anywhere; }
 .sourceDetails { margin-block: 8px; border-block: 1px solid var(--studio-color-border-subtle); color: var(--studio-color-text-subtle); font-size: 11px; line-height: 1.6; }
 .sourceDetails > summary { padding-block: 7px; cursor: pointer; color: var(--studio-color-text); font-weight: 500; }

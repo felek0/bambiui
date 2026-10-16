@@ -18,6 +18,8 @@ Date: 2026-10-16. Status: **frozen for implementation** after Agent D read-only 
 
 ## Superseding user amendment — independent split Playground
 
+**Historical layout:** the task-first workbench amendment below supersedes the 50/50 and stacked presentation. The saved-data/ephemeral isolation and lifecycle established here remain.
+
 This amendment supersedes the original inspector Preview wiring and **session sample defaults** lifecycle column below. The earlier interface description is retained as historical integration context, not the active Studio contract. The size-based write policy above is unchanged.
 
 - Desktop component workspace is a 50/50 split: canonical variant/state/tone/size matrix and a separate Storybook-style Playground. Narrow screens stack them; Foundations stay full width. History/theme tools belong to a static toolbar above the matrix. Playground has its own scrolling. The natural-matrix amendment below replaces the component camera; Foundation camera behavior remains.
@@ -42,6 +44,19 @@ The per-recipe **Test interaction states** disclosures remain separate legacy sa
 - Filters and selected-layer context share a sticky toolbar within the matrix; component heading and samples scroll normally. History/theme controls stay in a separate static pane toolbar. Matrix and Playground scroll independently on desktop and remain stacked on narrow screens.
 - Selecting an offscreen recipe reveals it by changing only the matrix scroller. Visible recipe selections, part/target changes, theme changes and ordinary token edits do not reposition the matrix. Component changes start its scroller at the top. Existing selection/filter/draft guards and Playground lifecycle are unchanged.
 - This is editor presentation only: no schema, public component, resolver, source/registry or export change. Human usability, native zoom and assistive-technology acceptance remain open.
+
+## Superseding user amendment — task-first workbench
+
+The user's Studio-wide UX simplification request supersedes the permanent split/stack presentation above. See [the UX review](studio-ux-review-2026-10-17.md) for diagnosis, trade-offs and verification.
+
+- Three zones: flat 200px Library; full central workbench; 320px contextual panel at desktop defaults. Responsive sizes can differ. Header owns System identity/management, Design/Develop, save status and export. Import replacement/new actions belong to the System menu, not competing header buttons.
+- Component workbench defaults to **Variants**. **Playground** is a native button mode, not a separate route or a second simultaneous pane. Active state uses `aria-pressed` and `aria-controls`. Both panes remain mounted, but inactive panes and contextual controls are hidden from layout, Tab and AX reading order. Mode changes preserve matrix filters/selection/scroll and Playground args/actions; component navigation returns to Variants and reinitializes the component's transient state.
+- Common toolbar owns title, Library toggle, component modes, theme, style history and Styles/Props toggle. Theme stays in the same location in Design/Develop. History is shown only in style-editing context. On mobile, overlays start below this toolbar so their own toggles remain reachable; Escape from portalled Props closes its visible panel and restores the toggle unless the focused control handled it first.
+- **Variants → Styles:** compact selection header + visible non-color/current-color scope summary; native Layer picker and only supported Frame/Text buttons; actual fields before optional source details. Full keyboard Layers remains collapsed. Per-group scope is visible and distinguishes mixed groups; per-field exact scope remains an accessible description. Shared/base controls and all supported tokens are preserved.
+- **Playground → Props:** `controlsTarget` ports detached args controls to the right panel. Appearance, Content, State & behavior and More options group all fields; More options defaults closed. `Preview only · not exported` replaces unsaved-work language. Reset uses current saved defaults and clears sample actions/native form state, never styles.
+- Leaving a style target through a mode switch discards pending outgoing drafts before blur; valid saved edits remain. Hidden matrix recipes cannot become a Playground style editor. Selecting a recipe or contrast target returns to Variants/Styles. Neutral filter/props/navigation chrome never inherits custom System colors; actual component samples still do.
+- Develop offers **Download System JSON** next to CLI commands. The file is the saved System with both themes, not Playground props; download is local and does not mutate storage/history. Existing header CSS/JSON export, source ZIP fallback, registry and CLI contracts remain.
+- No schema/public component/resolver/registry version change; Project authoring stays suspended. Human usability, screen-reader and native zoom acceptance remain open.
 
 ## Routes and shell
 

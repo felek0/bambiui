@@ -1,11 +1,12 @@
 "use client";
 
 import { useId, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { Badge, Button, Card, Checkbox, Input, Switch, Text, type BadgeProps, type ButtonProps, type CardProps, type CheckboxProps, type InputProps, type SwitchProps, type TextProps } from "./components";
 import type { PaletteMode } from "./color-engine";
 import { toCSSVariables, type ComponentId, type DesignSystem } from "./tokens";
 import type { ComponentDefaultField, ComponentDefaultSlot } from "./component-defaults";
-import { playgroundArgs, playgroundFields, updatePlaygroundArg } from "./component-playground-model";
+import { groupPlaygroundFields, playgroundArgs, playgroundFields, updatePlaygroundArg } from "./component-playground-model";
 import styles from "./component-playground.module.css";
 
 function PresetIcon({ preset }: { preset: unknown }) {
@@ -16,14 +17,14 @@ function PresetIcon({ preset }: { preset: unknown }) {
 }
 
 /** Ephemeral args only. The parent owns identity remounts, never recipe selection. */
-export function ComponentPlayground({ component, system, mode, active = true }: {
-  component: ComponentId; system: DesignSystem; mode: PaletteMode; active?: boolean;
+export function ComponentPlayground({ component, system, mode, active = true, controlsTarget }: {
+  component: ComponentId; system: DesignSystem; mode: PaletteMode; active?: boolean; controlsTarget?: HTMLElement | null;
 }) {
   const [args, setArgs] = useState(() => playgroundArgs(component, system.componentDefaults));
   const [actions, setActions] = useState(0);
   const [revision, setRevision] = useState(0);
   const id = useId();
-  const fields = playgroundFields(component);
+  const groups = groupPlaygroundFields(playgroundFields(component));
   const reset = () => {
     setArgs(playgroundArgs(component, system.componentDefaults));
     setActions(0);
@@ -57,7 +58,8 @@ export function ComponentPlayground({ component, system, mode, active = true }: 
     const value = field.source === "text" ? args.text : field.source === "slots" ? args.slots?.[field.key as ComponentDefaultSlot] : args.props[field.key];
     const controlId = `${id}-${field.source}-${field.key}`;
     const boolean = field.options?.every(option => typeof option === "boolean");
-    return <label key={`${field.source}-${field.key}`} htmlFor={controlId} className={styles.field}>
+    const multiline = field.type === "text" && (field.source === "text" && component === "text" || ["description", "content", "error"].includes(field.key));
+    return <label key={`${field.source}-${field.key}`} htmlFor={controlId} className={`${styles.field} ${boolean ? styles.booleanField : field.type === "text" ? styles.wideField : ""}`}>
       <span>{field.label}</span>
       {boolean ? <input id={controlId} type="checkbox" aria-label={`Playground ${field.label}`} checked={!!value} onChange={event => setArgs(current => updatePlaygroundArg(current, field, event.target.checked))} />
         : field.type === "select" ? <select id={controlId} aria-label={`Playground ${field.label}`} value={value === undefined ? "" : String(value)} onChange={event => {
@@ -66,19 +68,36 @@ export function ComponentPlayground({ component, system, mode, active = true }: 
         }}>
           <option value="">Component default</option>
           {field.options?.map(option => <option key={String(option)} value={String(option)}>{String(option)}</option>)}
-        </select> : <input id={controlId} type="text" aria-label={`Playground ${field.label}`} value={String(value ?? "")} maxLength={field.maxLength} onChange={event => setArgs(current => updatePlaygroundArg(current, field, event.target.value))} />}
+        </select> : multiline ? <textarea id={controlId} aria-label={`Playground ${field.label}`} rows={3} value={String(value ?? "")} maxLength={field.maxLength} onChange={event => setArgs(current => updatePlaygroundArg(current, field, event.target.value))} />
+          : <input id={controlId} type="text" aria-label={`Playground ${field.label}`} value={String(value ?? "")} maxLength={field.maxLength} onChange={event => setArgs(current => updatePlaygroundArg(current, field, event.target.value))} />}
     </label>;
   };
+  // A portal does not inherit the workbench's hidden attribute or its studio chrome styles.
+  const controls = <section className={styles.controls} data-playground-controls data-playground-controls-for={component} hidden={!active} role="region" aria-labelledby={`${id}-props-heading`} aria-describedby={`${id}-props-note`}>
+    <header className={styles.controlsHeader}>
+      <div><h3 id={`${id}-props-heading`}>Playground props</h3><p id={`${id}-props-note`}>Not saved to your system.</p></div>
+      <button className={styles.reset} type="button" onClick={reset}>Reset playground</button>
+    </header>
+    {groups.map(group => <details key={group.id} className={styles.group} data-playground-group={group.id} open={group.defaultOpen}>
+      <summary id={`${id}-group-${group.id}`}>{group.label}</summary>
+      <fieldset className={styles.groupFields} aria-labelledby={`${id}-group-${group.id}`}>{group.fields.map(renderField)}</fieldset>
+    </details>)}
+    <details className={styles.help}>
+      <summary>About this playground</summary>
+      <p>Changes affect only this sample, not Variants or saved styles. Value and Checked update the live state. Reset restores the latest saved defaults and clears interactions.</p>
+      <p>Icons use presets; icon-only buttons fall back to Plus. Custom JSX, names, styles and callbacks are not editable here.</p>
+    </details>
+  </section>;
   return <section className={styles.playground} data-component-playground={component} hidden={!active} aria-labelledby={`${id}-heading`}>
-    <header className={styles.header}><div><h2 id={`${id}-heading`}>Playground</h2><p>One live sample · unsaved args</p></div><button type="button" onClick={reset}>Reset playground</button></header>
+    <header className={styles.header}><h2 id={`${id}-heading`}>Playground</h2><p>Preview only · not exported</p></header>
     <div className={styles.scroll} data-playground-scroll>
-      <div className={styles.preview} data-playground-preview data-theme={mode} style={{ ...toCSSVariables(system.themes[mode], mode), colorScheme: mode } as CSSProperties}>
-        <form key={revision} className={styles.sample} onSubmit={event => event.preventDefault()} onReset={event => { event.preventDefault(); reset(); }}>{sample()}</form>
+      <div className={styles.workbench}>
+        <div className={styles.preview} data-playground-preview data-theme={mode} style={{ ...toCSSVariables(system.themes[mode], mode), colorScheme: mode } as CSSProperties}>
+          <form key={revision} className={styles.sample} onSubmit={event => event.preventDefault()} onReset={event => { event.preventDefault(); reset(); }}>{sample()}</form>
+        </div>
+        <output className={styles.status} data-playground-status data-playground-action-count={actions} role="status" aria-live="polite">{`${actions} action${actions === 1 ? "" : "s"}${component === "input" ? ` · Value: ${String(args.props.value ?? "")}` : component === "switch" || component === "checkbox" ? ` · ${args.props.indeterminate ? "Indeterminate" : args.props.checked ? "Checked" : "Unchecked"}` : ""}`}</output>
       </div>
-      <output className={styles.status} data-playground-status data-playground-action-count={actions} role="status" aria-live="polite">{`${actions} action${actions === 1 ? "" : "s"}${component === "input" ? ` · Value: ${String(args.props.value ?? "")}` : component === "switch" || component === "checkbox" ? ` · ${args.props.indeterminate ? "Indeterminate" : args.props.checked ? "Checked" : "Unchecked"}` : ""}`}</output>
-      <div className={styles.controls} data-playground-controls>{fields.map(renderField)}</div>
-      <p className={styles.note}>Changes stay here. Matrix examples and saved styles are unchanged.</p>
-            <details className={styles.note}><summary>About this playground</summary><p>Value and Checked edit the live state, not a separate initial value. Reset restores saved sample defaults and clears interactions. Icons use fixed presets; icon-only buttons fall back to Plus. Executable props, render functions, arbitrary JSX, names, styles and callbacks are not edited.</p></details>
+      {controlsTarget ? createPortal(controls, controlsTarget) : controls}
     </div>
   </section>;
 }

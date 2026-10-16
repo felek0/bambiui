@@ -403,7 +403,7 @@ function ThemePane({ theme, mode, children, copy }: {
   );
 }
 
-export function Preview({ selected, system, mode, active = true, onSelectColorRole, onEditToken, recipeSelection, onSelectRecipe, onClearRecipeSelection, tools }: {
+export function Preview({ selected, system, mode, active = true, onSelectColorRole, onEditToken, recipeSelection, onSelectRecipe, onClearRecipeSelection, componentMode = "variants", playgroundControlsTarget }: {
   selected: "colors" | "spacing" | ComponentId;
   system: DesignSystem;
   mode: PaletteMode;
@@ -411,7 +411,8 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
   onSelectColorRole?: (role: ColorScaleRole) => void;
   onEditToken?: (selection: "colors" | "spacing", inputId: string) => void;
   onClearRecipeSelection?: () => void;
-  tools?: ReactNode;
+  componentMode?: "variants" | "playground";
+  playgroundControlsTarget?: HTMLElement | null;
   recipeSelection: ComponentRecipeSelection | null;
   onSelectRecipe: (selection: ComponentRecipeSelection) => void;
 }) {
@@ -623,7 +624,7 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
   }, [selected, selectedRecipe, active, isComponent, moveCamera]);
 
   useEffect(() => {
-    if (!active || !isComponent || !selectedRecipe) return;
+    if (!active || !isComponent || componentMode !== "variants" || !selectedRecipe) return;
     const frame = requestAnimationFrame(() => {
       const region = matrixScroll.current;
       const target = region?.querySelector<HTMLElement>(`[data-recipe-example="${selectedRecipe}"]`);
@@ -639,12 +640,11 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
       }
     });
     return () => cancelAnimationFrame(frame);
-  }, [selected, selectedRecipe, active, isComponent]);
+  }, [selected, selectedRecipe, active, isComponent, componentMode]);
 
   if (isComponent) return (
-    <div className={styles.workspace} data-preview-split data-component-browser>
-      <div className={`${styles.matrixPane} ${styles.browserPane}`} data-matrix-pane>
-        <div className={styles.matrixTools} data-matrix-tools>{tools}</div>
+    <div className={styles.workspace} data-component-browser data-workbench-view={componentMode}>
+      <div className={`${styles.matrixPane} ${styles.browserPane}`} data-matrix-pane id="component-variants" hidden={componentMode !== "variants"}>
         <ThemePane theme={system.themes[mode]} mode={mode} copy={copy}>
           <div ref={matrixScroll} key={selected} className={styles.matrixScroll} data-matrix-scroll role="region" aria-label="Component examples" tabIndex={0}>
             <div className={styles.matrixContent} data-matrix-content>
@@ -660,8 +660,8 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
           </div>
         </ThemePane>
       </div>
-      <div className={styles.playgroundPane} data-playground-pane>
-        <ComponentPlayground key={selected} component={selected} system={system} mode={mode} active={active} />
+      <div className={styles.playgroundPane} data-playground-pane id="component-playground" hidden={componentMode !== "playground"}>
+        <ComponentPlayground key={selected} component={selected} system={system} mode={mode} active={active && componentMode === "playground"} controlsTarget={playgroundControlsTarget} />
       </div>
     </div>
   );
@@ -669,7 +669,6 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
   return (
     <div className={styles.workspace}>
     <div className={styles.matrixPane} data-matrix-pane>
-    {tools}
     <ThemePane theme={system.themes[mode]} mode={mode} copy={copy}>
       <div className={styles.canvasControls} role="group" aria-label="Canvas zoom">
         <button type="button" onClick={() => changeZoom(zoom - 0.1)} disabled={zoom <= 0.2} aria-label="Zoom out">−</button>

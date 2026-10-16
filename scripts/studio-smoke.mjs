@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Run after `npm run build`; uses installed Chrome and a disposable browser profile.
+// Run only after the coordinator confirms out/ is build-ready; never builds or generates.
+// Uses installed Chrome and a disposable browser profile.
 // --screenshots writes review captures to .next/color-review; AX checks are not a screen-reader session.
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
@@ -40,18 +41,52 @@ const frameFields = ['width','height','minWidth','minHeight','maxWidth','padding
 const href = (view, id = 'colors') => `${view === 'develop' ? '/develop' : ''}/${id}`;
 const canvas = '[aria-label="Component canvas"]';
 const viewNav = '.studio-header nav.view-switch';
-const themeControl = '[aria-label="Design theme"]';
+const workbenchToolbar = '[data-workbench-toolbar]';
+const themeControl = `${workbenchToolbar} [aria-label="Design theme"]`;
+const playgroundControls = id => `[data-playground-controls-for="${id}"]`;
+const workbenchMode = mode => `${workbenchToolbar} [data-workbench-mode="${mode}"]`;
 const camera = '[data-canvas]';
 const matrixScroll = '[data-matrix-scroll]';
 
 async function assertStudioSurfaces(mode) {
   const surface = mode === 'dark' ? 'rgb(32, 32, 32)' : 'rgb(250, 250, 250)';
   await wait(`getComputedStyle(${q('.studio-header')}).backgroundColor === ${JSON.stringify(surface)}`);
-  for (const selector of ['.studio-header','#token-editor','.studio-sidebar']) {
+  for (const selector of ['.studio-header','#token-editor','.studio-sidebar',workbenchToolbar,'#workspace-inspector']) {
     assert.equal(await evaluate(`getComputedStyle(${q(selector)}).backgroundColor`),surface,`${selector} must retain the fixed editor surface`);
   }
   assert.equal(await evaluate(`getComputedStyle(${q('.preview-frame')}).backgroundColor`),mode === 'dark' ? 'rgb(25, 25, 29)' : 'rgb(241, 241, 244)','canvas chrome is independent of system tokens');
   assert.equal(await evaluate(`getComputedStyle(${q('.theme-pane')}).borderTopWidth`),'0px','the full-bleed workspace has no inset preview border');
+}
+
+async function assertWorkbenchToolbar(view, mode = 'variants') {
+  assert.equal(await evaluate(`document.querySelectorAll('[data-workbench-toolbar]').length`),1);
+  assert.ok(await evaluate(`(()=>{const bar=${q(workbenchToolbar)},theme=${q(themeControl)};return bar.checkVisibility() && theme?.checkVisibility() && !bar.closest('.studio-header,.preview-frame') && theme.closest('[data-workbench-toolbar]')===bar && getComputedStyle(${q('.canvas-theme')}).position==='static'})()`),'one shared theme control lives in the common toolbar');
+  assert.equal(await evaluate(`document.querySelectorAll('[aria-label="Design theme"]').length`),1);
+  assert.equal(await evaluate(`!!${q('.studio-header [aria-controls="workspace-sidebar"], .studio-header [aria-controls="workspace-inspector"], .header-actions [aria-label="Import design system"], [aria-label="Focus canvas"], [aria-label="Show panels"], .preview-frame .canvas-history, .preview-frame .canvas-theme')}`),false,'obsolete header controls and floating history/theme must not return');
+  assert.equal(await evaluate(`document.querySelectorAll('[aria-label="Undo change"], [aria-label="Redo change"]').length`),view==='design' && mode==='variants' ? 2 : 0);
+  if(view==='design' && mode==='variants') assert.ok(await evaluate(`(()=>{const h=${q('.canvas-history')};return h.closest('[data-workbench-toolbar]')===${q(workbenchToolbar)} && getComputedStyle(h).position==='static'})()`));
+  assert.ok(await evaluate(`${q(`${workbenchToolbar} [aria-controls="workspace-sidebar"]`)}?.checkVisibility()`));
+  if(view==='design') assert.equal(await evaluate(`${q(`${workbenchToolbar} [aria-controls="workspace-inspector"]`)}.textContent.trim()`),mode==='playground' ? 'Props' : 'Styles');
+}
+async function assertComponentMode(id, mode) {
+  await wait(`${q('.studio-shell')}.dataset.componentMode===${JSON.stringify(mode)}`);
+  for(const candidate of ['variants','playground']) {
+    const pane=candidate==='variants'?'[data-matrix-pane]':'[data-playground-pane]';
+    assert.ok(await evaluate(`${q(workbenchMode(candidate))} instanceof HTMLButtonElement`),'modes use native buttons');
+    assert.equal(await evaluate(`${q(workbenchMode(candidate))}.getAttribute('aria-pressed')`),String(candidate===mode));
+    assert.equal(await evaluate(`${q(workbenchMode(candidate))}.getAttribute('aria-controls')`),`component-${candidate}`);
+    assert.equal(await evaluate(`${q(pane)}.id`),`component-${candidate}`);
+    assert.equal(await evaluate(`${q(pane)}.hidden`),candidate!==mode);
+    assert.equal(await evaluate(`${q(pane)}.checkVisibility()`),candidate===mode);
+    if(candidate!==mode) assert.ok(await evaluate(`[...${q(pane)}.querySelectorAll('button,input,select,textarea,a,summary')].every(e=>!e.checkVisibility())`),'inactive pane exposes no visible controls');
+  }
+  assert.equal(await evaluate(`${q('#token-editor')}.hidden`),mode==='playground');
+  assert.ok(await evaluate(`(()=>{const controls=${q(playgroundControls(id))},host=${q('[data-playground-host]')};return host.closest('#workspace-inspector') && host.contains(controls) && !${q(`[data-component-playground="${id}"]`)}.contains(controls) && controls.hidden===${mode!=='playground'} && host.hidden===${mode!=='playground'}})()`),'props are scoped by component in the inspector portal');
+  await assertWorkbenchToolbar('design',mode);
+}
+async function setComponentMode(id, mode) {
+  await click(q(workbenchMode(mode)));
+  await assertComponentMode(id,mode);
 }
 
 const moved = (a,b) => Math.hypot(a.x-b.x,a.y-b.y);
@@ -82,11 +117,14 @@ async function route(view, id = 'colors') {
   assert.equal(await evaluate(`document.querySelectorAll('[data-recipe-example]').length`),isFoundation ? 0 : matrixCounts[id]);
   assert.equal(await evaluate(`document.querySelectorAll('[data-interaction-examples]').length`),isFoundation || id==='text' ? 0 : 1);
   assert.equal(await evaluate(`!!${q('[data-system-starter]')} || /Starting component/i.test(${q('.preview-frame')}.textContent)`),false,'Starting component must not be rendered');
+  await assertWorkbenchToolbar(view);
   if (isFoundation) {
+    assert.equal(await evaluate(`!!${q('[data-workbench-mode]')}`),false);
     assert.ok(await evaluate(`!!${q(canvas)} && !!${q(camera)} && !!${q('[aria-label="Canvas zoom"]')}`),'foundations retain the canvas and camera');
     assert.equal(await evaluate(`!!${q(matrixScroll)}`),false);
   } else {
-    assert.ok(await evaluate(`(()=>{const s=${q(matrixScroll)},c=${q('[data-matrix-content]')},t=${q('[data-matrix-tools]')};return s?.getAttribute('role')==='region' && s.getAttribute('aria-label')==='Component examples' && s.contains(c) && c.contains(${q(`[data-specimen="${id}"]`)}) && getComputedStyle(c).transform==='none' && t?.contains(${q('.canvas-history')}) && t.contains(${q('.canvas-theme')}) && !s.contains(t) && !['absolute','fixed','sticky'].includes(getComputedStyle(t).position)})()`),'component routes use natural matrix content and a static toolbar');
+    assert.ok(await evaluate(`(()=>{const s=${q(matrixScroll)},c=${q('[data-matrix-content]')},t=${q(workbenchToolbar)};return s?.getAttribute('role')==='region' && s.getAttribute('aria-label')==='Component examples' && s.contains(c) && c.contains(${q(`[data-specimen="${id}"]`)}) && getComputedStyle(c).transform==='none' && !s.contains(t) && !['absolute','fixed','sticky'].includes(getComputedStyle(t).position)})()`),'component routes use natural matrix content below the common toolbar');
+    if(view==='design') await assertComponentMode(id,'variants');
     assert.equal(await evaluate(`!!${q('[data-canvas], [aria-label="Component canvas"], [aria-label="Canvas zoom"], [class*="canvasHelp"], [data-canvas-selection-hint]')}`),false,'component routes must not mount camera chrome or help');
   }
 }
@@ -145,7 +183,9 @@ async function assertRecipeSelection(id, recipe, part, target) {
   const prefix = `system-recipe-${id}-${recipe}-${part}-${target}-`;
   const gap = id!=='text' && ['root','header','content','footer','row','error'].includes(part) || id==='input' && part==='control';
   const expected = target==='text' ? (['switch','checkbox'].includes(id) && part==='control' || id==='card' && part==='icon' ? ['color'] : textFields) : frameFields.filter(field=>field!=='gap' || gap);
-  assert.deepEqual(await evaluate(`[...${q(controls)}.querySelectorAll('input,select,textarea')].map(e=>e.id.startsWith(${JSON.stringify(prefix)}) ? e.id.slice(${prefix.length}) : e.id).sort()`),[...expected].sort(),'only controls consumed by this exact frame/text layer');
+  assert.equal(await evaluate(`${q('[data-system-layer-select]')}.value`),part);
+  assert.equal(await evaluate(`${q(`[data-system-style-target="${target}"]`)}.getAttribute('aria-pressed')`),'true');
+  assert.deepEqual(await evaluate(`[...${q(controls)}.querySelectorAll('input,select,textarea')].filter(e=>!e.matches('[data-system-layer-select]')).map(e=>e.id.startsWith(${JSON.stringify(prefix)}) ? e.id.slice(${prefix.length}) : e.id).sort()`),[...expected].sort(),'only style controls consumed by this exact frame/text layer, plus the compact layer picker');
 }
 async function assertMeasuredRecipe(id, recipe, part, target, keys, elementSelector = recipePart(id,recipe,part,target)) {
   const fields = keys.map(key => ({key, selector:recipeField(id,recipe,part,target,key)}));
@@ -358,7 +398,10 @@ try {
   await check('header navigation and theme, full-bleed Design canvas and one visible preview',async()=>{
     assert.equal(await evaluate(`${q(viewNav)}.closest('header') === ${q('.studio-header')}`),true);
     assert.equal(await evaluate(`${q(themeControl)}.closest('.canvas-theme') !== null`),true);
-    assert.ok(await evaluate(`(()=>{const bar=${q('.canvas-theme')}.getBoundingClientRect(),view=${q(canvas)}.getBoundingClientRect();return bar.right<=view.right && bar.top>=view.top && bar.right>view.right-130 && bar.bottom<view.bottom})()`));
+    await assertWorkbenchToolbar('design');
+    assert.ok(await evaluate(`(()=>{const bar=${q(workbenchToolbar)}.getBoundingClientRect(),view=${q(canvas)}.getBoundingClientRect();return bar.bottom<=view.top+1 && bar.width>0})()`),'common toolbar is above, not floating over, the foundation canvas');
+    assert.equal(await evaluate(`${q('#workspace-sidebar')}.getBoundingClientRect().width`),200);
+    assert.equal(await evaluate(`${q('#workspace-inspector')}.getBoundingClientRect().width`),320);
     assert.deepEqual(await evaluate(`[...document.querySelectorAll(${JSON.stringify(viewNav + ' a')})].map(e=>e.textContent.trim())`),['Design','Develop']);
     assert.deepEqual(await evaluate(`[...document.querySelectorAll(${JSON.stringify(themeControl + ' button')})].map(e=>e.getAttribute('aria-label'))`),['Light','Dark']);
     assert.ok(await evaluate(`[...document.querySelectorAll(${JSON.stringify(themeControl + ' button')})].every(e=>!e.textContent.trim() && !!e.querySelector('svg'))`));
@@ -367,7 +410,9 @@ try {
     assert.equal(await evaluate(`!!${q('[aria-label="New project name"], [aria-label="Page canvas"], #project-inspector')}`),false,'Project authoring must not mount');
     assert.ok(await evaluate(`${q('.studio-header .system-switcher summary')}?.getClientRects().length > 0`),'active system belongs in the header');
     assert.equal(await evaluate(`!!${q('.studio-sidebar #design-system-name')}`),false);
-    assert.deepEqual(await evaluate(`[...document.querySelectorAll('.component-group')].map(e=>[e.querySelector('.component-group-label').textContent,...[...e.querySelectorAll('a')].map(a=>a.textContent.trim())])`),[['Actions','Button'],['Forms','Input','Switch','Checkbox'],['Content','Card','Badge','Text']]);
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('.component-group')].map(e=>[e.getAttribute('aria-label'),...[...e.querySelectorAll('a')].map(a=>a.textContent.trim())])`),[['Components','Button','Input','Switch','Checkbox','Card','Badge','Text']]);
+    assert.equal(await evaluate(`document.querySelectorAll('.component-group-label').length`),0,'component Library is flat');
+    assert.ok(await evaluate(`!!${q('.system-switcher-actions [aria-label="Import design system"]')} && !!${q('.header-actions input[type="file"]')}`),'replace import is in the system menu; the file input remains in header actions');
     assert.equal(await evaluate(`${q('.sidebar-foundations-label')}.textContent`),'FOUNDATIONS');
     await fill('.search-field input','badge');
     await wait(`document.querySelectorAll('.component-group a').length === 1`);
@@ -377,8 +422,7 @@ try {
     await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8});
     await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8});
     await wait(`document.querySelectorAll('.component-group a').length === 7`);
-    assert.ok(await evaluate(`!!${q('.preview-frame .canvas-history [aria-label="Undo change"] svg')} && !!${q('.preview-frame .canvas-history [aria-label="Redo change"] svg')}`));
-    assert.ok(await evaluate(`(()=>{const bar=${q('.canvas-history')}.getBoundingClientRect(),view=${q(canvas)}.getBoundingClientRect();return bar.left>=view.left && bar.top>=view.top && bar.left<view.left+90 && bar.bottom<view.bottom})()`));
+    assert.ok(await evaluate(`!!${q('[data-workbench-toolbar] .canvas-history [aria-label="Undo change"] svg')} && !!${q('[data-workbench-toolbar] .canvas-history [aria-label="Redo change"] svg')}`));
     assert.equal(await evaluate(`!!${q('.breadcrumbs')} || !!${q('.viewport-controls')} || !!${q('[aria-label="Preview width"]')}`),false);
     assert.ok(await evaluate(`(()=>{const content=${q('#workspace-content')}.getBoundingClientRect(),area=${q('.workspace-panel--design')}.getBoundingClientRect(),viewport=${q(canvas)}.getBoundingClientRect();return Math.abs(area.left-content.left)<2 && Math.abs(area.right-content.right)<2 && Math.abs(area.top-content.top)<2 && Math.abs(area.bottom-content.bottom)<2 && viewport.width>=area.width-80 && viewport.height>=area.height-80})()`));
     assert.ok(await evaluate(`(()=>{const area=${q('.workspace-panel--design')}.getBoundingClientRect(),zoom=${q('[aria-label="Canvas zoom"]')}.getBoundingClientRect(),position=getComputedStyle(${q('[aria-label="Canvas zoom"]')}).position;return ['absolute','fixed','sticky'].includes(position) && zoom.width<area.width/2 && zoom.left>=area.left && zoom.right<=area.right+2 && zoom.top>area.top+area.height/2 && zoom.bottom<=area.bottom+2})()`));
@@ -443,9 +487,10 @@ try {
     await click(q('[data-system-base-tokens] > summary'));
     assert.equal(await evaluate(`${q('[data-system-base-tokens]')}.open && ${q('#token-paddingX')}.checkVisibility()`),true);
     await click(q('[data-system-base-tokens] > summary'));
-    assert.equal(await evaluate(`${q('[data-component-playground="button"] [aria-label="Playground Text"]')}.value`),'Continue');
+    await assertComponentMode('button','variants');
+    assert.equal(await evaluate(`${q(`${playgroundControls('button')} [aria-label="Playground Text"]`)}.value`),'Continue');
     assert.equal(await evaluate(`!!${q('#token-editor [aria-label^="Playground "]')}`),false,'args stay outside the style inspector');
-    assert.ok(await evaluate(`!!${q('[data-playground-pane] [aria-label="Playground Variant"]')} && !!${q('[data-playground-pane] [aria-label="Playground Size"]')}`),'Playground exposes independent public axes');
+    assert.ok(await evaluate(`!!${q(`${playgroundControls('button')} [aria-label="Playground Variant"]`)} && !!${q(`${playgroundControls('button')} [aria-label="Playground Size"]`)}`),'portalled Playground props expose independent public axes');
     await stylesInspector();
     assert.equal(await evaluate(`${q('[data-system-base-tokens]')}.open`),false);
     assert.equal(await evaluate(`!!${q('[aria-label="System component part"]')}`),false);
@@ -478,7 +523,9 @@ try {
       assert.equal(await evaluate(`${q(`${recipePart('card','outlined.md',part)} ${child}`)}.dataset.systemSelectedPart`),'text');
     }
     await capture('studio-matrix-card-footer');
-    await click(q('[data-component-playground="card"] [aria-label="Playground Title"]'));
+    await setComponentMode('card','playground');
+    await click(q(`${playgroundControls('card')} [aria-label="Playground Title"]`));
+    await setComponentMode('card','variants');
     await click(q(recipePart('card','outlined.md','title')));
     await assertRecipeSelection('card','outlined.md','title','text');
   });
@@ -536,7 +583,12 @@ try {
     const row = key => `${details} [data-style-source-field="${key}"]`;
     await navigate('design','card'); await click(q(recipePart('card','outlined.md','title')));
     assert.equal(await evaluate(`${q(details)}.open`),false);
-    assert.equal(await evaluate(`${q('[data-system-recipe-controls] [data-system-edit-scope="recipe"]')}.textContent`),'Size styles / combination colors');
+    assert.deepEqual(await evaluate(`[...${q('[data-system-recipe-controls] [data-system-edit-scope="recipe"]')}.querySelectorAll('div')].map(e=>[e.querySelector('dt').textContent,e.querySelector('dd').textContent])`),[['Non-colors','Same size · both themes'],['Colors','This combination · Light']]);
+    const themeName=await evaluate(`document.documentElement.dataset.studioTheme==='dark'?'Dark':'Light'`);
+    for(const [group,hint] of [['typography','Medium · 3 combinations · both themes'],['surface',`This combination · ${themeName}`]]) {
+      assert.ok(await evaluate(`(()=>{const e=${q(`[data-system-recipe-controls] [data-system-group-scope="${group}"]`)};return e.checkVisibility() && e.textContent.includes(${JSON.stringify(hint)})})()`),'group scope is visible without opening source details');
+    }
+    assert.ok(await evaluate(`(()=>{const controls=${q('[data-system-recipe-controls]')},sources=${q(details)},groups=[...controls.querySelectorAll('[data-system-style-group]')];return groups.length>0 && groups.every(e=>!!(e.compareDocumentPosition(sources)&Node.DOCUMENT_POSITION_FOLLOWING)) && [...controls.querySelectorAll('[data-appearance-field] input,[data-appearance-field] select')].every(e=>{const hint=document.getElementById(e.id+'-scope'),style=hint&&getComputedStyle(hint),r=hint?.getBoundingClientRect();return hint && (e.getAttribute('aria-describedby')||'').split(' ').includes(hint.id) && style.display!=='none' && style.visibility!=='hidden' && style.position==='absolute' && r.width<=1 && r.height<=1})})()`),'source details follow the fields; per-field scopes remain sr-only accessible descriptions');
     await click(q(`${details} > summary`));
     assert.equal(await evaluate(`${q(details)}.open`),true);
     assert.ok(await evaluate(`/Reset[^.]*\\b(size|group)\\b/i.test(${q(details)}.textContent) && ${q(details)}.textContent.includes('Sample content and other layers stay unchanged')`),'scope details explain grouped reset and preservation of sample content and other layers');
@@ -561,7 +613,7 @@ try {
     await click(q('[data-system-base-tokens] > summary'));
     await click(q('[data-system-scope-details="base"] > summary'));
     assert.ok(await evaluate(`${q('[data-system-scope-details="base"]')}.textContent.includes('across all sizes') && ${q('[data-system-scope-details="base"]')}.textContent.includes('does not clear shared layer styles')`));
-    assert.ok(await evaluate(`${q('[data-component-playground]')}.textContent.includes('unsaved args')`));
+    assert.ok(await evaluate(`${q('[data-playground-controls-for]')}.textContent.includes('Not saved to your system.')`));
     await stylesInspector();
     await navigate('design','card'); await click(q(recipePart('card','outlined.md','title')));
     assert.equal(await evaluate(`localStorage.getItem('bambiui.design-system.v1')`),bytes);
@@ -675,7 +727,7 @@ try {
     await commitRecipe('card','outlined.md','title','text','fontSize',31);
     await commitRecipe('card','outlined.md','title','text','fontWeight',650);
     await wait(`${q('[data-system-scope-details="recipe"] [data-style-source-field="fontSize"]')}.dataset.styleSource==='recipe'`);
-    assert.ok(await evaluate(`${q('[data-system-recipe-controls]')}.textContent.includes('Size styles / combination colors')`));
+    assert.ok(await evaluate(`${q('[data-system-recipe-controls] [data-system-edit-scope="recipe"]')}.textContent.includes('Same size · both themes') && ${q('[data-system-recipe-controls] [data-system-edit-scope="recipe"]')}.textContent.includes('This combination')`));
     const expected = original.map(entry=>entry.recipe.endsWith('.md') && entry.component==='card' && entry.part==='title' ? {...entry,fontSize:'31px',fontWeight:'650'} : entry);
     assert.deepEqual(await snapshot(),expected,'all three md titles share typography; the other six recipes, Card slots and nested components retain typography');
     await capture('studio-matrix-card-title');
@@ -904,8 +956,20 @@ try {
     await key('Enter');
     await assertRecipeSelection('card','outlined.md','root','frame');
     assert.equal(await evaluate(`document.activeElement===${label}`),true);
+    assert.equal(await evaluate(`${q('[data-system-layers]')}.open`),false,'full Layers start collapsed');
+    assert.equal(await evaluate(`${q('[data-system-layer-select]')}.getAttribute('aria-label')`),'Selected layer');
+    await select('[data-system-layer-select]','title');
+    await assertRecipeSelection('card','outlined.md','title','text');
+    assert.equal(await evaluate(`${q('[data-system-layers]')}.open`),false,'compact selection does not expand full Layers');
+    await evaluate(`${q('[data-system-style-target="frame"]')}.focus({preventScroll:true})`); await key(' ','Space');
+    await assertRecipeSelection('card','outlined.md','title','frame');
+    await evaluate(`${q('[data-system-style-target="text"]')}.focus({preventScroll:true})`); await key('Enter');
+    await assertRecipeSelection('card','outlined.md','title','text');
+    await select('[data-system-layer-select]','root');
+    await assertRecipeSelection('card','outlined.md','root','frame');
+    await reveal(q('[data-system-recipe-controls] [aria-label="Select Card frame"]'));
     const {nodes}=await send('Accessibility.getFullAXTree');
-    for(const name of ['Select Card Outlined Medium frame','Select Title text','Select Title frame']) assert.ok(nodes.some(node=>!node.ignored && node.name?.value===name),`matrix/layer AX name: ${name}`);
+    for(const name of ['Select Card Outlined Medium frame','Selected layer','Select Title text','Select Title frame']) assert.ok(nodes.some(node=>!node.ignored && node.name?.value===name),`matrix/layer AX name: ${name}`);
     const first = q('[data-system-recipe-controls] [aria-label="Select Card frame"]');
     await evaluate(`${first}.focus({preventScroll:true})`);
     await key('ArrowDown');
@@ -915,6 +979,7 @@ try {
     await assertRecipeSelection('card','outlined.md','root','frame');
     await key('Enter');
     await assertRecipeSelection('card','outlined.md','title','text');
+    await reveal(q('[data-system-recipe-controls] [aria-label="Select Title text"]'));
     await evaluate(`${q('[data-system-recipe-controls] [aria-label="Select Title text"]')}.focus({preventScroll:true})`);
     await key('ArrowDown');
     assert.equal(await evaluate('document.activeElement.getAttribute("aria-label")'),'Select Title frame');
@@ -1139,7 +1204,7 @@ try {
     await wait(`${q(`${demo} button`)}.getAttribute('aria-busy') !== 'true'`);
     assert.equal(await evaluate(`${q(`${demo} button`)}.textContent.trim()`),'Saved');
   });
-  await check('header theme controls preview, inspector and Develop without changing the other theme',async()=>{
+  await check('common toolbar theme controls preview, inspector and Develop without changing the other theme',async()=>{
     await click(named(themeControl + ' button','Dark'));
     assert.ok(await evaluate(`${q('.editor-title')}.textContent.includes('Dark')`));
     assert.equal(await evaluate(`${q('.theme-pane:not([hidden])')}.getAttribute('aria-label')`),'Dark preview');
@@ -1163,7 +1228,7 @@ try {
     assert.ok(await evaluate(`${q('.workspace-panel:not([hidden])')}.textContent.includes('#123456')`));
     assert.equal(await evaluate(`!!${q('.breadcrumbs')} || !!${q('.viewport-controls')}`),false);
     assert.ok(await evaluate(`${q(themeControl)}.getClientRects().length > 0`));
-    assert.equal(await evaluate(`${q(themeControl)}.closest('header') === ${q('.studio-header')}`),true,'Develop keeps theme access in its header');
+    await assertWorkbenchToolbar('develop');
     await click(named(themeControl + ' button','Light'));
     assert.ok(await evaluate(`${q('.workspace-panel:not([hidden])')}.textContent.includes('light theme')`));
     await click(named(themeControl + ' button','Dark'));
@@ -1188,6 +1253,7 @@ try {
       assert.notEqual(after.themes[mode].global.primary,before.themes[mode].global.primary);
       await click(named(themeControl + ' button',mode === 'light' ? 'Light' : 'Dark'));
       assert.equal(await evaluate(`${q(`[data-ds-theme="${mode}"]`)}.style.getPropertyValue('--ds-primary').trim()`),after.themes[mode].global.primary);
+      await assertStudioSurfaces(mode);
     }
     assert.notEqual(after.themes.light.global.background,after.themes.dark.global.background);
   });
@@ -1204,6 +1270,7 @@ try {
     assert.deepEqual(await stored(),after);
     await fill('input[id$="-source"]','#287c60');
     await click(q('[aria-label="Close color builder"]'));
+    await assertStudioSurfaces(await evaluate('document.documentElement.dataset.studioTheme'));
   });
   await check('editing the selected global background recolors the grid without touching the other theme',async()=>{
     const before=await stored();
@@ -1247,7 +1314,7 @@ try {
     await wait(`${q('[data-ds-theme="light"]')}.style.getPropertyValue('--ds-font-family').includes('Menlo')`);
     for(const mode of ['light','dark']) assert.equal((await stored()).themes[mode].fontFamily,'mono');
     assert.ok((await evaluate(`getComputedStyle(${q(recipePart('text','paragraph.neutral.md','root'))}).fontFamily`)).includes('Menlo'));
-    assert.equal(await evaluate(`getComputedStyle(${q('[data-matrix-tools]')}).fontFamily`),await evaluate('getComputedStyle(document.body).fontFamily'),'matrix tools must not inherit the specimen font');
+    assert.equal(await evaluate(`getComputedStyle(${q(workbenchToolbar)}).fontFamily`),await evaluate('getComputedStyle(document.body).fontFamily'),'workbench tools must not inherit the specimen font');
     await click(q('[aria-label="Export tokens"]'));
     assert.ok((await evaluate(`${q('[aria-label="Exported tokens"]')}.textContent`)).includes('--ds-font-family: ui-monospace'));
     await click(q('[aria-label="Close export dialog"]'));
@@ -1309,7 +1376,7 @@ try {
       for(const mode of ['light','dark']) assert.equal((await stored()).themes[mode].typography[variant].fontSize,size);
       assert.equal(await evaluate(`${q('[data-ds-theme="light"]')}.style.getPropertyValue('--ds-typography-${variant}-font-size').trim()`),`${size}px`);
     }
-    assert.equal(await evaluate(`${q(`${matrix('text')} h2`)}.textContent`),'Text');
+    assert.equal(await evaluate(`${q(`${matrix('text')} h2`)}.textContent`),'Text variants');
     assert.equal(await evaluate(`${q('.studio-sidebar a[href="/text"]')}.getAttribute('aria-current')`),'page');
     assert.equal(await evaluate(`!!${q('[data-foundation="text"]')}`),false);
     await capture('studio-text');
@@ -1502,7 +1569,8 @@ try {
     await fill(shared,'#123456'); await key('Enter');
     await wait(`JSON.parse(localStorage.getItem('bambiui.design-system.v1')).themes[document.documentElement.dataset.studioTheme].componentStyles?.card?.title?.color==='#123456'`);
     await select('[aria-label="Shared default layer"]','description');
-    await click(q('[data-component-playground="card"] [aria-label="Playground Title"]'));
+    await setComponentMode('card','playground');
+    await click(q(`${playgroundControls('card')} [aria-label="Playground Title"]`));
     await navigate('design','colors');
     await click(q('.editor-title-actions button[aria-label*="System color pairs"]'));
     await click(named('[data-contrast-check="card.outlined.title.text"] button','Edit Card shared title color'));
@@ -1602,18 +1670,18 @@ try {
     try {
       await navigate('design','button');
       const scrollState = () => evaluate(`(()=>{const s=${q(matrixScroll)};return {matrix:[s.scrollLeft,s.scrollTop],playground:[${q('[data-playground-scroll]')}.scrollLeft,${q('[data-playground-scroll]')}.scrollTop],ancestors:[...function*(e){for(let p=e.parentElement;p;p=p.parentElement)yield [p.scrollLeft,p.scrollTop]}(s)],window:[scrollX,scrollY]}})()`);
-      const outerState = async () => { const {matrix,...outer}=await scrollState();return outer; };
+      const outerState = async () => { const state=await scrollState();return {playground:state.playground,ancestors:state.ancestors,window:state.window}; };
       await evaluate(`${q(matrixScroll)}.scrollTop=0`);
       assert.ok(await evaluate(`(()=>{const s=${q(matrixScroll)},t=${q('[data-matrix-toolbar]')},h=${q(`${matrix('button')} h2`)};return s.scrollHeight>s.clientHeight && /^(auto|scroll)$/.test(getComputedStyle(s).overflowY) && s.contains(t) && getComputedStyle(t).position==='sticky' && !t.contains(h) && t.contains(${q('[aria-label="Filter variant"]')}) && t.contains(${q('[aria-label="Filter size"]')}) && /No layer selected|Selected:/.test(t.textContent)})()`),'filters and selection context share a sticky wrapper, not the heading');
-      const headingTop = await evaluate(`${q(`${matrix('button')} h2`)}.getBoundingClientRect().top`);
-      const toolsTop = await evaluate(`${q('[data-matrix-tools]')}.getBoundingClientRect().top`);
+      const headingTop = await evaluate(`${q(`${matrix('button')} > header`)}.getBoundingClientRect().top`);
+      const toolsTop = await evaluate(`${q(workbenchToolbar)}.getBoundingClientRect().top`);
       const outer = await outerState();
       const point = await evaluate(`(()=>{const r=${q(matrixScroll)}.getBoundingClientRect();return {x:r.right-18,y:r.bottom-28}})()`);
       await wheel(point,0,260);
       await wait(`${q(matrixScroll)}.scrollTop>100`);
       assert.ok(await evaluate(`(()=>{const s=${q(matrixScroll)}.getBoundingClientRect(),t=${q('[data-matrix-toolbar]')}.getBoundingClientRect();return Math.abs(t.top-s.top)<=3 && t.bottom<s.bottom})()`),'toolbar pins to the matrix viewport');
-      assert.ok(await evaluate(`${q(`${matrix('button')} h2`)}.getBoundingClientRect().top<${headingTop}-100`),'heading scrolls away rather than sticking');
-      assert.equal(await evaluate(`${q('[data-matrix-tools]')}.getBoundingClientRect().top`),toolsTop);
+      assert.ok(await evaluate(`${q(`${matrix('button')} > header`)}.getBoundingClientRect().top<${headingTop}-100`),'intro scrolls away rather than sticking');
+      assert.equal(await evaluate(`${q(workbenchToolbar)}.getBoundingClientRect().top`),toolsTop);
       assert.deepEqual(await outerState(),outer,'matrix wheel cannot scroll Playground or shell ancestors');
       assert.ok(await evaluate(`(()=>{const s=${q(matrixScroll)};return [...s.querySelectorAll('[data-recipe-body] [data-component-part="root"]')].every(e=>{for(let p=e;p&&p!==s;p=p.parentElement)if(getComputedStyle(p).transform!=='none' || !['1','normal'].includes(getComputedStyle(p).zoom))return false;const r=e.getBoundingClientRect();return Math.abs(r.width-e.offsetWidth)<=1 && Math.abs(r.height-e.offsetHeight)<=1})})()`),'samples render at authored dimensions without scaled rows or ancestors');
       await select('[aria-label="Filter size"]','sm');
@@ -1860,7 +1928,7 @@ try {
     await capture('studio-spacing');
     await navigate('design','text');
     await delay(450);
-    assert.ok(await evaluate(`(()=>{const h=${q(`${matrix('text')} h2`)},t=${q('[data-matrix-toolbar]')},tools=${q('[data-matrix-tools]')}.getBoundingClientRect();return !t.contains(h) && h.getBoundingClientRect().top>=tools.bottom})()`),'matrix heading is outside the sticky toolbar and below the static tools');
+    assert.ok(await evaluate(`(()=>{const h=${q(`${matrix('text')} h2`)},t=${q('[data-matrix-toolbar]')},tools=${q(workbenchToolbar)}.getBoundingClientRect();return !t.contains(h) && h.getBoundingClientRect().top>=tools.bottom})()`),'matrix heading is outside the sticky filters and below the common toolbar');
     await click(q(`${example('text','heading.neutral.md')} > button`));
     await assertRecipeSelection('text','heading.neutral.md','root','text');
     await route('design','text');
@@ -1940,7 +2008,7 @@ try {
       assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth'),`matrix overflow at ${width}px`);
     }
   });
-  await check('700px uses overlay panels and focus canvas, never stacked navigation',async()=>{
+  await check('700px Library and Styles overlays are reachable without obsolete header panel controls',async()=>{
     await navigate('design','button');
     await send('Emulation.setDeviceMetricsOverride',{width:700,height:900,deviceScaleFactor:1,mobile:false});
     await delay(100); await hideMobilePanels();
@@ -1952,11 +2020,13 @@ try {
     assert.equal(await evaluate(`${q('#workspace-sidebar')}.getBoundingClientRect().width`),224);
     await panel('workspace-inspector',true);
     assert.equal(await evaluate(`${q('#workspace-sidebar')}.hidden`),true);
-    assert.equal(await evaluate(`${q('#workspace-inspector')}.getBoundingClientRect().width`),272);
-    assert.ok(await evaluate(`(()=>{const editor=${q('#workspace-inspector')}.getBoundingClientRect(),workspace=${q('.studio-main')}.getBoundingClientRect();return editor.top===workspace.top && editor.bottom===workspace.bottom && workspace.width===700})()`),'inspector overlays rather than moving the canvas');
-    await click(q('[aria-label="Focus canvas"]'));
+    assert.equal(await evaluate(`${q('#workspace-inspector')}.getBoundingClientRect().width`),320);
+    assert.ok(await evaluate(`(()=>{const editor=${q('#workspace-inspector')}.getBoundingClientRect(),workspace=${q('.studio-main')}.getBoundingClientRect();return Math.abs(editor.top-document.querySelector('[data-workbench-toolbar]').getBoundingClientRect().bottom)<2 && editor.bottom===workspace.bottom && workspace.width===700})()`),'inspector overlays rather than moving the canvas');
+    await evaluate(`${q('#token-editor')}.focus({preventScroll:true})`); await key('Escape');
+    await wait(`${q('#workspace-inspector')}.hidden`);
+    assert.equal(await evaluate(`document.activeElement===${q(`${workbenchToolbar} [aria-controls="workspace-inspector"]`)}`),true,'Escape restores the Styles toggle');
     assert.equal(await evaluate(`${q('#workspace-sidebar')}.hidden && ${q('#workspace-inspector')}.hidden`),true);
-    await click(q('[aria-label="Show panels"]')); await hideMobilePanels();
+    await assertWorkbenchToolbar('design');
     assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth && document.documentElement.scrollHeight<=innerHeight'));
   });
   await check('responsive shell keeps view, theme and system controls accessible',async()=>{
@@ -1968,7 +2038,7 @@ try {
       assert.ok(overflow.scrollWidth<=overflow.width,JSON.stringify(overflow));
       assert.ok(await evaluate(`${q(viewNav)}.getClientRects().length>0 && ${q(themeControl)}.getClientRects().length>0`));
       assert.ok(await evaluate(`${q('.studio-header .system-switcher summary')}.getClientRects().length>0`));
-      if(view==='Design') assert.ok(await evaluate(`(()=>{const main=${q('.studio-main')}.getBoundingClientRect();return ['.canvas-history','.canvas-theme'].every(selector=>{const r=document.querySelector(selector).getBoundingClientRect();return r.top>=main.top && r.bottom<=main.bottom && r.left>=main.left && r.right<=main.right})})()`),'floating controls stay in the visible work area');
+      if(view==='Design') assert.ok(await evaluate(`(()=>{const main=${q('.studio-main')}.getBoundingClientRect();return ['.canvas-history','.canvas-theme'].every(selector=>{const r=document.querySelector(selector).getBoundingClientRect();return r.top>=main.top && r.bottom<=main.bottom && r.left>=main.left && r.right<=main.right})})()`),'common toolbar controls stay in the visible work area');
       assert.equal(await evaluate(`!!${q('.breadcrumbs')} || !!${q('.viewport-controls')}`),false);
       await capture(`studio-375-${view.toLowerCase()}`);
     }
@@ -2191,6 +2261,7 @@ try {
     assert.notDeepEqual(await stored(),backup);
     acceptImportDialog = true;
     try {
+      await click(q('.system-switcher-actions [aria-label="Import design system"]'));
       await evaluate(`(() => {const e=${q('.header-actions input[type="file"]')},d=new DataTransfer();d.items.add(new File([${JSON.stringify(JSON.stringify(backup))}],'backup.json',{type:'application/json'}));e.files=d.files;e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
 
       await wait(`${q('#token-radius')}.value === ${JSON.stringify(String(backup.themes.light.global.radius))}`);
@@ -2209,6 +2280,7 @@ try {
         delete oldV3.themes[mode].typography;
         delete oldV3.themes[mode].components.text;
       }
+      await click(q('.system-switcher-actions [aria-label="Import design system"]'));
       await evaluate(`(() => {const e=${q('.header-actions input[type="file"]')},d=new DataTransfer();d.items.add(new File([${JSON.stringify(JSON.stringify(oldV3))}],'old-v3.json',{type:'application/json'}));e.files=d.files;e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
       await wait(`JSON.parse(localStorage.getItem('bambiui.design-system.v1'))?.themes.light.global.radius === 21`);
       const normalized=await stored();
@@ -2234,7 +2306,8 @@ try {
       await wait(`performance.timeOrigin!==${origin}`);
       await route(view,id);
       const name=id[0].toUpperCase()+id.slice(1);
-      assert.equal(await evaluate(`${q('h1')}.textContent`),view==='develop'?(id==='spacing'?'Shape & spacing documentation':`${name} documentation`):(id==='spacing'?'Shape & spacing':name));
+      assert.equal(await evaluate(`${q(`${workbenchToolbar} h1`)}.textContent`),id==='spacing'?'Shape & spacing':name);
+      assert.equal(await evaluate(`document.querySelectorAll('.studio-main h1').length`),1,'the common toolbar supplies one task heading in either view');
     });
   }
   for(const [view,path] of [['design','/colors'],['develop','/develop']]) {
@@ -2249,7 +2322,8 @@ try {
       await wait(`${q('.editor-fields')} && !${q('.editor-fields')}.disabled`);
       await wait(`${q(`.workspace-panel--${view}`)} && !${q(`.workspace-panel--${view}`)}.hidden`);
       assert.equal(await evaluate(`${q('.studio-sidebar a[aria-current="page"]')}.getAttribute('href')`),href(view,'colors'));
-      assert.equal(await evaluate(`${q('h1')}.textContent`),view==='design'?'Colors':'Colors documentation');
+      assert.equal(await evaluate(`${q(`${workbenchToolbar} h1`)}.textContent`),'Colors');
+      assert.equal(await evaluate(`document.querySelectorAll('.studio-main h1').length`),1);
     });
   }
   await check('/ opens System Colors without Project records or a hidden authoring shell',async()=>{

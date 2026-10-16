@@ -5,6 +5,28 @@ import type { PageProp } from "./page-document/registry";
 export const playgroundIcons = ["none", "plus", "check", "info", "warning"] as const;
 export type PlaygroundArgs = ResolvedComponentDefaults;
 
+const fieldGroups = [
+  { id: "appearance", label: "Appearance", defaultOpen: true },
+  { id: "content", label: "Content", defaultOpen: true },
+  { id: "state", label: "State & behavior", defaultOpen: true },
+  { id: "more", label: "More options", defaultOpen: false },
+] as const;
+export type PlaygroundFieldGroup = typeof fieldGroups[number] & { fields: ComponentDefaultField[] };
+
+function fieldGroup(field: ComponentDefaultField): PlaygroundFieldGroup["id"] {
+  if (field.source !== "props") return "content";
+  if (["variant", "size", "tone", "radius", "fullWidth", "iconOnly", "dot"].includes(field.key)) return "appearance";
+  if (["label", "description", "placeholder", "startIcon", "endIcon", "icon"].includes(field.key)) return "content";
+  if (["value", "checked", "indeterminate", "disabled", "loading", "readOnly", "required", "error"].includes(field.key)) return "state";
+  return "more";
+}
+
+/** Keep metadata and its order intact; future supported fields remain reachable in More options. */
+export function groupPlaygroundFields(fields: readonly ComponentDefaultField[]): PlaygroundFieldGroup[] {
+  return fieldGroups.map(group => ({ ...group, fields: fields.filter(field => fieldGroup(field) === group.id) }))
+    .filter(group => group.fields.length > 0);
+}
+
 /** The live value replaces the initial-value pair; no uncontrolled props reach the sample. */
 export function playgroundFields(component: ComponentId): ComponentDefaultField[] {
   const fields = componentDefaultFields(component).filter(field => !["defaultValue", "defaultChecked"].includes(field.key));

@@ -22,6 +22,7 @@ export type SystemComponentEditorProps = {
   theme: ThemeTokens;
   mode: PaletteMode;
   defaults?: ComponentDefaults;
+  /** @deprecated Opt in only for legacy editors; Studio owns the Variants/Playground modes. */
   showPreview?: boolean;
   previewDefaults?: ComponentDefaults;
   onPreviewDefaultsChange?: (next: ComponentDefaults | undefined) => void;
@@ -228,12 +229,16 @@ function StyleGroup({ scope, label, group, metadata, values, resolved = {}, text
   const [linked, setLinked] = useState(false);
   const linkable = ["padding", "margin", "radius"].includes(group);
   const count = metadata.filter(field => resetFields ? resetFields.has(field.key) : values[field.key] !== undefined).length;
+  const groupScopes = [...new Set(metadata.map(field => scopeHints?.[field.key]).filter((hint): hint is string => !!hint))];
   function edit(field: AppearanceField, draft: string) {
     const patch = styleDraft(field, draft);
     onChange(linked && linkable ? Object.fromEntries(metadata.map(entry => [entry.key, patch[field.key]])) as AppearancePatch : patch);
   }
-  return <details className={fields.group} open={text ? ["typography", "surface"].includes(group) : ["dimensions", "layout", "padding", "surface"].includes(group)}>
+  return <details className={fields.group} data-system-style-group={group} open={text ? ["typography", "surface"].includes(group) : ["dimensions", "layout", "padding", "surface"].includes(group)}>
     <summary>{text && group === "surface" ? "Text color" : groupNames[group]}{count > 0 && <span className={fields.overrideCount}>{count}</span>}</summary>
+    {groupScopes.length > 0 && <div className={styles.groupScope} data-system-group-scope={group}>{groupScopes.map(hint => <p key={hint}>
+      {groupScopes.length > 1 && <strong>{metadata.filter(field => scopeHints?.[field.key] === hint).map(field => field.label).join(", ")}: </strong>}{hint}
+    </p>)}</div>}
     {linkable && <button type="button" className={fields.linkToggle} aria-label={`Link ${group === "radius" ? "corners" : group + " sides"}`} aria-pressed={linked} onClick={() => setLinked(!linked)}>{linked ? "Linked" : "Independent"}</button>}
     <div className={fields.propertyGrid}>{metadata.map(field => <DraftControl key={field.key} id={`${scope}-${field.key}`}
       label={shortLabels[field.key] ?? field.label} accessibleLabel={`${label} ${field.label}`} value={values[field.key] === undefined ? "" : String(values[field.key])}
@@ -248,7 +253,8 @@ function ValueSourceDetails({ scope, metadata, theme, mode }: { scope: StyleSour
   const exact = scope.recipe !== undefined;
   return <details className={styles.sourceDetails} data-system-scope-details={exact ? "recipe" : "shared"}>
     <summary>Scope &amp; value sources</summary>
-    <p>{exact ? "Color edits affect this combination and theme. Non-color edits affect the same layer at this size across variants, states and tones; Text keeps its typographic variant." : "Edits affect this layer across all combinations and sizes."} Exported consumers use these System styles.</p>
+    <p>{exact ? "Color edits affect this combination and theme. Non-color edits affect the same layer at this size across variants, states and tones where this layer is supported; Text keeps its typographic variant." : "Edits affect this layer across all combinations and sizes."} Exported consumers use these System styles.</p>
+    {exact && <p>Other sizes and layers stay unchanged. Values describe the selected example. Existing differences remain until you edit or reset a field.</p>}
     <p>{exact ? "Reset removes the field from its editing group: colors from this combination, non-colors from the same-size layer group. Shared defaults and base tokens stay unchanged." : "Reset removes only this shared layer's overrides, not exact combination overrides or base tokens."} Sample content and other layers stay unchanged.</p>
     {!exact && <p>Shared authored values are shown even when an exact override masks them. Mixed means the examples use different rendered values.</p>}
     <p>Sources below identify direct declarations and the fallback boundary; parent or nested-component defaults may resolve through additional styles. Values remain in the property controls.</p>
@@ -270,8 +276,27 @@ function ValueSourceDetails({ scope, metadata, theme, mode }: { scope: StyleSour
   </details>;
 }
 
+function RecipeLayerPicker({ selection, onSelect }: { selection: ComponentRecipeSelection; onSelect: (next: ComponentRecipeSelection) => void }) {
+  const parts = componentRecipeParts(selection.component, selection.recipe);
+  const part = parts.find(entry => entry.key === selection.part)!;
+  const targets = (["frame", "text"] as const).filter(target => componentRecipeFields(selection.component, selection.part, target, selection.recipe).length > 0);
+  return <div className={styles.layerControls} data-system-layer-picker>
+    <label className={`${fields.partPicker} ${styles.layerPicker}`}>Layer<select aria-label="Selected layer" data-system-layer-select data-inspector-discard-drafts value={selection.part} onChange={event => {
+      const next = parts.find(entry => entry.key === event.target.value);
+      if (next && next.key !== selection.part) onSelect({ ...selection, part: next.key, target: next.target });
+    }}>
+      {parts.map(entry => <option key={entry.key} value={entry.key}>{entry.label}</option>)}
+    </select></label>
+    <div className={styles.targetPicker}><span>Target</span><div role="group" aria-label={`${part.label} style target`} data-system-target-picker>
+      {targets.map(target => <button key={target} type="button" aria-pressed={target === selection.target} data-system-style-target={target} data-inspector-discard-drafts={target !== selection.target || undefined} onClick={() => {
+        if (target !== selection.target) onSelect({ ...selection, target });
+      }}>{title(target)}</button>)}
+    </div></div>
+  </div>;
+}
+
 function RecipeLayers({ selection, label, onSelect }: { selection: ComponentRecipeSelection; label: string; onSelect: (next: ComponentRecipeSelection) => void }) {
-  return <details className={`${fields.group} ${styles.layers}`} open>
+  return <details className={`${fields.group} ${styles.layers}`} data-system-layers>
     <summary>Layers</summary>
     <ul className={styles.layerList} aria-label={`${label} layers`} onKeyDown={event => {
       if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
@@ -320,20 +345,24 @@ function RecipeStyles({ selection, recipe, theme, mode, onSelectionChange, onCha
     setError("");
   }
   return <section data-system-recipe-controls data-recipe={selection.recipe} data-part={selection.part} data-target={selection.target} aria-label={breadcrumb}>
-    <header className={styles.selectionHeading}><div><h3>{breadcrumb}</h3><p className={styles.scopeLabel}>Colors · this combination · {title(mode)} / non-colors · same size · both themes</p></div><span className={styles.target}>{title(selection.target)}</span></header>
-    <p className={styles.scopeLabel} data-system-edit-scope="recipe">Size styles / combination colors</p>
-    <p className={fields.note}>{selection.component === "text" ? "Size styles apply to every tone of this typographic variant." : "Size styles apply across variants, states and tones where this layer is supported."} Other sizes and layers stay unchanged. Colors stay on this combination.</p>
-    <p className={fields.note}>Values describe the selected example. Existing differences remain until you edit or reset a field.</p>
-    <ValueSourceDetails scope={selection} metadata={metadata} theme={theme} mode={mode} />
+    <header className={styles.selectionHeading} data-system-selection-header>
+      <h3>{title(selection.component)} <span className={styles.selectionMeta}>{[title(recipe.variant), ...(recipe.tone ? [title(recipe.tone)] : []), sizeLabels[recipe.size]].join(" · ")}</span></h3>
+      <div className={`${fields.inheritance} ${styles.selectionActions}`}><span>{part.label} · {title(selection.target)}</span>
+        <button type="button" disabled={!resetFields.size} onPointerDown={event => event.preventDefault()} onClick={() => {
+          try { change(Object.fromEntries(metadata.map(field => [field.key, null])) as AppearancePatch); setDraftRevision(revision => revision + 1); }
+          catch (error) { setError(message(error)); }
+        }}>Reset {selection.target} styles</button>
+      </div>
+    </header>
+    <dl className={styles.scopeSummary} data-system-edit-scope="recipe">
+      <div><dt>Non-colors</dt><dd>Same size{selection.component === "text" && " & typographic variant"} · both themes</dd></div>
+      <div><dt>Colors</dt><dd>This combination · {title(mode)}</dd></div>
+    </dl>
+    <RecipeLayerPicker selection={selection} onSelect={onSelectionChange} />
     <RecipeLayers selection={selection} label={combination} onSelect={onSelectionChange} />
-    <div className={fields.inheritance}><span>{selection.target === "text" ? "Typography" : "Geometry & effects"} · both themes<br />Colors · {title(mode)}</span>
-      <button type="button" disabled={!resetFields.size} onPointerDown={event => event.preventDefault()} onClick={() => {
-        try { change(Object.fromEntries(metadata.map(field => [field.key, null])) as AppearancePatch); setDraftRevision(revision => revision + 1); }
-        catch (error) { setError(message(error)); }
-      }}>Reset {selection.target} styles</button>
-    </div>
     {error && <p className={fields.error} role="alert">{error}</p>}
     {groups.map(group => <StyleGroup key={`${group}-${draftRevision}`} scope={scope} label={breadcrumb} group={group} metadata={metadata.filter(field => field.group === group)} values={values} resolved={resolved} text={selection.target === "text"} resetFields={resetFields} scopeHints={scopeHints} onChange={change} />)}
+    <ValueSourceDetails scope={selection} metadata={metadata} theme={theme} mode={mode} />
   </section>;
 }
 
@@ -344,6 +373,7 @@ function SharedDefaults({ component, theme, mode = "light", initialPart = "root"
   const metadata = useMemo(() => componentStyleFields(component, part), [component, part]);
   const values = theme.componentStyles?.[component]?.[part] ?? {};
   const resolved = useCanvasAppearance({ component, part }, metadata);
+  const scopeHints = Object.fromEntries(metadata.map(field => [field.key, `All combinations & sizes · ${field.type === "color" ? title(mode) : "both themes"}`]));
   function change(patch: AppearancePatch) {
     if (Object.entries(patch).every(([key, value]) => values[key as keyof NodeAppearance] === (value === null ? undefined : value))) return;
     const next = structuredClone(theme.componentStyles ?? {});
@@ -357,17 +387,17 @@ function SharedDefaults({ component, theme, mode = "light", initialPart = "root"
     <label className={fields.partPicker}>Shared default layer<select data-inspector-discard-drafts aria-label="Shared default layer" value={part} onChange={event => { const next = event.target.value as ComponentStylePart; setPart(next); onPartChange?.(next); setError(""); }}>
       {componentStyleParts(component).map(entry => <option key={entry.key} value={entry.key}>{entry.label}</option>)}
     </select></label>
-    <ValueSourceDetails key={part} scope={{ component, part }} metadata={metadata} theme={theme} mode={mode} />
     <div className={fields.inheritance}><span>All variants & sizes</span><button type="button" disabled={!Object.keys(values).length} onPointerDown={event => event.preventDefault()} onClick={() => {
       try { change(Object.fromEntries(metadata.map(field => [field.key, null])) as AppearancePatch); setDraftRevision(revision => revision + 1); }
       catch (error) { setError(message(error)); }
     }}>Reset shared layer</button></div>
     {error && <p className={fields.error} role="alert">{error}</p>}
-    {[...new Set(metadata.map(field => field.group))].map(group => <StyleGroup key={`${part}-${group}-${draftRevision}`} scope={`system-shared-${component}-${part}`} label={`Shared ${title(component)} ${part}`} group={group} metadata={metadata.filter(field => field.group === group)} values={values} resolved={resolved} onChange={change} />)}
+    {[...new Set(metadata.map(field => field.group))].map(group => <StyleGroup key={`${part}-${group}-${draftRevision}`} scope={`system-shared-${component}-${part}`} label={`Shared ${title(component)} ${part}`} group={group} metadata={metadata.filter(field => field.group === group)} values={values} resolved={resolved} scopeHints={scopeHints} onChange={change} />)}
+    <ValueSourceDetails key={part} scope={{ component, part }} metadata={metadata} theme={theme} mode={mode} />
   </details>;
 }
 
-export function SystemComponentEditor({ component, theme, mode, defaults, showPreview = true, previewDefaults, onPreviewDefaultsChange, tab, selection, sharedPart, onSharedPartChange, onTabChange, onSelectionChange, onStylesChange, onRecipesChange, children }: SystemComponentEditorProps) {
+export function SystemComponentEditor({ component, theme, mode, defaults, showPreview = false, previewDefaults, onPreviewDefaultsChange, tab, selection, sharedPart, onSharedPartChange, onTabChange, onSelectionChange, onStylesChange, onRecipesChange, children }: SystemComponentEditorProps) {
   if (!component) return children;
   const recipe = selection?.component === component ? componentRecipeOptions(component).find(entry => entry.key === selection.recipe) : undefined;
   const validSelection = selection && recipe && componentRecipeFields(component, selection.part, selection.target, selection.recipe).length > 0 ? selection : null;
@@ -376,7 +406,7 @@ export function SystemComponentEditor({ component, theme, mode, defaults, showPr
         onSelectionChange={next => { onSelectionChange(next); onTabChange("styles"); }} onChange={onRecipesChange} />
         : <div className={styles.emptySelection}><h3>Select a component layer</h3><p className={fields.note}>Choose a layer in a canvas example to style that exact variant and size.</p></div>}
       <SharedDefaults key={`${component}-${mode}-${sharedPart ?? "root"}`} component={component} theme={theme} mode={mode} initialPart={sharedPart} onPartChange={onSharedPartChange} onChange={onStylesChange} />
-      <details className={`${fields.group} ${styles.baseTokens}`} data-system-base-tokens><summary>Base & variant tokens · all sizes</summary><p className={styles.scopeLabel} data-system-edit-scope="base">Base / variant defaults · all sizes</p><p className={fields.note}>Shared across sizes, not limited to the selection above. Exact combination and shared layer overrides may mask these defaults.</p><details className={styles.sourceDetails} data-system-scope-details="base"><summary>Scope &amp; reset behavior</summary><p>Variant/state tokens affect the selected variant or state across all sizes. Component base tokens supply defaults across combinations. Both affect System components where those defaults are consumed.</p><p>Resetting a base or variant token removes only its own override and restores its global or derived default. It does not clear shared layer styles, exact combination styles or local instance styles. Accessible focus outlines remain global.</p></details>{children}</details>
+      <details className={`${fields.group} ${styles.baseTokens}`} data-system-base-tokens><summary>Base & variant tokens · all sizes</summary><p className={styles.scopeLabel} data-system-edit-scope="base">Base / variant defaults · all sizes</p><p className={fields.note}>Shared across sizes, not limited to the selection above. Exact combination and shared layer overrides may mask these defaults.</p>{children}<details className={styles.sourceDetails} data-system-scope-details="base"><summary>Scope &amp; reset behavior</summary><p>Variant/state tokens affect the selected variant or state across all sizes. Component base tokens supply defaults across combinations. Both affect System components where those defaults are consumed.</p><p>Resetting a base or variant token removes only its own override and restores its global or derived default. It does not clear shared layer styles, exact combination styles or local instance styles. Accessible focus outlines remain global.</p></details></details>
     </>;
   if (!showPreview) return <div className={styles.editor} data-style-inspector>{styleContent}</div>;
   return <Tabs.Root value={tab} onValueChange={value => {

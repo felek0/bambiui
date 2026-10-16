@@ -107,12 +107,12 @@ export function ComponentMatrix({ component, defaults, selection: incomingSelect
 
   return <div ref={root} className={styles.matrix} data-component-matrix={component} style={{ "--matrix-size-count": state.filters.size ? 1 : axes.size.length } as CSSProperties}>
     <header className={styles.heading}>
-      <div><h2>{title(component)}</h2><p>Select a frame or text to edit its styles.</p></div>
+      <div><h2 className={styles.srOnly}>{title(component)} variants</h2><p>Select a frame or text to edit its styles.</p></div>
       <span role="status" aria-live="polite">{activeFilters ? `${visible.length} of ${options.length}` : options.length} combinations</span>
     </header>
     <div className={styles.toolbar} data-matrix-toolbar>
     <fieldset className={styles.filters}>
-      <legend>Filter combinations <span>(optional)</span></legend>
+      <legend className={styles.srOnly}>Filter combinations</legend>
       {(["variant", "tone", "size"] as const).filter(axis => axes[axis].length > 1).map(axis => <label key={axis}>
         <span>{axis === "variant" ? stateAxis ? "State" : "Variant" : title(axis)}</span>
         <select aria-label={`Filter ${axis === "variant" && stateAxis ? "state" : axis}`} value={state.filters[axis]} data-system-context-change="matrix-filter"

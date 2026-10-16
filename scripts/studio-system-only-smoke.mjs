@@ -163,7 +163,7 @@ async function seed(session, entries = {}, path = '/') {
   await navigate(session, path);
 }
 async function systemReady(session, heading = 'Colors', view = 'design') {
-  await wait(session, `${q('.editor-fields')} && !${q('.editor-fields')}.disabled && ${q('h1')}?.textContent.trim()===${JSON.stringify(heading)}`);
+  await wait(session, `${q('.editor-fields')} && !${q('.editor-fields')}.disabled && ${q('h1')}?.textContent.trim()===${JSON.stringify(heading.replace(/ documentation$/, ""))}`);
   assert.equal(await session.evaluate('document.querySelectorAll(".studio-shell").length'), 1, 'Exactly one mounted Studio');
   for (const selector of ['.studio-header', '#workspace-sidebar', '#workspace-inspector', '#token-editor']) {
     assert.equal(await session.evaluate(`document.querySelectorAll(${JSON.stringify(selector)}).length`), 1, `Unique ${selector}`);
@@ -564,7 +564,8 @@ try {
     assert.deepEqual(await snapshot(main), before); assert.deepEqual(await audit(main), writes);
     await chooseCard(main);
     const css = await exportTokens(main, 'CSS'), json = await exportTokens(main, 'JSON');
-    const previewTitle = '[data-component-playground="card"] [data-playground-controls] [aria-label="Playground Title"]';
+    const previewTitle = '[data-playground-controls-for="card"] [aria-label="Playground Title"]';
+        await click(main, q('[data-workbench-mode="playground"]'));
     await wait(main, `!!${q(previewTitle)}`);
     const matrixBefore = await main.evaluate(`${q('[data-component-matrix="card"]')}.innerHTML`);
     const historyBefore = await main.evaluate(`[...document.querySelectorAll('[aria-label="Undo change"], [aria-label="Redo change"]')].map(e=>e.disabled)`);
@@ -576,7 +577,7 @@ try {
     assert.deepEqual(await snapshot(main), before); assert.deepEqual(await audit(main), writes);
     assert.equal(await exportTokens(main, 'CSS'), css);
     assert.deepEqual(await exportTokens(main, 'JSON'), json);
-    await click(main, named('[data-component-playground="card"] button', 'Reset playground'));
+    await click(main, named('[data-playground-controls-for="card"] button', 'Reset playground'));
     await wait(main, `${q(previewTitle)}.value===${JSON.stringify(originalTitle)}`);
     await fill(main, previewTitle, 'QA discarded on reload');
     const time = await main.evaluate('performance.timeOrigin'); await main.send('Page.reload');
@@ -588,8 +589,14 @@ try {
   await check('390px System panels and suspended recovery are keyboard reachable without overflow', async () => {
     await seed(main, systemsFixture()); await systemReady(main);
     await main.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: false });
-    await click(main, q('[aria-label="Focus canvas"]'));
-    await click(main, q('[aria-label="Show panels"]'));
+    await main.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+    if (await main.evaluate(`!${q('#workspace-sidebar')}.hidden`)) await click(main, q('[aria-controls="workspace-sidebar"]'));
+    if (await main.evaluate(`!${q('#workspace-inspector')}.hidden`)) await click(main, q('[aria-controls="workspace-inspector"]'));
+    await click(main, q('[aria-controls="workspace-sidebar"]'));
+    assert.equal(await main.evaluate(`${q('#workspace-sidebar')}.hidden`), false, 'Library is reached from the common toolbar');
+    await main.evaluate(`${q('#workspace-sidebar a')}.focus({preventScroll:true})`);
+    await key(main, 'Escape');
+    await wait(main, `${q('#workspace-sidebar')}.hidden`);
     assert.equal(await main.evaluate('document.documentElement.scrollWidth <= innerWidth'), true);
     await navigate(main, '/pages'); await paused(main);
     assert.equal(await main.evaluate('document.documentElement.scrollWidth <= innerWidth'), true);

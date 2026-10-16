@@ -1,17 +1,39 @@
-.playground { display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; min-height: 0; width: 100%; max-width: 100%; overflow: hidden; background: var(--studio-color-surface); color: var(--studio-color-text); font: 12px/1.5 var(--studio-font-family); color-scheme: var(--studio-color-scheme); }
-.playground[hidden] { display: none; }
-.header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 16px; border-bottom: 1px solid var(--studio-color-border); }
-.header h2 { margin: 0; font-size: 16px; font-weight: 600; }
-.header p { margin: 4px 0 0; color: var(--studio-color-text-muted); }
-.header button { max-width: 100%; padding: 6px 10px; border: 1px solid var(--studio-color-border); border-radius: 4px; background: var(--studio-color-surface); color: inherit; font: inherit; cursor: pointer; }
-.scroll { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 16px; }
-.preview { min-width: 0; overflow: auto; padding: 24px; border: 1px solid var(--ds-border); border-radius: 6px; background: var(--ds-background); color: var(--ds-foreground); font-family: var(--ds-font-family); }
-.sample { display: grid; align-items: center; justify-items: start; min-height: 120px; min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.playground, .controls { box-sizing: border-box; min-width: 0; width: 100%; max-width: 100%; background: var(--studio-color-surface); color: var(--studio-color-text); font: 12px/1.5 var(--studio-font-family); color-scheme: var(--studio-color-scheme); }
+.playground { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; overflow: hidden; }
+.playground[hidden], .controls[hidden] { display: none; }
+.header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; padding: 16px 24px; border-bottom: 1px solid var(--studio-color-border); }
+.header h2 { margin: 0; font-size: 14px; font-weight: 600; }
+.header p { margin: 0; color: var(--studio-color-text-muted); font-size: 11px; }
+.scroll { display: flex; flex-direction: column; flex: 1 1 auto; gap: 24px; min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 24px; }
+.workbench { display: flex; flex-direction: column; flex: 1 0 auto; min-width: 0; }
+.preview { display: grid; place-items: center; flex: 1 0 auto; min-width: 0; min-height: 320px; overflow: auto; padding: clamp(24px, 4vw, 64px); border: 1px solid var(--ds-border); border-radius: 8px; background: var(--ds-background); color: var(--ds-foreground); font-family: var(--ds-font-family); }
+.sample { display: grid; align-items: center; justify-items: center; width: 100%; max-width: 640px; min-height: 200px; min-width: 0; margin: 0; overflow-wrap: anywhere; }
 .sample > * { min-width: 0; max-width: 100%; }
-.status { display: block; margin-block: 12px; color: var(--studio-color-text-muted); overflow-wrap: anywhere; }
-.controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 12px; min-width: 0; }
+.status { display: block; flex: none; margin-top: 12px; color: var(--studio-color-text-muted); font-size: 11px; overflow-wrap: anywhere; }
+.controls { display: flex; flex-direction: column; min-height: 0; max-height: 100%; overflow: auto; overscroll-behavior: contain; padding: 16px; }
+.scroll > .controls { flex: none; max-height: none; overflow: visible; padding: 0; }
+.controlsHeader { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 16px; }
+.controlsHeader h3 { margin: 0; font-size: 13px; font-weight: 600; }
+.controlsHeader p { margin: 3px 0 0; color: var(--studio-color-text-muted); font-size: 11px; }
+.reset { flex: none; max-width: 100%; min-height: 30px; padding: 5px 8px; border: 1px solid var(--studio-color-border); border-radius: 4px; background: var(--studio-color-surface); color: inherit; font: inherit; font-size: 11px; cursor: pointer; }
+.reset:hover { background: var(--studio-color-surface-hover); }
+.group { flex: none; min-width: 0; border-top: 1px solid var(--studio-color-border); }
+.group > summary { padding-block: 12px; font-weight: 600; cursor: pointer; }
+.groupFields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr)); gap: 10px 12px; min-width: 0; margin: 0; padding: 0 0 16px; border: 0; }
 .field { display: flex; flex-direction: column; align-items: stretch; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
-.field input:not([type="checkbox"]), .field select { width: 100%; min-width: 0; max-width: 100%; min-height: 34px; padding: 6px 8px; border: 1px solid var(--studio-color-border); border-radius: 4px; background: var(--studio-color-surface); color: var(--studio-color-text); font: inherit; }
-.field input[type="checkbox"] { align-self: flex-start; width: 18px; height: 18px; accent-color: var(--studio-color-accent); }
-.controls :is(input, select):focus-visible, .header button:focus-visible { outline: var(--studio-focus-ring); outline-offset: 2px; }
-.note { margin: 16px 0 0; color: var(--studio-color-text-muted); overflow-wrap: anywhere; }
+.field > span { min-width: 0; color: var(--studio-color-text-muted); font-size: 11px; }
+.wideField { grid-column: 1 / -1; }
+.field input:not([type="checkbox"]), .field select, .field textarea { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; min-height: 32px; padding: 6px 8px; border: 1px solid var(--studio-color-border); border-radius: 4px; background: var(--studio-color-surface); color: var(--studio-color-text); font: inherit; }
+.field textarea { min-height: 76px; resize: vertical; }
+.booleanField { flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; }
+.booleanField input { flex: none; width: 16px; height: 16px; margin: 0; accent-color: var(--studio-color-accent); }
+.controls :is(input, select, textarea, summary, button):focus-visible { outline: var(--studio-focus-ring); outline-offset: 2px; }
+.help { flex: none; margin-top: 8px; color: var(--studio-color-text-muted); font-size: 11px; overflow-wrap: anywhere; }
+.help > summary { padding-block: 8px; cursor: pointer; }
+.help p { margin: 8px 0 0; }
+
+@media (max-width: 600px) {
+  .header { padding: 12px 16px; }
+  .scroll { padding: 16px; }
+  .preview { padding: 24px 16px; }
+}

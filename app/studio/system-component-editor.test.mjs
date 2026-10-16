@@ -9,14 +9,15 @@ import { componentIds, defaultSystem } from "./tokens.ts";
 import { appearanceFields } from "./components/appearance.ts";
 import { componentDefaultFields } from "./component-defaults.ts";
 import { componentRecipeFields, componentRecipeOptions, componentRecipeParts, parseComponentRecipes } from "./component-recipes.ts";
+import { recipeEditTargets } from "./recipe-edit-scope.ts";
 
 const nextResolution = registerHooks({ resolve(specifier, context, nextResolve) { return nextResolve(specifier === "next/link" ? "next/link.js" : specifier, context); } });
 const loader = installParityLoader();
 const { SystemComponentEditor } = await import("./system-component-editor.tsx");
 // Expose implementation helpers in memory only; the public editor API stays small.
 const source = readFileSync(new URL("./system-component-editor.tsx", import.meta.url), "utf8");
-const { DraftControl, PreviewSamples, previewSampleFields, installDraftScopeGuard, RecipeStyles, RecipeLayers, StyleGroup, SharedDefaults, ValueSourceDetails, styleDraft, updateRecipeFields } = await loader.generated(
-  source.replaceAll('from "./', 'from "../') + "\nexport { DraftControl, PreviewSamples, previewSampleFields, installDraftScopeGuard, RecipeStyles, RecipeLayers, StyleGroup, SharedDefaults, ValueSourceDetails, styleDraft, updateRecipeFields };\n",
+const { DraftControl, PreviewSamples, previewSampleFields, installDraftScopeGuard, RecipeStyles, RecipeLayerPicker, RecipeLayers, StyleGroup, SharedDefaults, ValueSourceDetails, styleDraft, updateRecipeFields } = await loader.generated(
+  source.replaceAll('from "./', 'from "../') + "\nexport { DraftControl, PreviewSamples, previewSampleFields, installDraftScopeGuard, RecipeStyles, RecipeLayerPicker, RecipeLayers, StyleGroup, SharedDefaults, ValueSourceDetails, styleDraft, updateRecipeFields };\n",
 );
 after(() => { loader.cleanup(); nextResolution.deregister(); });
 const noop = () => {};
@@ -55,9 +56,9 @@ const find = (tree, predicate) => nodes(tree).find(predicate);
 const textOf = tree => Array.isArray(tree) ? tree.map(textOf).join("") : isValidElement(tree) ? textOf(tree.props.children) : tree == null || typeof tree === "boolean" ? "" : String(tree);
 const keyEvent = (key, extra = {}) => ({ key, nativeEvent: { isComposing: false }, preventDefault: noop, stopPropagation: noop, ...extra });
 
-test("Styles comes first; temporary Preview and collapsed shared/base controls stay separate", () => {
+test("legacy Preview remains explicit opt-in, temporary and separate from styles and shared/base controls", () => {
   for (const component of componentIds) {
-    const preview = panel(component, "preview"), styles = panel(component);
+    const preview = panel(component, "preview", null, { showPreview: true }), styles = panel(component, "styles", null, { showPreview: true });
     assert.match(preview, /role="tablist"[^>]*aria-label="Component editor"|aria-label="Component editor"[^>]*role="tablist"/);
     assert.match(preview, /role="tabpanel"/);
     assert.ok(styles.indexOf(">Styles<") < styles.indexOf(">Preview<"));
@@ -75,15 +76,15 @@ test("Styles comes first; temporary Preview and collapsed shared/base controls s
     assert.match(styles, /Base &amp; variant tokens · all sizes/);
     assert.match(styles, /Variant paint controls/);
     assert.doesNotMatch(preview + styles, /starting component|starting parameters|starter|insertion defaults|System component part/i);
-        assert.doesNotMatch(source, /Project Parameters|linked projects|in every project/i);
+    assert.doesNotMatch(source, /Project Parameters|linked projects|in every project/i);
   }
   assert.equal(panel(null), "<p>Variant paint controls</p>", "foundation workflows pass through unchanged");
 });
 
-test("active styles-only inspector keeps all style controls without duplicate Preview tabs", () => {
-  for (const component of componentIds) {
+test("the default active inspector is styles-only, even with a stale legacy Preview tab", () => {
+  for (const component of componentIds) for (const showPreview of [undefined, false]) {
     const selection = selectionFor(component);
-    const html = panel(component, "preview", selection, { showPreview: false });
+    const html = panel(component, "preview", selection, { showPreview });
     assert.match(html, /data-style-inspector/);
     assert.match(html, /data-system-recipe-controls/);
     assert.match(html, /data-system-shared-defaults/);
@@ -93,21 +94,50 @@ test("active styles-only inspector keeps all style controls without duplicate Pr
   }
 });
 
+test("editable fields precede source explanations, with secondary shared/base sections at the bottom", () => {
+  for (const component of componentIds) {
+    const selection = selectionFor(component);
+    const html = panel(component, "styles", selection);
+    const scoped = scopedMarkup(html);
+    const picker = scoped.indexOf("data-system-layer-picker");
+    const layers = scoped.indexOf("data-system-layers");
+    const sources = scoped.indexOf('data-system-scope-details="recipe"');
+    assert.ok(picker > 0 && layers > picker && sources > layers);
+    assert.match(scoped, /<details[^>]*data-system-layers="true"[^>]*>/);
+    assert.doesNotMatch(scoped.match(/<details[^>]*data-system-layers="true"[^>]*>/)[0], /\bopen=/);
+    for (const field of componentRecipeFields(component, selection.part, selection.target, selection.recipe)) {
+      const position = scoped.indexOf(`id="${fieldId(selection, field.key)}"`);
+      assert.ok(position > layers && position < sources, `${component}.${field.key} precedes sources`);
+    }
+    assert.doesNotMatch(scoped.slice(0, sources), /Values describe the selected example|Existing differences remain|Exported consumers/);
+    assert.ok(html.indexOf("data-system-shared-defaults") > html.indexOf('data-system-scope-details="recipe"'));
+    assert.ok(html.indexOf("data-system-base-tokens") > html.indexOf("data-system-shared-defaults"));
+    assert.ok(html.lastIndexOf(`id="system-shared-${component}-`) < html.indexOf('data-system-scope-details="shared"'));
+    assert.ok(html.indexOf("Variant paint controls") < html.indexOf('data-system-scope-details="base"'));
+    for (const marker of ["data-system-shared-defaults", "data-system-base-tokens"]) {
+      assert.doesNotMatch(html.match(new RegExp(`<details[^>]*${marker}="true"[^>]*>`))[0], /\bopen=/);
+    }
+  }
+});
+
 test("scope/source details stay opt-in and separate exact, shared, base and insertion effects", () => {
   const selection = selectionFor("card", "outlined.md", "title", "text");
   const html = panel("card", "styles", selection);
   for (const scope of ["recipe", "shared", "base"]) {
     assert.match(html, new RegExp(`data-system-edit-scope="${scope}"`));
     const details = html.match(new RegExp(`<details[^>]*data-system-scope-details="${scope}"[^>]*>`));
-    assert.ok(details); assert.doesNotMatch(details[0], /\\bopen=/);
+    assert.ok(details); assert.doesNotMatch(details[0], /\bopen=/);
   }
-  assert.match(html, /Size styles \/ combination colors/);
+  const summary = html.match(/<dl[^>]*data-system-edit-scope="recipe"[^>]*>[\s\S]*?<\/dl>/)?.[0];
+  assert.ok(summary);
+  assert.match(summary, /<dt>Non-colors<\/dt><dd>Same size · both themes<\/dd>/);
+  assert.match(summary, /<dt>Colors<\/dt><dd>This combination · Light<\/dd>/);
   assert.match(html, /All combinations · shared layer/);
   assert.match(html, /Exported consumers use these System styles/);
   assert.match(html, /Reset removes the field from its editing group/);
   assert.match(html, /Shared defaults and base tokens stay unchanged/);
   assert.match(html, /does not clear shared layer styles, exact combination styles or local instance styles/);
-  const preview = panel("card", "preview", selection);
+  const preview = panel("card", "preview", selection, { showPreview: true });
   assert.match(preview, /data-system-edit-scope="preview"/);
   assert.match(preview, /saved defaults, history and exports stay unchanged/);
   assert.doesNotMatch(preview, /data-system-scope-details=/);
@@ -143,22 +173,89 @@ test("no selection or a stale/unsupported selection never masquerades as scoped 
   }
 });
 
-test("breadcrumb includes the exact variant, tone, size and layer; canvas selections stay authoritative", () => {
+test("compact selection header retains variant, tone, size, layer and target without a visible breadcrumb", () => {
   const title = selectionFor("card", "outlined.md", "title", "text");
   const html = scopedMarkup(panel("card", "styles", title));
-  assert.match(html, /<h3>Card \/ Outlined \/ Medium \/ Title<\/h3>/);
+  const header = html.match(/<header[^>]*data-system-selection-header[^>]*>[\s\S]*?<\/header>/)?.[0];
+  assert.ok(header);
+  assert.match(header, /<h3>Card <span[^>]*>Outlined · Medium<\/span><\/h3>/);
+  assert.match(header, /<span>Title · Text<\/span>/);
+  assert.doesNotMatch(header, /Card \/ Outlined|Non-colors|Scope &amp; value sources/);
   assert.match(html, /data-recipe="outlined.md" data-part="title" data-target="text"/);
-  assert.match(html, /Size styles \/ combination colors/);
-  assert.match(html, /Size styles apply across variants, states and tones/);
+  assert.match(html, /aria-label="Card \/ Outlined \/ Medium \/ Title"/, "full context remains available to assistive technology");
+  assert.match(html, /Same size · both themes/);
+  assert.match(html, /across variants, states and tones where this layer is supported/);
   assert.match(html, /Other sizes and layers stay unchanged/);
-  assert.match(html, /Typography · both themes/);
-  assert.match(html, /Colors · Light/);
+  assert.match(html, /Medium · 3 combinations · both themes/);
+  assert.match(html, /This combination · Light/);
   assert.doesNotMatch(html, /<select[^>]*aria-label="(?:System component part|Shared default layer)"/);
-  assert.match(panel("badge", "styles", selectionFor("badge", "outline.neutral.md", "text")), /Badge \/ Outline \/ Neutral \/ Medium \/ Label/);
-  assert.match(panel("switch", "styles", selectionFor("switch", "invalidChecked.lg", "control")), /Switch \/ Invalid Checked \/ Large \/ Control/);
+  const badge = panel("badge", "styles", selectionFor("badge", "outline.neutral.md", "text"));
+  assert.match(badge, /<h3>Badge <span[^>]*>Outline · Neutral · Medium<\/span><\/h3>/);
+  assert.match(badge, /<span>Label · Text<\/span>/);
+  const control = panel("switch", "styles", selectionFor("switch", "invalidChecked.lg", "control"));
+  assert.match(control, /<h3>Switch <span[^>]*>Invalid Checked · Large<\/span><\/h3>/);
+  assert.match(control, /<span>Control · Frame<\/span>/);
   for (const [component, part, target] of [["input", "control", "text"], ["card", "content", "text"], ["card", "footer", "text"], ["card", "title", "frame"], ["text", "root", "frame"]]) {
     const selected = selectionFor(component, undefined, part, target);
     assert.ok(scopedMarkup(panel(component, "styles", selected)), `${component}.${part}.${target} is a supported alternate target`);
+  }
+});
+
+test("compact picker and collapsed layer list cover every supported recipe part and target", () => {
+  for (const component of componentIds) for (const recipe of componentRecipeOptions(component)) {
+    const parts = componentRecipeParts(component, recipe.key);
+    const expectedLayers = parts.flatMap(part => ["frame", "text"]
+      .filter(target => componentRecipeFields(component, part.key, target, recipe.key).length)
+      .map(target => `Select ${part.label} ${target}`));
+    for (const part of parts) for (const target of ["frame", "text"]) {
+      if (!componentRecipeFields(component, part.key, target, recipe.key).length) continue;
+      const selection = selectionFor(component, recipe.key, part.key, target);
+      const tree = RecipeLayerPicker({ selection, onSelect: () => assert.fail("rendering never selects or writes") });
+      const picker = find(tree, node => node.type === "select");
+      assert.equal(picker.props["aria-label"], "Selected layer");
+      assert.equal(picker.props.value, part.key);
+      assert.equal(picker.props["data-inspector-discard-drafts"], true);
+      assert.deepEqual(nodes(picker).filter(node => node.type === "option").map(node => [node.props.value, textOf(node)]), parts.map(entry => [entry.key, entry.label]));
+      const targets = nodes(tree).filter(node => node.type === "button");
+      assert.deepEqual(targets.map(node => node.props["data-system-style-target"]), ["frame", "text"].filter(value => componentRecipeFields(component, part.key, value, recipe.key).length));
+      assert.equal(targets.filter(node => node.props["aria-pressed"]).length, 1);
+      for (const button of targets) {
+        assert.equal(button.props.type, "button");
+        assert.equal(button.props["aria-pressed"], button.props["data-system-style-target"] === target);
+        assert.equal(button.props["data-inspector-discard-drafts"], button.props["aria-pressed"] ? undefined : true);
+      }
+      assert.equal(find(tree, node => node.props.role === "group").props["aria-label"], `${part.label} style target`);
+      const layers = RecipeLayers({ selection, label: recipe.label, onSelect: noop });
+      assert.equal(layers.props.open, undefined);
+      assert.deepEqual(nodes(layers).filter(node => node.type === "button").map(node => node.props["aria-label"]).sort(), [...expectedLayers].sort());
+    }
+  }
+});
+
+test("compact layer and target controls select exact scopes without redundant selection callbacks", () => {
+  const selection = selectionFor("card", "outlined.md", "title", "text"), selections = [];
+  const tree = RecipeLayerPicker({ selection, onSelect: next => selections.push(next) });
+  const picker = find(tree, node => node.type === "select");
+  picker.props.onChange({ target: { value: "title" } });
+  picker.props.onChange({ target: { value: "missing" } });
+  find(tree, node => node.props["data-system-style-target"] === "text").props.onClick();
+  assert.deepEqual(selections, []);
+  for (const [part, target] of [["root", "frame"], ["description", "text"], ["content", "frame"]]) {
+    picker.props.onChange({ target: { value: part } });
+    assert.deepEqual(selections.at(-1), { ...selection, part, target }, "new layers start with their documented default target");
+  }
+  const frame = find(tree, node => node.props["data-system-style-target"] === "frame");
+  frame.props.onClick();
+  assert.deepEqual(selections.at(-1), { ...selection, target: "frame" });
+  for (const control of [picker, frame]) for (const value of ["23.125", "invalid"]) {
+    assert.equal(control.props["data-inspector-discard-drafts"], true);
+    const { input, commits } = draftInput();
+    const document = draftDocument();
+    input.onFocus({ currentTarget: { ownerDocument: document } });
+    input.onChange({ target: { value } });
+    document.pointer("[data-inspector-discard-drafts]");
+    input.onBlur();
+    assert.deepEqual(commits, [], "compact scope controls discard the outgoing draft before blur");
   }
 });
 
@@ -345,9 +442,71 @@ test("size-group reset remains available when only another variant has an author
   assert.match(html, new RegExp(`${fieldId(selection, "fontSize")}-scope`));
 });
 
+test("readable group scopes and per-field descriptions distinguish colors from shared non-colors", () => {
+  const selections = [selectionFor("card", "outlined.md", "root", "frame"), selectionFor("card", "outlined.md", "title", "text"), selectionFor("text", "paragraph.warning.sm", "root", "text")];
+  for (const selection of selections) for (const mode of ["light", "dark"]) {
+    const recipe = recipeProps(selection, { mode });
+    const tree = capture(RecipeStyles, recipe);
+    const groups = nodes(tree).filter(node => node.type?.name === "StyleGroup");
+    for (const group of groups) {
+      const rendered = capture(StyleGroup, group.props);
+      const summary = find(rendered, node => node.props["data-system-group-scope"]);
+      assert.ok(summary);
+      assert.equal(summary.props.hidden, undefined);
+      assert.equal(summary.props["aria-hidden"], undefined);
+      for (const field of group.props.metadata) {
+        const draft = find(rendered, node => node.type?.name === "DraftControl" && node.props.field.key === field.key);
+        const hint = draft.props.scopeHint;
+        assert.ok(textOf(summary).includes(hint), `${field.key} scope is readable once at group level`);
+        if (field.type === "color") assert.equal(hint, `This combination · ${mode === "light" ? "Light" : "Dark"}`);
+        else {
+          assert.ok(hint.includes(`${recipeEditTargets(selection, field.key).length} combinations`));
+          assert.ok(hint.endsWith("both themes"));
+          if (selection.component === "text") assert.ok(hint.startsWith("Small Paragraph"));
+        }
+        const control = capture(DraftControl, draft.props);
+        const input = find(control, node => ["input", "select", "textarea"].includes(node.type));
+        const id = `${fieldId(selection, field.key)}-scope`;
+        assert.ok(input.props["aria-describedby"].split(" ").includes(id));
+        const description = find(control, node => node.props.id === id);
+        assert.equal(textOf(description), hint);
+        assert.equal(description.props.hidden, undefined);
+        assert.equal(description.props["aria-hidden"], undefined);
+      }
+      const hints = [...new Set(group.props.metadata.map(field => group.props.scopeHints[field.key]))];
+      if (hints.length > 1) {
+        const lines = nodes(summary).filter(node => node.type === "p");
+        for (const field of group.props.metadata) {
+          const line = lines.find(node => textOf(node).endsWith(group.props.scopeHints[field.key]));
+          assert.ok(textOf(find(line, node => node.type === "strong")).includes(field.label), "mixed groups identify the fields for each scope, not a blanket theme label");
+        }
+      }
+    }
+  }
+  const css = readFileSync(new URL("./system-component-editor.module.css", import.meta.url), "utf8");
+  const compactScope = css.match(/\.fieldScope\s*\{([^}]+)\}/)?.[1];
+  assert.ok(compactScope);
+  assert.match(compactScope, /clip-path: inset\(50%\)/);
+  assert.doesNotMatch(compactScope, /display:\s*none|visibility:\s*hidden/);
+});
+
+test("shared group scope summaries keep current-theme colors separate from both-theme effects", () => {
+  const tree = capture(SharedDefaults, { component: "card", theme: baseTheme, mode: "dark", onChange: noop });
+  for (const group of nodes(tree).filter(node => node.type?.name === "StyleGroup")) {
+    const rendered = capture(StyleGroup, group.props);
+    const summary = find(rendered, node => node.props["data-system-group-scope"]);
+    for (const field of group.props.metadata) {
+      const draft = find(rendered, node => node.type?.name === "DraftControl" && node.props.field.key === field.key);
+      assert.equal(draft.props.scopeHint, `All combinations & sizes · ${field.type === "color" ? "Dark" : "both themes"}`);
+      assert.ok(textOf(summary).includes(draft.props.scopeHint));
+    }
+  }
+});
+
 test("text size-scope descriptions retain the typographic variant and exact colors", () => {
   const html = scopedMarkup(panel("text", "styles", selectionFor("text", "paragraph.warning.sm", "root", "text")));
-  assert.match(html, /every tone of this typographic variant/);
+  assert.match(html, /Same size &amp; typographic variant · both themes/);
+  assert.match(html, /Text keeps its typographic variant/);
   assert.match(html, /Small Paragraph · 6 combinations · both themes/);
   assert.match(html, /This combination · Light/);
 });
@@ -522,9 +681,13 @@ test("invalid style drafts link inline errors to the field; Escape and failed re
   assert.equal(failedReset.input["aria-invalid"], true);
 });
 
-test("layer list selects parent and text/frame parts without changing recipe; arrow/Home/End move focus only", () => {
+test("collapsed full layer list selects parent and text/frame parts; arrow/Home/End move focus only", () => {
   const selection = selectionFor("card", "outlined.md", "title", "text"), selections = [];
   const tree = RecipeLayers({ selection, label: "Card / Outlined / Medium", onSelect: value => selections.push(value) });
+  assert.equal(tree.type, "details");
+  assert.equal(tree.props.open, undefined);
+  assert.equal(tree.props["data-system-layers"], true);
+  assert.equal(textOf(find(tree, node => node.type === "summary")), "Layers");
   const buttons = nodes(tree).filter(node => node.type === "button");
   assert.ok(buttons.every(node => node.props.type === "button"));
   assert.equal(buttons.filter(node => node.props["aria-pressed"]).length, 1);
@@ -574,7 +737,7 @@ test("Preview emits a detached full effective session replacement, never saved-d
   assert.equal(changes[1], undefined);
   assert.deepEqual(defaults, before);
   const savedWrites = [], previews = [], tabs = [];
-  const editor = SystemComponentEditor(editorProps("card", "preview", null, { defaults, onDefaultsChange: next => savedWrites.push(next), onPreviewDefaultsChange: next => previews.push(next), onTabChange: next => tabs.push(next) }));
+  const editor = SystemComponentEditor(editorProps("card", "preview", null, { showPreview: true, defaults, onDefaultsChange: next => savedWrites.push(next), onPreviewDefaultsChange: next => previews.push(next), onTabChange: next => tabs.push(next) }));
   editor.props.onValueChange("styles");
   assert.deepEqual(previews, [undefined]); assert.deepEqual(tabs, ["styles"]); assert.deepEqual(savedWrites, []);
 });

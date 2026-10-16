@@ -6,9 +6,11 @@ Status: **not run**. This is a session protocol, not evidence of user or accessi
 
 **Superseding scope amendment:** This protocol now targets the [user-requested size-based editor policy](system-first-sf0-contract.md#superseding-user-amendment--size-based-editor-write-groups). Implementation and automated checks passed for this amendment: 637 unit/SSR/source tests, 99 System browser checks and 17 System-only checks, including Button/Text grouping and Card historical-value preservation. Source delivery checks also passed with unchanged catalog/registry identities. No participant, VoiceOver or native-zoom session result is claimed; the result table remains Not run.
 
-**Split Playground amendment:** The active candidate replaces inspector Preview with an independent central Playground beside the canonical matrix (stacked on narrow screens). Props/content/state changes repaint only its live sample; matrix selection/content and all saved/exported data remain unchanged. Args survive matrix/filter/theme/view/token changes; component/System/import/reload/Reset playground reinitialize them. Apply this lifecycle instead of the original inspector Preview lifecycle. Human results below remain Not run.
+**Historical split Playground amendment (layout superseded below):** Inspector Preview was replaced with an independent central Playground beside the canonical matrix. Props/content/state changes repaint only its live sample; matrix selection/content and all saved/exported data remain unchanged. Args survive matrix/filter/theme/view/token changes; component/System/import/reload/Reset playground reinitialize them. Apply this lifecycle instead of the original inspector Preview lifecycle. Human results below remain Not run.
 
 **Natural matrix amendment:** Component examples now use native scrolling at real rendered sizes, with sticky filters/selection context, not a zoomable/pannable camera or dotted canvas. Verify that sizes stack readably in a narrow pane; all combinations stay accessible. Matrix and Playground scroll independently. Selecting an offscreen recipe reveals only the matrix; theme/layer/token changes preserve its position. Colors/Shape & spacing retain their Foundation canvas. Include these observations in T01/T03 and A01/A03/A04; no manual pass is implied by automated tests.
+
+**Active task-first workbench amendment:** The central area now shows **Variants or Playground**, never both at once. Right panel is Styles for Variants and grouped temporary Props for Playground. Mode changes preserve matrix selection/filter/scroll and Playground args/actions, without storage/history writes; inactive controls stay outside Tab/AX reading order. Component navigation defaults to Variants. Theme/history/panel access lives in a common toolbar; mobile overlays do not obscure it. Layer selector and supported Frame/Text buttons precede editable styles; the full Layers list and source details are collapsed. Field scope is described accessibly, while accurate group scope remains visible. System import is in the System menu. Develop has Download System JSON next to the CLI commands. The [UX review](studio-ux-review-2026-10-17.md) records the rationale and automated checks; all human results below remain Not run.
 
 ## Purpose and safety
 
@@ -71,8 +73,8 @@ Facilitator checks:
 **Participant goal:** “Try a much longer title on your Card without saving new default content. Then return to the original example and check that your typography edits remain.”
 
 Facilitator checks:
-- The participant finds the central Playground, not a Project, insertion-default editor or inspector Preview tab. The canonical matrix title never changes while trying a longer Playground title.
-- Playground axes/content/state are independent of matrix selection. Changing the selected recipe/layer/filter, theme or Design/Develop preserves args; changing component/System, importing, reloading or Reset playground restores saved defaults. Temporary text is clearly distinguished from saved styles.
+- The participant switches to Playground and finds Content in the Props panel, not a Project or insertion-default editor. Switching back to Variants confirms the canonical matrix title never changed.
+- Variants/Playground switches preserve the selected matrix layer and temporary sample. Playground axes/content/state are independent of matrix selection. Changing the selected recipe/layer/filter, theme or Design/Develop preserves args; changing component/System, importing, reloading or Reset playground restores saved defaults. Temporary text is clearly distinguished from saved styles.
 - T01/T02 typography and geometry remain unchanged; preview actions do not enter token Undo or persist after reload/system switch.
 - Exported System JSON and source example still use the saved System/defaults, not session text. The participant understands the distinction; perform exact data comparisons in automated fixtures, not by forcing a user to inspect raw hashes.
 
@@ -94,7 +96,7 @@ Facilitator checks:
 - The participant discovers Playground's supported Loading/Disabled props and understands their temporary state. The older optional per-recipe interaction disclosure remains available separately.
 - A real loading action cannot be repeatedly activated and keeps understandable focus; disabled controls do not activate.
 - Hover, pressed and keyboard focus can be inspected without confusing the live state with the inspector's selected recipe.
-- Reset playground clears temporary interaction data without authoring insertion defaults or tokens. The Playground and matrix scroll independently; matrix scrolling does not transform or scroll Playground.
+- Reset playground clears temporary interaction data without authoring insertion defaults or tokens. Mode switches preserve each view's state; Props scrolls independently of the live sample. On mobile, Props is reachable from the toolbar and Escape restores its toggle.
 
 ### T06 — Themes, persistence and developer handoff
 
@@ -104,7 +106,7 @@ Facilitator checks:
 - Light/Dark title colors are independent and only the selected exact recipe changes; other variants/tones/sizes keep their colors. Geometry/typography remain shared across themes with the selected-size non-color write group. `background`, `color` and `borderColor` all obey exact recipe/current-theme scope.
 - Saved System name/values and both themes survive reload. Import as a new System does not replace the original; temporary preview text is not in the backup.
 - Existing `componentDefaults` values in an imported fixture remain preserved even though their former insertion editor is not shown. A standalone API's default props are not silently rewritten.
-- Develop exposes the published CLI instructions, System JSON export and explicit stylesheet/ThemeScope setup. The participant does not mistake the collapsed ZIP fallback for the primary path.
+- Develop exposes Download System JSON beside the published CLI instructions and explicit stylesheet/ThemeScope setup, without needing to return to header export. The participant does not mistake the collapsed ZIP fallback for the primary path.
 - The participant understands that System JSON stays local and `theme` does not rewrite component code. Running npm commands is optional here and requires a disposable host; credentials never belong in this session record.
 
 ## Accessibility pass

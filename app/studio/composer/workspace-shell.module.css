@@ -1,6 +1,6 @@
 .shell:global(.studio-shell) {
-  --shell-left: 224px;
-  --shell-right: 272px;
+  --shell-left: 200px;
+  --shell-right: 320px;
   position: relative;
   display: grid;
   grid-template-columns: var(--shell-left) minmax(0, 1fr) var(--shell-right);
@@ -78,7 +78,8 @@
 .shell :global(.nav-end) { display: flex; margin-left: auto; }
 .shell :global(.sidebar-bottom) { display: block; flex: none; margin-top: auto; padding: 10px 14px; border-top: 1px solid var(--studio-color-border-subtle); }
 .shell :global(.docs-link) { font-size: 10px; }
-.shell :global(.studio-main) { grid-area: 2 / 2 / 3 / 3; min-width: 0; min-height: 0; overflow: hidden; }
+.shell :global(.studio-main) { grid-area: 2 / 2 / 3 / 3; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.shell :global(.workspace-tabs) { flex: 1; overflow: hidden; }
 .shell :global(.workspace-tabs), .shell :global(.workspace-content) { min-width: 0; min-height: 0; }
 .shell :global(.workspace-content--design) { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 .shell :global(.workspace-content--design > .notice) { flex: none; max-height: 35%; overflow: auto; margin: 0; }
@@ -102,8 +103,27 @@
 .shell :global(.workspace-heading) { padding: 20px 24px; }
 .shell :global(.studio-main--develop) { grid-column: 2 / -1; }
 
+.libraryHeading { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 8px; padding: 18px 16px 8px; }
+.libraryHeading h2 { margin: 0; font-size: 13px; font-weight: 600; }
+.libraryHeading span { color: var(--studio-color-text-muted); font-size: 10px; }
+.workbenchToolbar { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 12px; min-height: 64px; padding: 12px 20px; border-bottom: 1px solid var(--studio-color-border); background: var(--studio-color-surface); color: var(--studio-color-text); }
+.workbenchHeading { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.workbenchHeading h1 { margin: 0; font: 600 16px/1.4 var(--studio-font-family); }
+.workbenchModes { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--studio-color-border-subtle); border-radius: 7px; background: var(--studio-color-surface-hover); }
+.workbenchModes button { padding: 6px 12px; min-height: 30px; border-radius: 4px; color: var(--studio-color-text-subtle); font: 500 12px/1.4 var(--studio-font-family); cursor: pointer; }
+.workbenchModes button[aria-pressed="true"] { background: var(--studio-color-surface); color: var(--studio-color-text); box-shadow: 0 1px 3px var(--studio-color-shadow); }
+.workbenchModes button:focus-visible { outline: var(--studio-focus-ring); outline-offset: 2px; }
+.workbenchActions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.shell .workbenchToolbar :global(.canvas-history), .shell .workbenchToolbar :global(.canvas-theme) { position: static; }
+.shell .workbenchToolbar :global(.canvas-history) { padding: 0; gap: 2px; border: 0; background: transparent; box-shadow: none; }
+.shell .workbenchToolbar :global(.studio-button) { min-height: 30px; }
+.shell .contextToggle { display: flex; gap: 5px; padding: 5px 8px; font-size: 11px; }
+.shell .contextToggle :global([data-slot="label"]) { display: flex; align-items: center; gap: 5px; }
+.playgroundProps { flex: 1; min-height: 0; overflow: hidden; }
+.playgroundProps[hidden] { display: none; }
+
 @media (max-width: 1100px) {
-  .shell:global(.studio-shell) { --shell-left: 200px; --shell-right: 256px; }
+  .shell:global(.studio-shell) { --shell-left: 184px; --shell-right: 304px; }
   .shell[data-left-hidden] { --shell-left: 0px; }
   .shell[data-right-hidden], .shell[data-view="develop"] { --shell-right: 0px; }
   .shell :global(.studio-header) { gap: 8px; }
@@ -111,10 +131,11 @@
   .shell :global(.system-switcher summary) { max-width: 160px; }
 }
 @media (max-width: 800px) {
-  .shell:global(.studio-shell) { grid-template-columns: 0 minmax(0, 1fr) 0; grid-template-rows: 48px minmax(0, 1fr); }
+  .shell:global(.studio-shell) { --workbench-height: 64px; grid-template-columns: 0 minmax(0, 1fr) 0; grid-template-rows: 48px minmax(0, 1fr); }
+  .shell:has([data-workbench-mode]) { --workbench-height: 108px; }
   .shell :global(.studio-header) { padding-inline: 8px; gap: 6px; }
-  .shell :global(.studio-sidebar) { position: absolute; z-index: 8; top: 48px; bottom: 0; left: 0; width: min(224px, calc(100% - 48px)); grid-area: auto; box-shadow: 6px 0 24px var(--studio-color-shadow); }
-  .shell .inspector { position: absolute; z-index: 8; top: 48px; bottom: 0; right: 0; width: min(272px, calc(100% - 48px)); grid-area: auto; box-shadow: -6px 0 24px var(--studio-color-shadow); }
+  .shell :global(.studio-sidebar) { position: absolute; z-index: 8; top: calc(48px + var(--workbench-height)); bottom: 0; left: 0; width: min(224px, calc(100% - 48px)); grid-area: auto; box-shadow: 6px 0 24px var(--studio-color-shadow); }
+  .shell .inspector { position: absolute; z-index: 8; top: calc(48px + var(--workbench-height)); bottom: 0; right: 0; width: min(320px, calc(100% - 48px)); grid-area: auto; box-shadow: -6px 0 24px var(--studio-color-shadow); }
   .shell :global(.studio-main), .shell :global(.studio-main--develop) { grid-area: 2 / 2 / 3 / 3; }
   .brandName { display: none; }
   .shell :global(.brand-mark) { margin-right: 0; }
@@ -122,6 +143,12 @@
   .shell :global(.header-actions .studio-button) { width: 28px; padding: 0; }
   .shell :global(.system-switcher-panel) { position: fixed; top: 52px; left: 8px; width: min(320px, calc(100vw - 16px)); }
   .shell :global(.view-switch) { gap: 6px; }
+  .workbenchToolbar { box-sizing: border-box; height: var(--workbench-height); gap: 8px; padding: 10px 12px; }
+  .workbenchHeading { flex: 1; }
+  .workbenchHeading h1 { font-size: 14px; }
+  .workbenchModes { order: 3; width: 100%; }
+  .workbenchModes button { flex: 1; }
+  .workbenchActions { gap: 6px; }
   .shell :global(.editor-fields) { padding: 12px; }
   .shell :global(.token-input input:not([type="color"])) { font-size: 12px; }
 }
@@ -131,9 +158,9 @@
   .panelControls { gap: 0; padding-left: 3px; }
   .shell .panelControls :global(.studio-button) { width: 26px; }
   .shell :global(.studio-header) { gap: 4px; }
-  .shell :global(.system-switcher) { flex: 0 0 24px; }
-  .shell :global(.system-switcher summary) { width: 24px; max-width: 24px; padding: 4px; gap: 0; justify-content: center; }
-  .shell :global(.system-switcher .system-switcher-name) { display: none; }
+  .shell :global(.system-switcher) { flex: 1; min-width: 0; }
+  .shell :global(.system-switcher summary) { max-width: 140px; min-width: 0; padding: 4px; }
+  .shell :global(.system-switcher .system-switcher-name) { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .shell :global(.view-switch) { flex: none; gap: 6px; }
   .shell :global(.view-switch a) { padding-inline: 0; font-size: 10px; }
   .shell :global(.header-actions) { gap: 2px; }
