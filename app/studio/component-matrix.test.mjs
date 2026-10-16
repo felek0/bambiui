@@ -55,6 +55,19 @@ for (const [component, count] of Object.entries(counts)) test(`${component}: all
   }
 });
 
+test("matrix toolbar groups filters and selection context without capturing the heading or samples", () => {
+  for (const component of Object.keys(counts)) {
+    const tree = capture(component);
+    const toolbar = nodes(tree).find(node => Object.hasOwn(node.props, "data-matrix-toolbar"));
+    assert.ok(toolbar);
+    const children = nodes(toolbar);
+    assert.ok(children.some(node => node.type === "fieldset"));
+    assert.ok(children.some(node => node.type === "p" && node.props.children === "No layer selected."));
+    assert.ok(!children.some(node => node.type === "h2" || Object.hasOwn(node.props, "data-recipe-example")));
+    assert.doesNotMatch(markup(component), /Canvas zoom|Zoom level|Drag or scroll to pan/);
+  }
+});
+
 test("Card examples preserve complete anatomy and nested Text/Button rather than a separate Starting component", () => {
   const html = markup("card");
   for (const { key } of componentRecipeOptions("card")) {

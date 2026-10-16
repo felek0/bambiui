@@ -20,7 +20,7 @@ Date: 2026-10-16. Status: **frozen for implementation** after Agent D read-only 
 
 This amendment supersedes the original inspector Preview wiring and **session sample defaults** lifecycle column below. The earlier interface description is retained as historical integration context, not the active Studio contract. The size-based write policy above is unchanged.
 
-- Desktop component workspace is a 50/50 split: canonical variant/state/tone/size matrix and a separate Storybook-style Playground. Narrow screens stack them; Foundations stay full width. History/theme/camera tools belong to the matrix pane. Playground has its own scrolling and is outside camera pointer/wheel handling.
+- Desktop component workspace is a 50/50 split: canonical variant/state/tone/size matrix and a separate Storybook-style Playground. Narrow screens stack them; Foundations stay full width. History/theme tools belong to a static toolbar above the matrix. Playground has its own scrolling. The natural-matrix amendment below replaces the component camera; Foundation camera behavior remains.
 - Matrix always receives saved `system.componentDefaults`; Playground owns detached ephemeral args. Neither edits nor reset of those args affect matrix DOM, selection, tokens, saved defaults, history, storage or CSS/JSON/source ZIP/CLI output. Both previews consume current System tokens and the selected theme.
 - Active `SystemComponentEditor` uses `showPreview={false}`: style controls only, no duplicate Preview tab. Optional legacy inspector Preview props remain for internal compatibility/tests, without active Studio state/write wiring. `Preview` no longer accepts session `previewDefaults`.
 - Playground exposes every supported public variant/size/tone and metadata-backed scalar/content/state option for all seven components. Value and Checked edit controlled live state, replacing duplicate defaultValue/defaultChecked controls. Safe fixed icon presets and populated Card slots are supported. Arbitrary JSX/styles, executable callbacks/render functions and names are not editable; no public API/token/schema is added. Submit is prevented; reset clears action count and remounts native form state.
@@ -34,6 +34,14 @@ This amendment supersedes the original inspector Preview wiring and **session sa
 | Reset playground | Restore latest saved defaults; clear actions/native state | No change or writes |
 
 The per-recipe **Test interaction states** disclosures remain separate legacy sandboxes with their documented close/recipe reset behavior; they are not the independent Playground lifecycle. Human usability, VoiceOver and native zoom acceptance remain open.
+
+## Superseding user amendment — natural component matrix
+
+- Component routes use a normal scrollable **Component examples** region, not an infinite canvas. No component transform scaling, panning, Fit/zoom controls, camera keyboard shortcuts, gesture interception or dotted background. Colors and Shape & spacing retain their Foundation canvas and its existing behavior.
+- All 294 canonical combinations remain accessible and use real rendered token sizes. Readable variant/state/tone sections retain per-example Small/Medium/Large selectors. Narrow matrix panes stack samples through container queries; they do not shrink text to fit three columns.
+- Filters and selected-layer context share a sticky toolbar within the matrix; component heading and samples scroll normally. History/theme controls stay in a separate static pane toolbar. Matrix and Playground scroll independently on desktop and remain stacked on narrow screens.
+- Selecting an offscreen recipe reveals it by changing only the matrix scroller. Visible recipe selections, part/target changes, theme changes and ordinary token edits do not reposition the matrix. Component changes start its scroller at the top. Existing selection/filter/draft guards and Playground lifecycle are unchanged.
+- This is editor presentation only: no schema, public component, resolver, source/registry or export change. Human usability, native zoom and assistive-technology acceptance remain open.
 
 ## Routes and shell
 

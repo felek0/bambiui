@@ -3,7 +3,8 @@
 // Node 22.18+, Chrome (CHROME_PATH supported), disposable CDP session, 115s session bound.
 // Integration hooks in addition to the public playground/label contract:
 // [data-matrix-pane], [data-playground-pane] are the two central layout panes;
-// [data-playground-scroll] is the independently scrollable playground region;
+// [data-matrix-scroll] and [data-playground-scroll] scroll independently;
+// [data-matrix-content] is untransformed; [data-matrix-toolbar] holds sticky filters;
 // [data-playground-status] is the live "N actions" output.
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
@@ -37,9 +38,20 @@ async function session(task) {
       ...browser,
       async route(id, view = 'design') {
         const path = `${view === 'develop' ? '/develop' : ''}/${id}`;
+        const mobile = await evaluate('innerWidth<=800');
+        if (mobile && await evaluate(`${q('#workspace-sidebar')}.hidden`)) {
+          await click('[aria-controls="workspace-sidebar"]');
+          await wait(`!${q('#workspace-sidebar')}.hidden`);
+        }
         await wait(`${q(`.studio-sidebar a[href="${path}"]`)}`);
-                await click(`.studio-sidebar a[href="${path}"]`);
+        await click(`.studio-sidebar a[href="${path}"]`);
         await wait(`location.pathname===${JSON.stringify(path)} && ${q(view === 'design' ? root(id) : '[data-cli-install]')}`);
+        if (mobile) for (const panel of ['workspace-sidebar', 'workspace-inspector']) {
+          if (await evaluate(`!${q('#' + panel)}.hidden`)) {
+            await click(`[aria-controls="${panel}"]`);
+            await wait(`${q('#' + panel)}.hidden`);
+          }
+        }
       },
       async named(selector, name) {
         await evaluate(`(()=>{const e=[...document.querySelectorAll(${JSON.stringify(selector)})].find(e=>(e.getAttribute('aria-label')||e.textContent.trim())===${JSON.stringify(name)});if(!e)throw Error(${JSON.stringify(`Missing ${name}`)});document.querySelector('[data-playground-smoke-target]')?.removeAttribute('data-playground-smoke-target');e.setAttribute('data-playground-smoke-target','')})()`);
@@ -231,7 +243,9 @@ try {
         await fill(colorField, color, true);
         const rgb = mode === 'light' ? 'rgb(18, 52, 86)' : 'rgb(101, 67, 33)';
         await wait(`getComputedStyle(${q(root('button'))}).backgroundColor===${JSON.stringify(rgb)}`);
-        assert.equal(await evaluate(`getComputedStyle(${q('[data-component-matrix="button"] [data-recipe-example="outline.lg"] [data-component-part="root"]')}).backgroundColor`), rgb);
+        const matrixRoot = '[data-component-matrix="button"] [data-recipe-example="outline.lg"] [data-component-part="root"]';
+        await wait(`getComputedStyle(${q(matrixRoot)}).backgroundColor===${JSON.stringify(rgb)}`);
+        assert.equal(await evaluate(`getComputedStyle(${q(matrixRoot)}).backgroundColor`), rgb);
       }
       await click('.view-switch a[href="/develop/button"]');
       await wait('location.pathname==="/develop/button"');
@@ -282,41 +296,48 @@ try {
 
   await session(async api => {
     const { send, evaluate, wait, click, route, fill } = api;
-    const camera = `getComputedStyle(${q('[data-canvas]')}).transform`;
+    const matrixPosition = `(()=>{const e=${q('[data-matrix-scroll]')};return [e.scrollLeft,e.scrollTop]})()`;
+    const contentTransform = `getComputedStyle(${q('[data-matrix-content]')}).transform`;
     const rect = selector => evaluate(`(()=>{const r=${q(selector)}.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom}})()`);
-    await check('Desktop central split is 50/50; matrix camera pan/wheel cannot transform playground', async () => {
+    await check('Desktop central split is 50/50; native matrix scrolling cannot move Playground', async () => {
+      await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 650, deviceScaleFactor: 1, mobile: false });
       const left = await rect('[data-matrix-pane]'), right = await rect('[data-playground-pane]');
       assert.ok(Math.abs(left.width - right.width) <= 3, 'Desktop central panes share width equally');
       assert.ok(left.right <= right.x + 2 && Math.abs(left.y - right.y) <= 2, 'Desktop panes are side by side');
-      await fill(field('button', 'Text'), 'Camera independent');
+      await fill(field('button', 'Text'), 'Scroll independent');
       const before = await rect(pg('button'));
       const args = await evaluate(`${q(field('button', 'Text'))}.value`);
-      const view = await rect('[aria-label="Component canvas"]');
-      const point = { x: view.x + view.width / 2, y: view.y + view.height / 2 };
-      const oldCamera = await evaluate(camera);
-      await send('Input.dispatchMouseEvent', { type: 'mouseWheel', ...point, deltaX: 100, deltaY: 160 });
-      await wait(`${camera}!==${JSON.stringify(oldCamera)}`);
+      const view = await rect('[data-matrix-scroll]');
+      const point = { x: view.right - 18, y: view.bottom - 24 };
+      assert.equal(await evaluate(`${q('[data-matrix-scroll]')}.getAttribute('role')`), 'region');
+      assert.equal(await evaluate(`${q('[data-matrix-scroll]')}.getAttribute('aria-label')`), 'Component examples');
+      assert.equal(await evaluate(`!!${q('[data-canvas], [aria-label="Component canvas"], [aria-label="Canvas zoom"], [class*="canvasHelp"]')}`), false);
+      assert.equal(await evaluate(contentTransform), 'none');
+      await wait(`${q('[data-matrix-scroll]')}.scrollHeight>${q('[data-matrix-scroll]')}.clientHeight`);
+      await evaluate(`${q('[data-matrix-scroll]')}.scrollTop=0`);
+      const playgroundScroll = await evaluate(`(()=>{const e=${q('[data-playground-scroll]')};return [e.scrollLeft,e.scrollTop]})()`);
+      const shellScroll = await evaluate('[scrollX,scrollY,document.documentElement.scrollTop]');
+      await send('Input.dispatchMouseEvent', { type: 'mouseWheel', ...point, deltaX: 0, deltaY: 240 });
+      await wait(`${q('[data-matrix-scroll]')}.scrollTop>0`);
+      assert.equal(await evaluate(contentTransform), 'none', 'native scroll never transforms matrix content');
       assert.deepEqual(await rect(pg('button')), before);
-      const wheelCamera = await evaluate(camera);
-      await send('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'middle', buttons: 4, clickCount: 1 });
-      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: point.x + 40, y: point.y + 35, button: 'middle', buttons: 4 });
-      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: point.x + 40, y: point.y + 35, button: 'middle', buttons: 0, clickCount: 1 });
-      await wait(`${camera}!==${JSON.stringify(wheelCamera)}`);
-      assert.deepEqual(await rect(pg('button')), before);
+      assert.deepEqual(await evaluate(`(()=>{const e=${q('[data-playground-scroll]')};return [e.scrollLeft,e.scrollTop]})()`), playgroundScroll);
+      assert.deepEqual(await evaluate('[scrollX,scrollY,document.documentElement.scrollTop]'), shellScroll);
       assert.equal(await evaluate(`${q(field('button', 'Text'))}.value`), args);
     });
-    await check('Playground wheel scrolls its own region, never the matrix camera; mobile stacks without overflow', async () => {
+    await check('Playground wheel scrolls its own region without scrolling the matrix; mobile stacks without overflow', async () => {
       await route('input');
       await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 650, deviceScaleFactor: 1, mobile: false });
       await wait(`${q('[data-playground-scroll]')}.scrollHeight>${q('[data-playground-scroll]')}.clientHeight`);
       await evaluate(`${q('[data-playground-scroll]')}.scrollTop=0`);
-      // Route selection animates the matrix camera for 360ms; settle it before testing wheel isolation.
-      await delay(500);
-      const before = await evaluate(camera);
+      const before = await evaluate(matrixPosition);
+      const shellScroll = await evaluate('[scrollX,scrollY,document.documentElement.scrollTop]');
       const scroll = await rect('[data-playground-scroll]');
       await send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: scroll.x + scroll.width - 20, y: scroll.y + scroll.height / 2, deltaX: 0, deltaY: 240 });
       await wait(`${q('[data-playground-scroll]')}.scrollTop>0`);
-      assert.equal(await evaluate(camera), before, 'Playground wheel must not bubble into camera handling');
+      assert.deepEqual(await evaluate(matrixPosition), before, 'Playground wheel must not scroll the matrix');
+      assert.equal(await evaluate(contentTransform), 'none');
+      assert.deepEqual(await evaluate('[scrollX,scrollY,document.documentElement.scrollTop]'), shellScroll);
       await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: false });
       await wait('document.documentElement.scrollWidth<=innerWidth');
       const left = await rect('[data-matrix-pane]'), right = await rect('[data-playground-pane]');
@@ -324,6 +345,19 @@ try {
       assert.ok(left.width > 0 && right.width > 0 && left.right <= 391 && right.right <= 391);
       await click(field('input', 'Label'));
       assert.equal(await evaluate('document.documentElement.scrollWidth<=innerWidth'), true);
+    });
+    await check('Narrow matrix panes stack full-size variant/state/tone samples and keep filters usable', async () => {
+      for (const id of ids) {
+        await route(id);
+        await wait(`${q(`[data-component-matrix="${id}"]`)} && ${contentTransform}==='none'`);
+        assert.ok(await evaluate(`(()=>{const m=${q(`[data-component-matrix="${id}"]`)},s=${q('[data-matrix-scroll]')},rows=[...m.querySelectorAll('section')].map(row=>[...row.querySelectorAll(':scope > [data-recipe-example]')]).filter(examples=>examples.length);return rows.length>0 && rows.every(examples=>examples.every((e,i)=>{const r=e.getBoundingClientRect(),p=examples[i-1]?.getBoundingClientRect();return r.width>0 && r.left>=s.getBoundingClientRect().left-1 && r.right<=s.getBoundingClientRect().right+1 && (!p || r.top>=p.bottom-1 && Math.abs(r.left-p.left)<=2)}))})()`), `${id}: narrow samples stack rather than shrink or overflow`);
+        assert.ok(await evaluate(`(()=>{const s=${q('[data-matrix-scroll]')};return s.scrollWidth<=s.clientWidth+1 && [...s.querySelectorAll('[data-recipe-body] [data-component-part="root"]')].every(e=>{const r=e.getBoundingClientRect();for(let p=e;p&&p!==s;p=p.parentElement)if(getComputedStyle(p).transform!=='none')return false;return Math.abs(r.width-e.offsetWidth)<=1 && Math.abs(r.height-e.offsetHeight)<=1})})()`), `${id}: natural samples retain their rendered dimensions`);
+        await evaluate(`${q('[data-matrix-scroll]')}.scrollTop=200`);
+        await wait(`(()=>{const s=${q('[data-matrix-scroll]')}.getBoundingClientRect(),t=${q('[data-matrix-toolbar]')}.getBoundingClientRect();return Math.abs(t.top-s.top)<=3 && t.bottom<s.bottom})()`);
+        assert.ok(await evaluate(`(()=>{const s=${q('[data-matrix-scroll]')}.getBoundingClientRect();return [...document.querySelectorAll('[data-matrix-toolbar] select')].every(e=>{const r=e.getBoundingClientRect();return e.checkVisibility() && r.width>0 && r.left>=s.left && r.right<=s.right && r.bottom<=s.bottom})})()`), `${id}: sticky filters remain visible and fit the narrow pane`);
+        assert.equal(await evaluate(`!!${q('[data-canvas], [aria-label="Canvas zoom"], [class*="canvasHelp"]')}`), false);
+        assert.equal(await evaluate('document.documentElement.scrollWidth<=innerWidth'), true);
+      }
     });
   });
 } catch (error) {

@@ -418,6 +418,8 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
   const copy = previewCopy;
   const router = useRouter();
   const helpId = useId();
+  const isComponent = selected !== "colors" && selected !== "spacing";
+  const matrixScroll = useRef<HTMLDivElement>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLDivElement>(null);
   const drag = useRef<{ id: number; x: number; y: number; left: number; top: number } | null>(null);
@@ -538,7 +540,7 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
   useEffect(() => {
     const view = viewport.current;
     const element = canvas.current;
-    if (!view || !element) return;
+    if (!view || !element || isComponent) return;
     const observer = new ResizeObserver(() => {
       if (!initialized.current && !naturalLayout() && view.clientWidth) {
         initialized.current = true;
@@ -552,11 +554,11 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
       if (wheelFrame.current !== null) cancelAnimationFrame(wheelFrame.current);
       if (zoomLabelTimer.current !== null) clearTimeout(zoomLabelTimer.current);
     };
-  }, [setCamera, stopAnimation]);
+  }, [isComponent, setCamera, stopAnimation]);
 
   useEffect(() => {
     const view = viewport.current;
-    if (!view || !active) return;
+    if (!view || !active || isComponent) return;
     const wheel = (event: WheelEvent) => {
       if (naturalLayout()) return;
       event.preventDefault();
@@ -576,11 +578,11 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
     };
     view.addEventListener("wheel", wheel, { passive: false });
     return () => view.removeEventListener("wheel", wheel);
-  }, [active, queueWheelCamera, stopAnimation, zoomAt]);
+  }, [active, isComponent, queueWheelCamera, stopAnimation, zoomAt]);
 
   const selectedRecipe = recipeSelection?.component === selected ? recipeSelection.recipe : null;
   useEffect(() => {
-    if (!active) return;
+    if (!active || isComponent) return;
     const frame = requestAnimationFrame(() => {
       const view = viewport.current;
       const element = canvas.current;
@@ -618,10 +620,54 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
       ], { duration: 1400 });
     });
     return () => cancelAnimationFrame(frame);
-  }, [selected, selectedRecipe, active, moveCamera]);
+  }, [selected, selectedRecipe, active, isComponent, moveCamera]);
+
+  useEffect(() => {
+    if (!active || !isComponent || !selectedRecipe) return;
+    const frame = requestAnimationFrame(() => {
+      const region = matrixScroll.current;
+      const target = region?.querySelector<HTMLElement>(`[data-recipe-example="${selectedRecipe}"]`);
+      if (!region || !target) return;
+      const bounds = target.getBoundingClientRect();
+      const box = region.getBoundingClientRect();
+      const toolbarHeight = region.querySelector<HTMLElement>("[data-matrix-toolbar]")?.offsetHeight ?? 0;
+      const top = box.top + toolbarHeight + 12;
+      const bottom = box.bottom - 12;
+      // Reveal only the matrix's own scroller, never the Playground or outer workspace.
+      if (bounds.top < top || bounds.top >= bottom || bounds.bottom > bottom && bounds.height <= bottom - top) {
+        region.scrollTop += bounds.top - top;
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [selected, selectedRecipe, active, isComponent]);
+
+  if (isComponent) return (
+    <div className={styles.workspace} data-preview-split data-component-browser>
+      <div className={`${styles.matrixPane} ${styles.browserPane}`} data-matrix-pane>
+        <div className={styles.matrixTools} data-matrix-tools>{tools}</div>
+        <ThemePane theme={system.themes[mode]} mode={mode} copy={copy}>
+          <div ref={matrixScroll} key={selected} className={styles.matrixScroll} data-matrix-scroll role="region" aria-label="Component examples" tabIndex={0}>
+            <div className={styles.matrixContent} data-matrix-content>
+              <section key={selected} className={styles.componentBoard} data-specimen={selected} data-selected aria-label={`${selected} preview`}>
+                <ComponentMatrix component={selected} defaults={system.componentDefaults} selection={recipeSelection} onSelect={onSelectRecipe} onClearSelection={onClearRecipeSelection} />
+                {selected !== "text" && <details className={styles.interactions} data-interaction-examples>
+                  <summary>Interaction &amp; state previews</summary>
+                  <p>Try keyboard and pointer behavior here. Disabled, loading and radius examples inherit the same recipes; they are not separate style scopes.</p>
+                  <div className={styles.specimen}><Specimen id={selected} expanded copy={copy} /></div>
+                </details>}
+              </section>
+            </div>
+          </div>
+        </ThemePane>
+      </div>
+      <div className={styles.playgroundPane} data-playground-pane>
+        <ComponentPlayground key={selected} component={selected} system={system} mode={mode} active={active} />
+      </div>
+    </div>
+  );
 
   return (
-    <div className={styles.workspace} data-preview-split={selected !== "colors" && selected !== "spacing" || undefined}>
+    <div className={styles.workspace}>
     <div className={styles.matrixPane} data-matrix-pane>
     {tools}
     <ThemePane theme={system.themes[mode]} mode={mode} copy={copy}>
@@ -762,21 +808,12 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
               </div>
             </section>
           </div>}
-          {selected !== "colors" && selected !== "spacing" && <section key={selected} className={styles.componentBoard} data-specimen={selected} data-canvas-unit={selected} data-selected aria-label={`${selected} preview`}>
-            <ComponentMatrix component={selected} defaults={system.componentDefaults} selection={recipeSelection} onSelect={onSelectRecipe} onClearSelection={onClearRecipeSelection} />
-            {selected !== "text" && <details className={styles.interactions} data-interaction-examples>
-              <summary>Interaction & state previews</summary>
-              <p>Try keyboard and pointer behavior here. Disabled, loading and radius examples inherit the same recipes; they are not separate style scopes.</p>
-              <div className={styles.specimen}><Specimen id={selected} expanded copy={copy} /></div>
-            </details>}
-          </section>}
+
         </div>
       </div>
     </ThemePane>
     </div>
-    {selected !== "colors" && selected !== "spacing" && <div className={styles.playgroundPane} data-playground-pane>
-      <ComponentPlayground key={selected} component={selected} system={system} mode={mode} active={active} />
-    </div>}
+
     </div>
   );
 }

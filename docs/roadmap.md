@@ -8,6 +8,8 @@ System-only ilk uygulama dilimi yerelde uygulanıp otomatik testlerle doğruland
 
 **Yeni kullanıcı isteği — split Playground:** Desktop'ta orta alan 50/50 matrix + Storybook tarzı bağımsız canlı örnek; dar ekranda alt alta. Sağ inspector yalnız stil düzenler. Playground tüm desteklenen public eksenleri, içerik ve state prop'larını sunar; matrix seçimi/örnek içeriği ve token/export/history verisini değiştirmez. Tema, görünüm, matrix seçimi/filtreleri ve stil değişimlerinde args korunur; component/System/import/reload veya açık Reset playground ile sıfırlanır. Yaşam döngüsü [SF0 amendment'ında](system-first-sf0-contract.md#superseding-user-amendment--independent-split-playground). 647 app testi, 99 System, 17 Playground, 17 System-only, 7 source/ZIP browser grubu ve 26 CLI testi geçti; lint/TypeScript/build/catalog kontrolleri temiz, registry hash'i değişmedi. Desktop Card ve mobil split ekran görüntüleri incelendi; insan kabulü hâlâ açık.
 
+**Yeni kullanıcı isteği — doğal komponent matrisi:** Komponent ekranlarından sonsuz canvas/kamera, pan/zoom/Fit ve noktalı zemin çıkarıldı. Örnekler gerçek token ölçülerinde, variant/state/tone gruplarıyla doğal kaydırılır; dar panelde size örnekleri alt alta gelir. Filtre/seçim bağlamı sticky, history/tema üst araç çubuğunda. Offscreen recipe seçimi yalnız matrix scroller'ını hareket ettirir; layer/tema/token değişimleri konumu korur. Playground bağımsızdır; Colors/Shape & spacing canvas davranışı korunur. [SF0 natural matrix amendment](system-first-sf0-contract.md#superseding-user-amendment--natural-component-matrix) aktif sunum sözleşmesidir. Güncel doğrulama: 648 app testi, 100 Studio, 18 Playground, 17 System-only ve 7 source/ZIP browser grubu geçti; lint/TypeScript/build temiz, registry kimliği aynı. Desktop Card/Text ve mobil ekran görüntüleri incelendi. Manuel kullanıcı/VoiceOver/native zoom kabulü açık.
+
 ## 1. Ürün odağı
 
 > Komponentinin bütün kombinasyonlarını gör, istediğin katmanı düzenle, tutarlı tasarım sistemini tasarımcıya ve geliştiriciye teslim et.
@@ -24,7 +26,7 @@ System-only ilk uygulama dilimi yerelde uygulanıp otomatik testlerle doğruland
 | --- | --- | --- |
 | Giriş | `/` System Colors; `/pages[/]` ve page-editor askı ekranı | Deploy ve gerçek kullanıcı kabulü |
 | Shell | Normal girişte composer mount yok; read-only legacy reference/recovery adapter var | System storage stale-tab/quota güvenliğini SF5'te ayrıca tamamla |
-| Komponentler | Yedi komponent, 294 exact kombinasyon, frame/text katmanları | Aynı kapsama daha okunabilir matrix ve seçime bağlı inspector |
+| Komponentler | Yedi komponent, 294 exact kombinasyon; gerçek ölçülü scroll matrix, sticky filtreler, frame/text katmanları | Gerçek kullanıcı okunabilirlik ve seçim kabulü |
 | Değerler | Effective değer, kesirler, reset/no-op/history altyapısı var | Kontrol sayısını azaltmadan doğru katman için doğru kontrolleri sunma |
 | Playground | Matrix'ten bağımsız props/içerik/state denemesi; yedi komponentte tam desteklenen eksenler; sağ panel yalnız stil | Gerçek kullanıcı split alan, scope ve lifecycle kabulü |
 | Tema | Light/Dark renkleri ayrı, geometri/tipografi ortak | Değişmeyecek; inspector etkisi açık olacak |
@@ -86,8 +88,8 @@ Durum: `[ ]` başlanmadı, `[~]` kısmi, `[x]` kanıtla tamamlandı. Aşağıdak
 
 - [x] Komponent açılışında tüm kombinasyonlar erişilebilir; varsayılan görünüm bütün matrisi sunar. Variant/state grupları, size/tone etiketleri okunur; starting component paneli yok.
 - [x] Kalabalık Text/tone matrisinde opsiyonel filtreleme ve seçime odaklanma; aktif filtre/sayı ve Clear görünür. Filtreleme kombinasyonları/tokenları silmez veya inspector için yeni varsayılan hedef seçmez. Seçim gizlenirse stale hedefte edit durur. SF0 filter/component/system/route/theme değişiminde pending numeric/color draft ve focus politikasını belirler: eski draft yeni hedefe blur ile uygulanmaz, invalid draft engeli sessiz kaybolmaz. Contrast raporu gibi dış seçimler gerekirse filtreyi açıp hedefi görünür kılar.
-- [x] Frame/text seçimi, hover/selected sınırları ve klavye ile katman seçimi tutarlı. Mevcut design hit-target örnekleri ile gerçekten interaktif preview ayrı kalır; disabled/loading örneği de layer/frame kontrolünden seçilebilir. Filtrelenmiş/aria-hidden örneklerde focusable descendant kalmaz. Panel açma/kapama, zoom/pan/fit selection'ı bozmadan çalışır.
-- [x] Desktop merkez alanı 50/50 matrix canvas + bağımsız Playground doldurur; dar ekranda bu iki alan alt alta, mobil yan paneller overlay kalır. Metinlerin okunması için canvas zoom ile native browser zoom karıştırılmaz.
+- [x] Frame/text seçimi, hover/selected sınırları ve klavye ile katman seçimi tutarlı. Mevcut design hit-target örnekleri ile gerçekten interaktif preview ayrı kalır; disabled/loading örneği de layer/frame kontrolünden seçilebilir. Filtrelenmiş/aria-hidden örneklerde focusable descendant kalmaz. Panel açma/kapama ve doğal matrix kaydırması selection'ı bozmaz; komponentlerde kamera yoktur. Foundation zoom/pan/fit korunur.
+- [x] Desktop merkez alanı 50/50 doğal scroll matrix + bağımsız Playground doldurur; dar ekranda bu iki alan alt alta, mobil yan paneller overlay kalır. Metinlerin okunması için canvas zoom ile native browser zoom karıştırılmaz.
 - [~] 180 Text örneğinde başlangıç/filtreleme/seçim/pan ölçümü. Node SSR warm 5-run medyanı 9.54ms (8.96–12.04ms) alındı; bu browser pan/interaction performans kanıtı değildir. Browser profiling açık; renderer/virtualisation rewrite yapılmadı.
 
 **Çıkış:** 294 kayıt coverage'ı korunur; klavye ile bir exact katmana ulaşılır; filter/no-op storage testi ve 390px reflow geçer. SF2 ile aynı selection sözleşmesini kullanır.

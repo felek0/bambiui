@@ -190,7 +190,9 @@ The recipe-aware layer list and parser exclude unreachable `error` parts: Input 
 
 #### Independent component Playground (Studio only)
 
-On desktop, the component workspace has two equal central panes: the saved-default canonical matrix and an independently scrollable Playground. Narrow screens stack them; Foundations keep the full canvas. The right inspector edits styles only. Playground exposes supported public variant/size/tone axes and metadata-backed props/content/states for all seven components. Changing its axes never selects a matrix recipe or changes that recipe's content. Both panes consume the current theme and live System tokens.
+On desktop, the component workspace has two equal central panes: the naturally scrollable saved-default canonical matrix and an independently scrollable Playground. Narrow screens stack them; Foundations keep the full canvas. The right inspector edits styles only. Playground exposes supported public variant/size/tone axes and metadata-backed props/content/states for all seven components. Changing its axes never selects a matrix recipe or changes that recipe's content. Both panes consume the current theme and live System tokens.
+
+Component matrix examples render at real token dimensions without pan/zoom transforms, camera controls or a dotted background. Variant/state/tone groups and size labels remain; narrow panes stack samples rather than shrinking them. Filters and selection context stay sticky inside the matrix. Selecting an offscreen recipe reveals only that scroller; visible selections, part/target/theme/view changes and token edits preserve its position. Foundation canvas behavior is unchanged.
 
 Playground args are detached ephemeral state initialized from saved `componentDefaults`. Value/Checked represent controlled live state rather than separate defaultValue/defaultChecked controls. Safe icon presets, Card slots and Text's semantic element are editable; arbitrary JSX, executable callbacks/render functions, names and inline styles are not. Sample submit is prevented. Reset playground restores latest saved defaults, clears action count and remounts form state.
 

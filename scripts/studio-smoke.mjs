@@ -42,6 +42,7 @@ const canvas = '[aria-label="Component canvas"]';
 const viewNav = '.studio-header nav.view-switch';
 const themeControl = '[aria-label="Design theme"]';
 const camera = '[data-canvas]';
+const matrixScroll = '[data-matrix-scroll]';
 
 async function assertStudioSurfaces(mode) {
   const surface = mode === 'dark' ? 'rgb(32, 32, 32)' : 'rgb(250, 250, 250)';
@@ -80,7 +81,14 @@ async function route(view, id = 'colors') {
   assert.deepEqual(await evaluate(`[...document.querySelectorAll('[data-foundation]')].map(e=>e.dataset.foundation).sort()`),isFoundation ? foundations : []);
   assert.equal(await evaluate(`document.querySelectorAll('[data-recipe-example]').length`),isFoundation ? 0 : matrixCounts[id]);
   assert.equal(await evaluate(`document.querySelectorAll('[data-interaction-examples]').length`),isFoundation || id==='text' ? 0 : 1);
-  assert.equal(await evaluate(`!!${q('[data-system-starter]')} || /Starting component/i.test(${q('.preview-canvas')}.textContent)`),false,'Starting component must not be rendered');
+  assert.equal(await evaluate(`!!${q('[data-system-starter]')} || /Starting component/i.test(${q('.preview-frame')}.textContent)`),false,'Starting component must not be rendered');
+  if (isFoundation) {
+    assert.ok(await evaluate(`!!${q(canvas)} && !!${q(camera)} && !!${q('[aria-label="Canvas zoom"]')}`),'foundations retain the canvas and camera');
+    assert.equal(await evaluate(`!!${q(matrixScroll)}`),false);
+  } else {
+    assert.ok(await evaluate(`(()=>{const s=${q(matrixScroll)},c=${q('[data-matrix-content]')},t=${q('[data-matrix-tools]')};return s?.getAttribute('role')==='region' && s.getAttribute('aria-label')==='Component examples' && s.contains(c) && c.contains(${q(`[data-specimen="${id}"]`)}) && getComputedStyle(c).transform==='none' && t?.contains(${q('.canvas-history')}) && t.contains(${q('.canvas-theme')}) && !s.contains(t) && !['absolute','fixed','sticky'].includes(getComputedStyle(t).position)})()`),'component routes use natural matrix content and a static toolbar');
+    assert.equal(await evaluate(`!!${q('[data-canvas], [aria-label="Component canvas"], [aria-label="Canvas zoom"], [class*="canvasHelp"], [data-canvas-selection-hint]')}`),false,'component routes must not mount camera chrome or help');
+  }
 }
 async function navigate(view, id = 'colors') {
   const currentView = await evaluate(`location.pathname.startsWith('/develop') ? 'develop' : 'design'`);
@@ -204,6 +212,12 @@ async function stylesInspector() {
   assert.equal(await evaluate(`!!${q('#token-editor [role="tablist"]')}`),false,'style editing no longer shares tabs with sample args');
 }
 async function positionCanvas(expression) {
+  if (await evaluate(`!!(${expression}).closest('[data-matrix-scroll]')`)) {
+    // Scroll only the owning matrix; scrollIntoView would also move its ancestors.
+    await evaluate(`(()=>{const e=(${expression}),s=e.closest('[data-matrix-scroll]'),r=e.getBoundingClientRect(),v=s.getBoundingClientRect(),t=s.querySelector('[data-matrix-toolbar]'),top=Math.max(v.top,t?.getBoundingClientRect().bottom??v.top);if(t?.contains(e))return;if(r.top<top+8 || r.bottom>v.bottom-8)s.scrollTop+=(r.top+r.bottom-top-v.bottom)/2;if(r.left<v.left+8 || r.right>v.right-8)s.scrollLeft+=(r.left+r.right-v.left-v.right)/2})()`);
+    await evaluate('new Promise(resolve=>requestAnimationFrame(resolve))');
+    return;
+  }
   if (!await evaluate(`innerWidth>760 && !!(${expression}).closest('[data-canvas]')`)) return;
   await wait(`new Promise(resolve=>{const before=getComputedStyle(${q(camera)}).transform;requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(before===getComputedStyle(${q(camera)}).transform)))})`);
   // Desktop uses a transform camera, not native scrolling. Pan using real wheel input.
@@ -222,7 +236,7 @@ async function click(expression, preparePanel = true, exact = false) {
   }
   await reveal(expression);
   const destination = await evaluate(`(${expression}).closest('a')?.getAttribute('href') || null`);
-  await evaluate(`(${expression}).scrollIntoView({block:'center',inline:'center',behavior:'instant'})`);
+  if (!await evaluate(`!!(${expression}).closest('[data-matrix-scroll]')`)) await evaluate(`(${expression}).scrollIntoView({block:'center',inline:'center',behavior:'instant'})`);
   await evaluate('new Promise(resolve => requestAnimationFrame(resolve))');
   await positionCanvas(expression);
   const point = await evaluate(`(() => {const e=(${expression}),r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;const candidates=[{x,y},...[0.25,0.5,1,2,4,8].flatMap(inset=>[{x:r.left+inset,y},{x:r.right-inset,y},{x,y:r.top+inset},{x,y:r.bottom-inset}])];for(const point of candidates){const hit=document.elementFromPoint(point.x,point.y);if(${exact ? 'hit===e' : 'e.contains(hit)'})return point;}throw Error('No ${exact ? 'exact frame' : 'visible'} hit: '+e.outerHTML+'; rect: '+JSON.stringify(r.toJSON())+'; hit: '+document.elementFromPoint(x,y)?.outerHTML.slice(0,250));})()`);
@@ -453,7 +467,6 @@ try {
   });
   await check('Card exact frame/text hits expose only their own controls; nested Text and Button stay in Card scope',async()=>{
     await navigate('design','card');
-    await stableCamera();
     await click(q(recipePart('card','outlined.md','root')),true,true);
     await assertRecipeSelection('card','outlined.md','root','frame');
     await click(q(recipePart('card','outlined.md','title')));
@@ -469,7 +482,7 @@ try {
     await click(q(recipePart('card','outlined.md','title')));
     await assertRecipeSelection('card','outlined.md','title','text');
   });
-  await check('System values reflect the selected layer, theme and zoom without authoring overrides',async()=>{
+  await check('System values reflect the selected layer and theme across native scrolling without authoring overrides',async()=>{
     const bytes = () => evaluate(`localStorage.getItem('bambiui.design-system.v1')`);
     const before = await bytes();
     const historyState = () => evaluate(`[...document.querySelectorAll('.canvas-history button')].map(e=>({label:e.getAttribute('aria-label'),disabled:e.disabled}))`);
@@ -494,9 +507,11 @@ try {
     await click(q(`${example('card','outlined.md')} > button`));
     const geometry = ['width','height','paddingTop','paddingRight','paddingBottom','paddingLeft','borderTopLeftRadius','borderTopRightRadius','borderBottomRightRadius','borderBottomLeftRadius','background','borderColor','borderWidth','shadow','gap'];
     await assertMeasuredRecipe('card','outlined.md','root','frame',geometry);
-    await click(q('[aria-label="Zoom in"]'));
+    const scrollBefore = await evaluate(`${q(matrixScroll)}.scrollTop`);
+    await evaluate(`${q(matrixScroll)}.scrollTop=${scrollBefore}>80?${scrollBefore}-80:${scrollBefore}+80`);
+    await wait(`${q(matrixScroll)}.scrollTop!==${scrollBefore}`);
     await assertMeasuredRecipe('card','outlined.md','root','frame',geometry);
-    await click(q('[aria-label="Zoom out"]'));
+    assert.equal(await evaluate(`getComputedStyle(${q('[data-matrix-content]')}).transform`),'none');
     await select('[aria-label="Shared default layer"]','root');
     await wait(`${q('[id="system-shared-card-root-paddingLeft"]')}.value==='Mixed'`);
     await fill('[id="system-shared-card-root-paddingLeft"]','Mixed'); await key('Enter'); await key('Tab');
@@ -909,7 +924,6 @@ try {
   await check('Button and Badge label hits differ from their frames; design clicks never activate native controls',async()=>{
     for(const [id,recipe] of [['button','primary.md'],['badge','outline.info.md']]) {
       await navigate('design',id);
-      await stableCamera();
       const before = await stored();
       await click(q(recipePart(id,recipe,'root')),true,true);
       await assertRecipeSelection(id,recipe,'root','frame');
@@ -955,7 +969,6 @@ try {
   });
   await check('Input invalid error and control have separate exact frame/text scopes and clicks do not focus inputs',async()=>{
     await navigate('design','input');
-    await stableCamera();
     const recipe = 'invalid.md';
     const native = `${example('input',recipe)} input`;
     const value = await evaluate(`${q(native)}.value`);
@@ -1115,7 +1128,6 @@ try {
   });
   await check('loading action keeps focus and blocks repeated activation',async()=>{
     await navigate('design','button');
-    await stableCamera();
     await openInteractions('button');
     const demo=`${interactions('button')} [data-save-demo]`;
     await click(q(`${demo} button`));
@@ -1133,7 +1145,7 @@ try {
     assert.equal(await evaluate(`${q('.theme-pane:not([hidden])')}.getAttribute('aria-label')`),'Dark preview');
     await assertStudioSurfaces('dark');
     assert.equal(await evaluate(`getComputedStyle(document.documentElement).colorScheme`),'dark');
-    assert.notEqual(await evaluate(`getComputedStyle(${q(canvas)}).backgroundColor`),'rgb(255, 248, 246)');
+    assert.notEqual(await evaluate(`getComputedStyle(${q(matrixScroll)}).backgroundColor`),'rgb(255, 248, 246)');
     await click(q('[aria-label="Export tokens"]'));
     assert.equal(await evaluate(`getComputedStyle(${q('.export-dialog')}).backgroundColor`),await evaluate(`getComputedStyle(${q('.studio-header')}).backgroundColor`),'portals must use the same chrome theme');
     await click(q('[aria-label="Close export dialog"]'));
@@ -1235,7 +1247,7 @@ try {
     await wait(`${q('[data-ds-theme="light"]')}.style.getPropertyValue('--ds-font-family').includes('Menlo')`);
     for(const mode of ['light','dark']) assert.equal((await stored()).themes[mode].fontFamily,'mono');
     assert.ok((await evaluate(`getComputedStyle(${q(recipePart('text','paragraph.neutral.md','root'))}).fontFamily`)).includes('Menlo'));
-    assert.equal(await evaluate(`getComputedStyle(${q('[aria-label="Canvas zoom"]')}).fontFamily`),await evaluate('getComputedStyle(document.body).fontFamily'),'canvas tools must not inherit the specimen font');
+    assert.equal(await evaluate(`getComputedStyle(${q('[data-matrix-tools]')}).fontFamily`),await evaluate('getComputedStyle(document.body).fontFamily'),'matrix tools must not inherit the specimen font');
     await click(q('[aria-label="Export tokens"]'));
     assert.ok((await evaluate(`${q('[aria-label="Exported tokens"]')}.textContent`)).includes('--ds-font-family: ui-monospace'));
     await click(q('[aria-label="Close export dialog"]'));
@@ -1585,6 +1597,73 @@ try {
     await navigate('design','colors'); await retainedShell();
     await navigate('design','button');
   });
+  await check('matrix scroll keeps filters sticky, samples full size and selection local without camera resets',async()=>{
+    await send('Emulation.setDeviceMetricsOverride',{width:1440,height:650,deviceScaleFactor:1,mobile:false});
+    try {
+      await navigate('design','button');
+      const scrollState = () => evaluate(`(()=>{const s=${q(matrixScroll)};return {matrix:[s.scrollLeft,s.scrollTop],playground:[${q('[data-playground-scroll]')}.scrollLeft,${q('[data-playground-scroll]')}.scrollTop],ancestors:[...function*(e){for(let p=e.parentElement;p;p=p.parentElement)yield [p.scrollLeft,p.scrollTop]}(s)],window:[scrollX,scrollY]}})()`);
+      const outerState = async () => { const {matrix,...outer}=await scrollState();return outer; };
+      await evaluate(`${q(matrixScroll)}.scrollTop=0`);
+      assert.ok(await evaluate(`(()=>{const s=${q(matrixScroll)},t=${q('[data-matrix-toolbar]')},h=${q(`${matrix('button')} h2`)};return s.scrollHeight>s.clientHeight && /^(auto|scroll)$/.test(getComputedStyle(s).overflowY) && s.contains(t) && getComputedStyle(t).position==='sticky' && !t.contains(h) && t.contains(${q('[aria-label="Filter variant"]')}) && t.contains(${q('[aria-label="Filter size"]')}) && /No layer selected|Selected:/.test(t.textContent)})()`),'filters and selection context share a sticky wrapper, not the heading');
+      const headingTop = await evaluate(`${q(`${matrix('button')} h2`)}.getBoundingClientRect().top`);
+      const toolsTop = await evaluate(`${q('[data-matrix-tools]')}.getBoundingClientRect().top`);
+      const outer = await outerState();
+      const point = await evaluate(`(()=>{const r=${q(matrixScroll)}.getBoundingClientRect();return {x:r.right-18,y:r.bottom-28}})()`);
+      await wheel(point,0,260);
+      await wait(`${q(matrixScroll)}.scrollTop>100`);
+      assert.ok(await evaluate(`(()=>{const s=${q(matrixScroll)}.getBoundingClientRect(),t=${q('[data-matrix-toolbar]')}.getBoundingClientRect();return Math.abs(t.top-s.top)<=3 && t.bottom<s.bottom})()`),'toolbar pins to the matrix viewport');
+      assert.ok(await evaluate(`${q(`${matrix('button')} h2`)}.getBoundingClientRect().top<${headingTop}-100`),'heading scrolls away rather than sticking');
+      assert.equal(await evaluate(`${q('[data-matrix-tools]')}.getBoundingClientRect().top`),toolsTop);
+      assert.deepEqual(await outerState(),outer,'matrix wheel cannot scroll Playground or shell ancestors');
+      assert.ok(await evaluate(`(()=>{const s=${q(matrixScroll)};return [...s.querySelectorAll('[data-recipe-body] [data-component-part="root"]')].every(e=>{for(let p=e;p&&p!==s;p=p.parentElement)if(getComputedStyle(p).transform!=='none' || !['1','normal'].includes(getComputedStyle(p).zoom))return false;const r=e.getBoundingClientRect();return Math.abs(r.width-e.offsetWidth)<=1 && Math.abs(r.height-e.offsetHeight)<=1})})()`),'samples render at authored dimensions without scaled rows or ancestors');
+      await select('[aria-label="Filter size"]','sm');
+      await wait(`document.querySelectorAll('[data-recipe-example]').length===6`);
+      assert.ok(await evaluate(`[...document.querySelectorAll('[data-recipe-example]')].every(e=>e.dataset.recipeExample.endsWith('.sm'))`));
+      await click(named('[data-matrix-toolbar] button','Clear filters'));
+      await wait(`document.querySelectorAll('[data-recipe-example]').length===18`);
+      await evaluate(`${q(matrixScroll)}.scrollTop=0`);
+      const target = example('button','link.lg');
+      assert.ok(await evaluate(`${q(target)}.getBoundingClientRect().top>${q(matrixScroll)}.getBoundingClientRect().bottom`),'selection probe starts outside the matrix viewport');
+      const beforeSelect = await outerState();
+      // Keyboard activation deliberately bypasses click()/positionCanvas(): the application must reveal it.
+      await evaluate(`${q(`${target} > button`)}.focus({preventScroll:true})`);
+      await key('Enter');
+      await wait(`(()=>{const r=${q(target)}.getBoundingClientRect(),s=${q(matrixScroll)}.getBoundingClientRect(),t=${q('[data-matrix-toolbar]')}.getBoundingClientRect();return r.top>=t.bottom-1 && r.bottom<=s.bottom+1})()`);
+      assert.deepEqual(await outerState(),beforeSelect,'selection reveals only its example in the matrix container');
+      await evaluate(`(()=>{const s=${q(matrixScroll)},r=${q(target)}.getBoundingClientRect(),v=s.getBoundingClientRect(),t=${q('[data-matrix-toolbar]')}.getBoundingClientRect();s.scrollTop+=r.top-t.bottom-(v.bottom-t.bottom-r.height)/3})()`);
+      const beforeRepeat = await scrollState();
+      await evaluate(`${q(`${target} > button`)}.focus({preventScroll:true})`);
+      await key('Enter');
+      await delay(100);
+      assert.deepEqual(await scrollState(),beforeRepeat,'selecting an already visible example does not center it again');
+      const beforePart = await scrollState();
+      await click(q('[data-system-recipe-controls] [aria-label="Select Label text"]'));
+      await assertRecipeSelection('button','link.lg','text','text');
+      await delay(100);
+      assert.deepEqual(await scrollState(),beforePart,'part selection does not reframe an already visible example');
+      await evaluate(`${q(matrixScroll)}.scrollTop=0`);
+      assert.ok(await evaluate(`${q(target)}.getBoundingClientRect().top>${q(matrixScroll)}.getBoundingClientRect().bottom`));
+      const offscreen = await scrollState();
+      await click(q('[data-system-recipe-controls] [aria-label="Select Button frame"]'));
+      await delay(100);
+      assert.deepEqual(await scrollState(),offscreen,'changing part must not reveal an offscreen selected recipe');
+      await click(q('[data-system-recipe-controls] [aria-label="Select Label text"]'));
+      const mode = await evaluate('document.documentElement.dataset.studioTheme');
+      await click(named(themeControl+' button',mode==='light'?'Dark':'Light'));
+      await delay(100);
+      assert.deepEqual(await scrollState(),offscreen,'theme changes retain matrix scroll even when the selected recipe is offscreen');
+      await click(named(themeControl+' button',mode==='light'?'Light':'Dark'));
+      const beforeToken = await scrollState();
+      await commitRecipe('button','link.lg','text','text','color','#345678');
+      await delay(100);
+      assert.deepEqual(await scrollState(),beforeToken,'token changes retain matrix scroll');
+      await click(q('[aria-label="Undo change"]'));
+      assert.deepEqual(await scrollState(),beforeToken,'undo retains matrix scroll');
+      assert.equal(await evaluate(`(()=>{const e=new WheelEvent('wheel',{bubbles:true,cancelable:true,ctrlKey:true,deltaY:-80});${q(matrixScroll)}.dispatchEvent(e);return e.defaultPrevented})()`),false,'matrix must not intercept browser zoom');
+    } finally {
+      await send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
+    }
+  });
   await check('foundation route selection animates camera unless reduced motion is requested',async()=>{
     try {
       await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
@@ -1605,8 +1684,8 @@ try {
       await send('Emulation.setEmulatedMedia',{features:[]});
     }
   });
-  await check('camera controls, unbounded drag, wheel pan and pointer-anchored zoom',async()=>{
-    await navigate('design','button');
+  await check('foundation camera controls, unbounded drag, wheel pan and pointer-anchored zoom',async()=>{
+    await navigate('design','colors');
     await click(named('[aria-label="Canvas zoom"] button','Reset zoom'));
     await wait(`${q('[aria-label="Zoom level"]')}.textContent==='100%'`);
     await click(q('[aria-label="Zoom in"]'));
@@ -1615,8 +1694,8 @@ try {
     assert.ok(await evaluate(`(()=>{const v=${q(canvas)},s=getComputedStyle(v);return Math.abs(parseFloat(v.style.getPropertyValue('--canvas-dot-radius'))-1.1)<0.01 && Math.abs(parseFloat(s.backgroundSize)-17.6)<0.01 && s.backgroundImage.includes('1.1px')})()`),'grid dot radius and spacing should follow camera zoom');
     await click(q('[aria-label="Zoom out"]'));
     assert.equal(await evaluate(`${q('[aria-label="Zoom level"]')}.textContent`),'100%');
-    await navigate('design','checkbox');
-    await wait(`(()=>{const a=${q(canvas)}.getBoundingClientRect(),b=${q('[data-specimen="checkbox"]')}.getBoundingClientRect();return b.bottom>a.top && b.top<a.bottom && b.right>a.left && b.left<a.right})()`);
+    await navigate('design','spacing');
+    await wait(`(()=>{const a=${q(canvas)}.getBoundingClientRect(),b=${q('[data-foundation="spacing"]')}.getBoundingClientRect();return b.bottom>a.top && b.top<a.bottom && b.right>a.left && b.left<a.right})()`);
     await click(named('[aria-label="Canvas zoom"] button','Fit'));
     assert.ok(await evaluate(`parseInt(${q('[aria-label="Zoom level"]')}.textContent)<100`));
     assert.ok(await evaluate(`(()=>{const v=${q(canvas)},s=getComputedStyle(v),z=Number(v.dataset.cameraZoom);return Math.abs(parseFloat(v.style.getPropertyValue('--canvas-dot-radius'))-z)<0.01 && Math.abs(parseFloat(s.backgroundSize)-16*z)<0.01})()`),'fitting should shrink dots and grid spacing together');
@@ -1629,7 +1708,7 @@ try {
     const arrow=await evaluate(cameraState);
     await key('ArrowRight');
     await wait(`${cameraState}.x < ${arrow.x}-10`);
-    // The matrix now occupies half the central area; fit it to expose real blank drag space.
+    // Fit the foundations to expose real blank drag space.
     await click(named('[aria-label="Canvas zoom"] button','Fit'));
     await stableCamera();
     const point=await canvasBackground();
@@ -1644,6 +1723,14 @@ try {
     const dragged=await evaluate(cameraState);
     assert.ok(dragged.x>before.x+100 && dragged.y>before.y+80,'pointer drag must pan in both directions');
     assert.ok(!await evaluate(`${q(canvas)}.hasAttribute('data-dragging')`));
+    const middlePoint=await canvasBackground();
+    const middleStart=await evaluate(cameraState);
+    await send('Input.dispatchMouseEvent',{type:'mousePressed',...middlePoint,button:'middle',buttons:4,clickCount:1});
+    await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:middlePoint.x+40,y:middlePoint.y+35,button:'middle',buttons:4});
+    await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:middlePoint.x+40,y:middlePoint.y+35,button:'middle',buttons:0,clickCount:1});
+    const middleEnd=await evaluate(cameraState);
+    assert.ok(middleEnd.x>middleStart.x+20 && middleEnd.y>middleStart.y+15,'foundations retain middle-button camera panning');
+    assert.equal(await evaluate(`${q(canvas)}.hasAttribute('data-dragging')`),false);
     // A finite scroll extent would clamp here. Drag much farther than the old 2400px padding.
     for(let i=0;i<8;i++) {
       const p=await canvasBackground();
@@ -1697,7 +1784,7 @@ try {
     const email=`${interactions('input')} input[type="email"]`;
     await fill(email,'camera-input@example.com');
     assert.equal(await evaluate(`${q(email)}.value`),'camera-input@example.com');
-    assert.ok(!await evaluate(`${q(canvas)}.hasAttribute('data-dragging')`),'input activation must not start a camera drag');
+    assert.equal(await evaluate(`!!${q('[data-canvas], [data-dragging]')}`),false,'input activation must not mount or start a camera drag');
     await fill(email,'');
     await capture('studio-canvas');
   });
@@ -1729,14 +1816,13 @@ try {
     assert.equal(await evaluate(`getComputedStyle(${q('[data-canvas-selection-hint]')}).transitionDuration`),'0s');
     await send('Emulation.setEmulatedMedia',{features:[]});
     await navigate('design','button');
-    await stableCamera();
     const specimen = recipePart('button','primary.md','text');
     await positionCanvas(q(specimen));
     const specimenPoint = await evaluate(`(()=>{const r=${q(specimen)}.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
     await send('Input.dispatchMouseEvent',{type:'mouseMoved',...specimenPoint,button:'none'});
     assert.equal(await evaluate(`getComputedStyle(${q(specimen)}).outlineStyle`),'solid');
-    await wait(`${q('[data-canvas-selection-hint]')}?.textContent.includes('Button · Click to edit tokens')`);
-    const hint = await evaluate(`${q('[data-canvas-selection-hint]')}.textContent`);
+    assert.equal(await evaluate(`!!${q('[data-canvas-selection-hint]')}`),false,'matrix hover needs no camera hint');
+    const context = await evaluate(`${q('[data-matrix-toolbar]')}.textContent`);
     await delay(200);
     await send('Performance.enable');
     const taskTime = async () => (await send('Performance.getMetrics')).metrics.find(metric => metric.name === 'TaskDuration').value;
@@ -1744,7 +1830,7 @@ try {
     for (let offset = 0; offset < 80; offset++) await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:specimenPoint.x-offset/5,y:specimenPoint.y,button:'none'});
     const hoverTaskMs = Math.round((await taskTime() - beforeTasks) * 1000);
     console.log(`HOVER PROFILE: 80 same-section pointer moves, ${hoverTaskMs}ms main-thread task time`);
-    assert.equal(await evaluate(`${q('[data-canvas-selection-hint]')}.textContent`),hint,'moving within one section must not churn the hint');
+    assert.equal(await evaluate(`${q('[data-matrix-toolbar]')}.textContent`),context,'moving within one example must not churn selection context');
     await capture('studio-component-hover');
     await send('Input.dispatchMouseEvent',{type:'mousePressed',...specimenPoint,button:'left',clickCount:1});
     await send('Input.dispatchMouseEvent',{type:'mouseReleased',...specimenPoint,button:'left',clickCount:1});
@@ -1774,7 +1860,7 @@ try {
     await capture('studio-spacing');
     await navigate('design','text');
     await delay(450);
-    assert.ok(await evaluate(`(()=>{const heading=${q(`${matrix('text')} h2`)}.getBoundingClientRect(),view=${q(canvas)}.getBoundingClientRect();return heading.top>=view.top+60})()`),'selected matrix headings must stay below the floating tools');
+    assert.ok(await evaluate(`(()=>{const h=${q(`${matrix('text')} h2`)},t=${q('[data-matrix-toolbar]')},tools=${q('[data-matrix-tools]')}.getBoundingClientRect();return !t.contains(h) && h.getBoundingClientRect().top>=tools.bottom})()`),'matrix heading is outside the sticky toolbar and below the static tools');
     await click(q(`${example('text','heading.neutral.md')} > button`));
     await assertRecipeSelection('text','heading.neutral.md','root','text');
     await route('design','text');
@@ -1838,11 +1924,20 @@ try {
     await navigate('design','button');
   });
   await check('narrow desktop tools do not overlap or overflow',async()=>{
+    await navigate('design','colors');
     for (const width of [1100,980,820]) {
       await send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});
       await delay(100);
       assert.ok(await evaluate(`(()=>{const help=${q('[class*="canvasHelp"]')}.getBoundingClientRect(),zoom=${q('[aria-label="Canvas zoom"]')}.getBoundingClientRect();return help.right<=zoom.left || help.left>=zoom.right || help.bottom<=zoom.top || help.top>=zoom.bottom})()`),`canvas tools overlap at ${width}px`);
       assert.ok(await evaluate('document.documentElement.scrollWidth <= innerWidth'),`overflow at ${width}px`);
+    }
+    await navigate('design','button');
+    for (const width of [1100,980,820]) {
+      await send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});
+      await delay(100);
+      assert.ok(await evaluate(`(()=>{const a=${q('.canvas-history')}.getBoundingClientRect(),b=${q('.canvas-theme')}.getBoundingClientRect();return a.right<=b.left || b.right<=a.left || a.bottom<=b.top || b.bottom<=a.top})()`),`matrix tools overlap at ${width}px`);
+      assert.equal(await evaluate(`!!${q('[aria-label="Canvas zoom"], [class*="canvasHelp"]')}`),false);
+      assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth'),`matrix overflow at ${width}px`);
     }
   });
   await check('700px uses overlay panels and focus canvas, never stacked navigation',async()=>{
@@ -1883,7 +1978,7 @@ try {
     assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth'),`mobile overflow: ${view}/${id}`);
     assert.ok(await evaluate(`${q(viewNav)}.getBoundingClientRect().right<=innerWidth && ${q(themeControl)}.getBoundingClientRect().right<=innerWidth`),`view/theme controls overflow: ${view}/${id}`);
     if(view==='design') {
-      assert.ok(await evaluate(`${q(`[data-canvas-unit="${id}"]`)}.getClientRects().length>0`));
+      assert.ok(await evaluate(`${q(foundations.includes(id) ? `[data-canvas-unit="${id}"]` : `[data-matrix-content] [data-specimen="${id}"]`)}.getClientRects().length>0`));
       await panel('workspace-inspector',true);
       if(id==='colors' || ids.includes(id)) assert.ok(await evaluate(`(()=>{const h=${q('.editor-title')}.getBoundingClientRect(),a=${q('.editor-title-actions')}.getBoundingClientRect();return a.left>=h.left && a.right<=h.right && Math.abs(h.right-a.right-parseFloat(getComputedStyle(${q('.editor-title')}).paddingRight))<3})()`),`inspector actions fit the overlay: ${id}`);
       assert.equal(await evaluate(`!!${q('.mobile-preview-link')} && ${q('.mobile-preview-link')}.getClientRects().length>0`),false,'panel toggles replace the old stacked-layout anchor');
@@ -1924,12 +2019,10 @@ try {
     try {
       await openStatic('design','button');
       assert.ok(await evaluate(`!document.querySelector('meta[name="viewport"]')?.content.includes('user-scalable=no')`),'mobile viewport must permit browser zoom');
-      assert.ok(await evaluate(`getComputedStyle(${q(canvas)}).touchAction!=='none'`),'canvas must not disable native touch zoom/scroll');
-      assert.equal(await evaluate(`(()=>{const e=new Event('touchmove',{bubbles:true,cancelable:true});${q(canvas)}.dispatchEvent(e);return e.defaultPrevented})()`),false,'mobile touchmove must not be consumed by the camera');
-      // The shell no longer scrolls as a document; long specimens still need an accessible native scroll region.
-      await evaluate(`void(window.__mobileScroll=(()=>{for(let e=${q('[data-canvas]')}.parentElement;e;e=e.parentElement)if(e.scrollHeight>e.clientHeight+4 && /^(auto|scroll)$/.test(getComputedStyle(e).overflowY))return e;return null})())`);
-      console.log('MOBILE SCROLL',await evaluate(`JSON.stringify((()=>{const result=[];for(let e=${q('[data-canvas]')}.parentElement;e;e=e.parentElement)result.push({element:e.id||e.className,overflow:getComputedStyle(e).overflowY,height:e.clientHeight,scrollHeight:e.scrollHeight});return result})())`));
-      assert.ok(await evaluate('!!window.__mobileScroll'),'mobile preview needs a natively scrollable work area, not clipped content');
+      assert.ok(await evaluate(`getComputedStyle(${q(matrixScroll)}).touchAction!=='none'`),'matrix must not disable native touch zoom/scroll');
+      assert.equal(await evaluate(`(()=>{const e=new Event('touchmove',{bubbles:true,cancelable:true});${q(matrixScroll)}.dispatchEvent(e);return e.defaultPrevented})()`),false,'mobile touchmove must remain native');
+      await evaluate(`void(window.__mobileScroll=${q(matrixScroll)})`);
+      assert.ok(await evaluate(`window.__mobileScroll.scrollHeight>window.__mobileScroll.clientHeight && /^(auto|scroll)$/.test(getComputedStyle(window.__mobileScroll).overflowY)`),'mobile matrix needs a natively scrollable region, not clipped content');
       await evaluate('window.__mobileScroll.scrollTop=0');
       await evaluate('window.__mobileScroll.scrollTop=180'); await wait('window.__mobileScroll.scrollTop>0');
       assert.equal(await evaluate('window.scrollY'),0,'scroll stays in the work area instead of pushing the shell offscreen');

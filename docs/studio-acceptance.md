@@ -8,6 +8,8 @@ Status: **not run**. This is a session protocol, not evidence of user or accessi
 
 **Split Playground amendment:** The active candidate replaces inspector Preview with an independent central Playground beside the canonical matrix (stacked on narrow screens). Props/content/state changes repaint only its live sample; matrix selection/content and all saved/exported data remain unchanged. Args survive matrix/filter/theme/view/token changes; component/System/import/reload/Reset playground reinitialize them. Apply this lifecycle instead of the original inspector Preview lifecycle. Human results below remain Not run.
 
+**Natural matrix amendment:** Component examples now use native scrolling at real rendered sizes, with sticky filters/selection context, not a zoomable/pannable camera or dotted canvas. Verify that sizes stack readably in a narrow pane; all combinations stay accessible. Matrix and Playground scroll independently. Selecting an offscreen recipe reveals only the matrix; theme/layer/token changes preserve its position. Colors/Shape & spacing retain their Foundation canvas. Include these observations in T01/T03 and A01/A03/A04; no manual pass is implied by automated tests.
+
 ## Purpose and safety
 
 Validate that a regular Figma user can distinguish selected-example inspection, selected-size non-color write groups, exact recipe/theme colors, all-combination/all-size defaults and temporary preview content without learning bambiui's implementation. Run the task session before explaining the inspector. Follow with keyboard, VoiceOver and native-zoom checks from [the accessibility checklist](accessibility-checklist.md).
@@ -92,7 +94,7 @@ Facilitator checks:
 - The participant discovers Playground's supported Loading/Disabled props and understands their temporary state. The older optional per-recipe interaction disclosure remains available separately.
 - A real loading action cannot be repeatedly activated and keeps understandable focus; disabled controls do not activate.
 - Hover, pressed and keyboard focus can be inspected without confusing the live state with the inspector's selected recipe.
-- Reset playground clears temporary interaction data without authoring insertion defaults or tokens. The Playground and matrix scroll independently; matrix pan/zoom does not transform or scroll Playground.
+- Reset playground clears temporary interaction data without authoring insertion defaults or tokens. The Playground and matrix scroll independently; matrix scrolling does not transform or scroll Playground.
 
 ### T06 — Themes, persistence and developer handoff
 

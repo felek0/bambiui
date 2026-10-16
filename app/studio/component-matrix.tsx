@@ -107,9 +107,10 @@ export function ComponentMatrix({ component, defaults, selection: incomingSelect
 
   return <div ref={root} className={styles.matrix} data-component-matrix={component} style={{ "--matrix-size-count": state.filters.size ? 1 : axes.size.length } as CSSProperties}>
     <header className={styles.heading}>
-      <div><h2>{title(component)}</h2><p>Select an example, then choose its layer in the inspector. Design samples are read-only.</p></div>
+      <div><h2>{title(component)}</h2><p>Select a frame or text to edit its styles.</p></div>
       <span role="status" aria-live="polite">{activeFilters ? `${visible.length} of ${options.length}` : options.length} combinations</span>
     </header>
+    <div className={styles.toolbar} data-matrix-toolbar>
     <fieldset className={styles.filters}>
       <legend>Filter combinations <span>(optional)</span></legend>
       {(["variant", "tone", "size"] as const).filter(axis => axes[axis].length > 1).map(axis => <label key={axis}>
@@ -124,7 +125,8 @@ export function ComponentMatrix({ component, defaults, selection: incomingSelect
     </fieldset>
     <p className={styles.context}>{selection?.component === component
       ? `Selected: ${options.find(option => option.key === selection.recipe)?.label ?? selection.recipe} / ${componentRecipeParts(component).find(part => part.key === selection.part)?.label ?? title(selection.part)} / ${title(selection.target)}`
-      : "No layer selected. Use an example selector, then the inspector layer controls."}</p>
+      : "No layer selected."}</p>
+    </div>
     {!visible.length && <div className={styles.empty} role="status"><h3>No combinations match these filters</h3><p>Clear filters to show all {options.length} combinations. No new layer is selected automatically.</p><button type="button" data-system-context-change="matrix-filter" onClick={() => changeFilters(emptyMatrixFilters())}>Clear filters</button></div>}
     <div className={styles.columns} aria-hidden="true"><span>{stateAxis ? "State" : "Variant"}{axes.tone.length ? " / tone" : ""}</span>{axes.size.filter(size => !state.filters.size || size === state.filters.size).map(size => <span key={size}>{sizes[size]}</span>)}</div>
     <div className={styles.rows}>
