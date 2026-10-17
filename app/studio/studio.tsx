@@ -55,7 +55,7 @@ import { readLegacyProjectReferences, legacySystemDeletionBlock, type LegacyProj
 import shell from "./composer/workspace-shell.module.css";
 import { SystemComponentEditor, type ComponentEditorTab } from "./system-component-editor";
 import type { ComponentStylePart } from "./component-styles";
-import type { ComponentRecipeSelection } from "./component-recipes";
+import { componentRecipeOptions, type ComponentRecipeSelection } from "./component-recipes";
 import { applyScopedRecipePatch } from "./recipe-edit-scope";
 import { foundationLabels, isFoundation, spacingTokenOrder, typographyStyleLabel, type FoundationId } from "./foundations";
 import { applyComponentRadiusPatch, isRadiusComponent, type RadiusComponentId } from "./component-radii";
@@ -94,6 +94,16 @@ function withComponentRadii(theme: ThemeTokens, radii: ThemeTokens["componentRad
   void _previous;
   return radii && Object.keys(radii).length ? { ...rest, componentRadii: radii } : rest;
 }
+
+/** Colors inspector: roles grouped by job, each fill beside its readable foreground. */
+const colorRoleGroups: { label: string; keys: readonly (keyof TokenValues)[] }[] = [
+  { label: "Surfaces", keys: ["background", "foreground", "muted", "mutedForeground", "border"] },
+  { label: "Brand", keys: ["primary", "onPrimary", "secondary", "onSecondary"] },
+  { label: "Status", keys: ["success", "onSuccess", "warning", "onWarning", "danger", "onDanger", "info", "onInfo"] },
+];
+
+const radiusCustomCount = (theme: ThemeTokens, component: RadiusComponentId) =>
+  Object.values(theme.componentRadii?.[component] ?? {}).reduce((count, sizes) => count + Object.keys(sizes ?? {}).length, 0);
 
 function workspaceHref(view: View, selection: Selection) {
   const prefix = view === "develop" ? "/develop" : "";
@@ -408,6 +418,10 @@ export default function Studio() {
   const [sharedStyleTarget, setSharedStyleTarget] = useState<{ component: ComponentId; part: ComponentStylePart } | null>(null);
   function editComponentRecipe(next: ComponentRecipeSelection) {
     setComponentMode("variants"); setComponentEditorTab("styles"); setRecipeSelection(next); showInspector();
+    // Variant colors follow the selected example, so the group opens on what the user is looking at.
+    const option = componentRecipeOptions(next.component).find(entry => entry.key === next.recipe);
+    const variant = option && [option.variant, option.tone].filter(Boolean).join(".");
+    if (variant && next.component in componentVariantKeys && (componentVariantKeys[next.component as ComponentVariantId] as readonly string[]).includes(variant)) setSelectedVariantColor(variant);
     if (selection !== next.component) router.push(`/${next.component}`, { scroll: false });
   }
   const [editTarget, setEditTarget] = useState<{ selection: Selection; inputId: string } | null>(null);
@@ -1208,16 +1222,13 @@ export default function Studio() {
             onSharedPartChange={part => setSharedStyleTarget({ component, part })}
             showPreview={false}
             onRecipesChange={componentRecipes => updateTheme({ ...theme, componentRecipes })}
-            onStylesChange={componentStyles => updateTheme({ ...theme, componentStyles })}>
-          {!isGlobal && isRadiusComponent(component) && <RadiusPresetEditor component={component} theme={theme} view={radiusViews[component]}
-            onViewChange={(radius) => setRadiusViews(views => ({ ...views, [component]: radius }))}
-            onChange={(updates) => {
-              finishEdit();
-              updateTheme(withComponentRadii(theme, updates.reduce((radii, { preset, size, patch }) => applyComponentRadiusPatch(radii, component, preset, size, patch), theme.componentRadii)));
-              finishEdit();
-            }} />}
-          {!isGlobal && variantComponent && <section className="token-section component-variant-editor" id="variant-colors">
-            <div className="section-heading"><h3>Variant styles</h3><span>{t.themeOnly(activeTheme)} colors</span></div>
+            onStylesChange={componentStyles => updateTheme({ ...theme, componentStyles })}
+            notice={selection === "text" ? <section className="token-section foundation-link" data-typography-link>
+            <div className="section-heading"><h3>Font family &amp; text styles</h3><span>{t.sharedThemes}</span></div>
+            <p>Named styles (H1–H6, paragraph, label, caption) and the system font are foundations shared by every component. Edit a single layer here; edit the shared scale in Typography.</p>
+            <Link href="/typography" className="foundation-link-action">Open Typography <Icon name="arrow" size={14} /></Link>
+          </section> : undefined}
+            variant={!isGlobal && variantComponent ? { label: `Variant colors · ${variantLabel(variantKey)}`, content: <section className="token-section component-variant-editor" id="variant-colors">
             <label htmlFor="component-variant-style">Variant / tone</label>
             <select id="component-variant-style" value={variantKey} onChange={(event) => setSelectedVariantColor(event.target.value)}>
               {variantOptions.map((key) => <option key={key} value={key}>{variantLabel(key)}</option>)}
@@ -1255,16 +1266,67 @@ export default function Studio() {
                 {(["none", "sm", "md", "lg"] as const).map((shadow) => <option key={shadow} value={shadow}>{shadow}</option>)}
               </select>
             </div>
-          </section>}
+          </section> } : undefined}
+            presets={!isGlobal && isRadiusComponent(component) ? { label: `Radius presets${radiusCustomCount(theme, component) ? ` · ${radiusCustomCount(theme, component)} custom` : ""}`, content: <RadiusPresetEditor embedded component={component} theme={theme} view={radiusViews[component]}
+            onViewChange={(radius) => setRadiusViews(views => ({ ...views, [component]: radius }))}
+            onChange={(updates) => {
+              finishEdit();
+              updateTheme(withComponentRadii(theme, updates.reduce((radii, { preset, size, patch }) => applyComponentRadiusPatch(radii, component, preset, size, patch), theme.componentRadii)));
+              finishEdit();
+            }} /> } : undefined}
+            footer={<Button
+            className="reset-button"
+            fullWidth
+            startIcon={<Icon name="reset" size={14} />}
+            onClick={() => {
+              if (
+                !window.confirm(
+                  isGlobal
+                    ? selection === "typography" ? "Reset font family, base size and every text style in both themes? Colors, dimensions and component overrides will be kept."
+                      : selection === "colors" ? `Reset ${activeTheme} global colors? Color scale and component overrides will be kept; shared dimensions and font family will not change.`
+                      : selection === "spacing" ? "Reset shared shape, spacing and sizing in both themes? Colors and component overrides will be kept."
+                      : t.confirmGlobal(activeTheme === "light" ? t.light : t.dark)
+                    : `Reset ${t.componentNames[component]} styles? ${activeTheme} colors and shared geometry${isRadiusComponent(component) ? " (including radius presets)" : ""} in both themes will reset. Saved sample defaults and existing local overrides will be kept.`,
+                )
+              )
+                return;
+              updateTheme(
+                selection === "typography"
+                  ? { ...theme, fontFamily: defaultSystem.themes[activeTheme].fontFamily, typography: structuredClone(defaultTypography),
+                      global: { ...theme.global, fontSize: defaultSystem.themes[activeTheme].global.fontSize } }
+                  : isGlobal
+                  ? { ...theme, source: selection === "spacing" ? theme.source : defaultSystem.themes[activeTheme].source,
+                      fontFamily: theme.fontFamily,
+                      global: Object.fromEntries(tokenFields.map(({ key, type }) => [key,
+                        selection === "colors" && type === "color" || selection === "spacing" && type === "number"
+                          ? defaultSystem.themes[activeTheme].global[key] : theme.global[key],
+                      ])) as TokenValues }
+                  : {
+                      ...withComponentRadii(theme, isRadiusComponent(component) ? Object.fromEntries(Object.entries(theme.componentRadii ?? {}).filter(([id]) => id !== component)) : theme.componentRadii),
+                      components: { ...theme.components, [component]: {} },
+                      variantColors: { ...theme.variantColors, ...(variantComponent ? { [variantComponent]: {} } : {}) },
+                      componentStyles: { ...theme.componentStyles, [component]: {} },
+                    },
+              );
+            }}
+          >
+            {selection === "spacing" ? "Reset shape & spacing" : selection === "typography" ? "Reset typography" : isGlobal ? `Reset ${activeTheme === "light" ? "Light" : "Dark"} colors` : "Reset component styles"}
+          </Button>}>
           {(
             [
-              {
-                type: "color",
-                heading: selection === "colors" ? "Semantic roles" : t.colors,
+              ...(selection === "colors" ? colorRoleGroups.map((group) => ({
+                type: "color" as const,
+                heading: group.label,
+                hint: t.themeOnly(activeTheme),
+                className: "color-fields",
+                items: group.keys.map((key) => colorFields.find((field) => field.key === key)!).filter(Boolean),
+              })) : [{
+                type: "color" as const,
+                heading: t.colors,
                 hint: t.themeOnly(activeTheme),
                 className: "color-fields",
                 items: colorFields,
-              },
+              }]),
               {
                 type: "number",
                 heading: t.shape,
@@ -1274,7 +1336,7 @@ export default function Studio() {
               },
             ] as const
           ).filter((group) => group.items.length > 0 && selection !== "spacing" && selection !== "typography").map((group) => (
-            <section className="token-section" key={group.type}>
+            <section className="token-section" key={group.heading}>
               <div className="section-heading">
                 <h3>{group.heading}</h3>
                 <span>{group.hint}</span>
@@ -1296,13 +1358,8 @@ export default function Studio() {
                 onChange={(value) => setScaleStop(stop, value)} onReset={() => resetScaleStop(stop)} onFinish={finishEdit} />)}
             </div>
           </section>}
-          {selection === "text" && <section className="token-section foundation-link" data-typography-link>
-            <div className="section-heading"><h3>Font family &amp; text styles</h3><span>{t.sharedThemes}</span></div>
-            <p>Named styles (H1–H6, paragraph, label, caption) and the system font are foundations shared by every component. Edit a single layer here; edit the shared scale in Typography.</p>
-            <Link href="/typography" className="foundation-link-action">Open Typography <Icon name="arrow" size={14} /></Link>
-          </section>}
           {selection === "typography" && <section className="token-section foundation-editor" id="font-family-tokens">
-            <div className="section-heading"><h3>System font family</h3><span>{t.sharedThemes}</span></div>
+            <div className="section-heading"><h3>Font family</h3><span>{t.sharedThemes}</span></div>
             <p>Default font for all components, not just Text or the selected example.</p>
             <div className="font-family-row"><label htmlFor="font-family-preset">Font family</label>
             <select id="font-family-preset" value={theme.fontFamily} onChange={(event) => updateTheme({ ...theme, fontFamily: event.target.value as ThemeTokens["fontFamily"] })}>
@@ -1339,44 +1396,6 @@ export default function Studio() {
               Reset {selectedTypography}
             </Button>}
           </section>}
-          <Button
-            className="reset-button"
-            fullWidth
-            startIcon={<Icon name="reset" size={14} />}
-            onClick={() => {
-              if (
-                !window.confirm(
-                  isGlobal
-                    ? selection === "typography" ? "Reset font family, base size and every text style in both themes? Colors, dimensions and component overrides will be kept."
-                      : selection === "colors" ? `Reset ${activeTheme} global colors? Color scale and component overrides will be kept; shared dimensions and font family will not change.`
-                      : selection === "spacing" ? "Reset shared shape, spacing and sizing in both themes? Colors and component overrides will be kept."
-                      : t.confirmGlobal(activeTheme === "light" ? t.light : t.dark)
-                    : `Reset ${t.componentNames[component]} styles? ${activeTheme} colors and shared geometry${isRadiusComponent(component) ? " (including radius presets)" : ""} in both themes will reset. Saved sample defaults and existing local overrides will be kept.`,
-                )
-              )
-                return;
-              updateTheme(
-                selection === "typography"
-                  ? { ...theme, fontFamily: defaultSystem.themes[activeTheme].fontFamily, typography: structuredClone(defaultTypography),
-                      global: { ...theme.global, fontSize: defaultSystem.themes[activeTheme].global.fontSize } }
-                  : isGlobal
-                  ? { ...theme, source: selection === "spacing" ? theme.source : defaultSystem.themes[activeTheme].source,
-                      fontFamily: theme.fontFamily,
-                      global: Object.fromEntries(tokenFields.map(({ key, type }) => [key,
-                        selection === "colors" && type === "color" || selection === "spacing" && type === "number"
-                          ? defaultSystem.themes[activeTheme].global[key] : theme.global[key],
-                      ])) as TokenValues }
-                  : {
-                      ...withComponentRadii(theme, isRadiusComponent(component) ? Object.fromEntries(Object.entries(theme.componentRadii ?? {}).filter(([id]) => id !== component)) : theme.componentRadii),
-                      components: { ...theme.components, [component]: {} },
-                      variantColors: { ...theme.variantColors, ...(variantComponent ? { [variantComponent]: {} } : {}) },
-                      componentStyles: { ...theme.componentStyles, [component]: {} },
-                    },
-              );
-            }}
-          >
-            {selection === "spacing" ? "Reset shared dimensions" : selection === "typography" ? "Reset typography" : isGlobal ? t.resetGlobal : "Reset component styles"}
-          </Button>
           </SystemComponentEditor>
         </fieldset>
 

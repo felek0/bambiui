@@ -46,14 +46,16 @@ function PresetCell({ component, preset, size, theme, onChange }: {
 }
 
 /** Overview of every radius preset per size; the matrix view selects which preset canvas edits target. */
-export function RadiusPresetEditor({ component, theme, view, onViewChange, onChange }: {
+export function RadiusPresetEditor({ component, theme, view, onViewChange, onChange, embedded = false }: {
   component: RadiusComponentId; theme: ThemeTokens; view?: Radius;
+  /** Inside a titled inspector group the section heading is redundant. */
+  embedded?: boolean;
   onViewChange: (radius: Radius | undefined) => void;
   onChange: (updates: RadiusPresetUpdate[]) => void;
 }) {
   const custom = radiusPresets.some(preset => radiusSizes.some(size => Object.keys(theme.componentRadii?.[component]?.[preset]?.[size] ?? {}).length));
   return <section className="token-section radius-preset-editor" id="radius-presets" data-radius-preset-editor>
-    <div className="section-heading"><h3>Radius presets</h3><span>Shared · both themes</span></div>
+    {!embedded && <div className="section-heading"><h3>Radius presets</h3><span>Shared · both themes</span></div>}
     <p>Used by <code>radius=&quot;sm | md | lg&quot;</code> instances, per size and for every variant. Unset cells follow the Shape &amp; spacing scale. The default shape (no radius prop) is edited with Corners.</p>
     <table>
       <thead><tr><th scope="col">Preset</th>{radiusSizes.map(size => <th scope="col" key={size}>{sizeLabels[size]}</th>)}</tr></thead>

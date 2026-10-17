@@ -16,8 +16,8 @@ const loader = installParityLoader();
 const { SystemComponentEditor } = await import("./system-component-editor.tsx");
 // Expose implementation helpers in memory only; the public editor API stays small.
 const source = readFileSync(new URL("./system-component-editor.tsx", import.meta.url), "utf8");
-const { DraftControl, PreviewSamples, previewSampleFields, installDraftScopeGuard, RecipeStyles, RecipeLayerPicker, RecipeLayers, StyleGroup, SharedDefaults, ValueSourceDetails, styleDraft, updateRecipeFields } = await loader.generated(
-  source.replaceAll('from "./', 'from "../') + "\nexport { DraftControl, PreviewSamples, previewSampleFields, installDraftScopeGuard, RecipeStyles, RecipeLayerPicker, RecipeLayers, StyleGroup, SharedDefaults, ValueSourceDetails, styleDraft, updateRecipeFields };\n",
+const { DraftControl, PreviewSamples, previewSampleFields, installDraftScopeGuard, RecipeStyles, RecipeLayerPicker, StyleGroup, SharedDefaults, ValueSourceDetails, styleDraft, updateRecipeFields } = await loader.generated(
+  source.replaceAll('from "./', 'from "../') + "\nexport { DraftControl, PreviewSamples, previewSampleFields, installDraftScopeGuard, RecipeStyles, RecipeLayerPicker, StyleGroup, SharedDefaults, ValueSourceDetails, styleDraft, updateRecipeFields };\n",
 );
 after(() => { loader.cleanup(); nextResolution.deregister(); });
 const noop = () => {};
@@ -72,8 +72,8 @@ test("legacy Preview remains explicit opt-in, temporary and separate from styles
       const details = styles.match(new RegExp(`<details[^>]*${marker}="true"[^>]*>`));
       assert.ok(details, marker); assert.doesNotMatch(details[0], /\bopen=/);
     }
-    assert.match(styles, /Shared defaults · all variants &amp; sizes/);
-    assert.match(styles, /Base &amp; variant tokens · all sizes/);
+    assert.match(styles, /All variants &amp; sizes/);
+    assert.match(styles, /Component tokens · all sizes/);
     assert.match(styles, /Variant paint controls/);
     assert.doesNotMatch(preview + styles, /starting component|starting parameters|starter|insertion defaults|System component part/i);
     assert.doesNotMatch(source, /Project Parameters|linked projects|in every project/i);
@@ -100,11 +100,10 @@ test("editable fields precede source explanations, with secondary shared/base se
     const html = panel(component, "styles", selection);
     const scoped = scopedMarkup(html);
     const picker = scoped.indexOf("data-system-layer-picker");
-    const layers = scoped.indexOf("data-system-layers");
+    const layers = picker;
     const sources = scoped.indexOf('data-system-scope-details="recipe"');
-    assert.ok(picker > 0 && layers > picker && sources > layers);
-    assert.match(scoped, /<details[^>]*data-system-layers="true"[^>]*>/);
-    assert.doesNotMatch(scoped.match(/<details[^>]*data-system-layers="true"[^>]*>/)[0], /\bopen=/);
+    assert.ok(picker > 0 && sources > picker);
+    assert.doesNotMatch(scoped, /data-system-layers/, "one layer control, not a duplicate list");
     for (const field of componentRecipeFields(component, selection.part, selection.target, selection.recipe)) {
       const position = scoped.indexOf(`id="${fieldId(selection, field.key)}"`);
       assert.ok(position > layers && position < sources, `${component}.${field.key} precedes sources`);
@@ -215,7 +214,7 @@ test("compact picker and collapsed layer list cover every supported recipe part 
       assert.equal(picker.props["aria-label"], "Selected layer");
       assert.equal(picker.props.value, part.key);
       assert.equal(picker.props["data-inspector-discard-drafts"], true);
-      assert.deepEqual(nodes(picker).filter(node => node.type === "option").map(node => [node.props.value, textOf(node)]), parts.map(entry => [entry.key, entry.label]));
+      assert.deepEqual(nodes(picker).filter(node => node.type === "option").map(node => [node.props.value, textOf(node)]), parts.map(entry => [entry.key, `${entry.label} · ${entry.target[0].toUpperCase()}${entry.target.slice(1)}`]));
       const targets = nodes(tree).filter(node => node.type === "button");
       assert.deepEqual(targets.map(node => node.props["data-system-style-target"]), ["frame", "text"].filter(value => componentRecipeFields(component, part.key, value, recipe.key).length));
       assert.equal(targets.filter(node => node.props["aria-pressed"]).length, 1);
@@ -225,9 +224,8 @@ test("compact picker and collapsed layer list cover every supported recipe part 
         assert.equal(button.props["data-inspector-discard-drafts"], button.props["aria-pressed"] ? undefined : true);
       }
       assert.equal(find(tree, node => node.props.role === "group").props["aria-label"], `${part.label} style target`);
-      const layers = RecipeLayers({ selection, label: recipe.label, onSelect: noop });
-      assert.equal(layers.props.open, undefined);
-      assert.deepEqual(nodes(layers).filter(node => node.type === "button").map(node => node.props["aria-label"]).sort(), [...expectedLayers].sort());
+      // Every reachable layer/target pair is selectable through the layer menu plus the target toggle.
+      assert.ok(expectedLayers.includes(`Select ${part.label} ${target}`));
     }
   }
 });
@@ -263,7 +261,7 @@ test("error layers exist only in recipes that can actually render an error", () 
   for (const component of ["input", "switch", "checkbox"]) for (const option of componentRecipeOptions(component)) {
     const supportsError = option.variant.startsWith("invalid") || option.variant === "readonly";
     const html = panel(component, "styles", selectionFor(component, option.key));
-    assert.equal(html.includes('aria-label="Select Error text"'), supportsError, option.key);
+    assert.equal(scopedMarkup(html).includes('<option value="error">'), supportsError, option.key);
     assert.equal(!!scopedMarkup(panel(component, "styles", selectionFor(component, option.key, "error", "text"))), supportsError);
   }
 });
@@ -681,27 +679,8 @@ test("invalid style drafts link inline errors to the field; Escape and failed re
   assert.equal(failedReset.input["aria-invalid"], true);
 });
 
-test("collapsed full layer list selects parent and text/frame parts; arrow/Home/End move focus only", () => {
-  const selection = selectionFor("card", "outlined.md", "title", "text"), selections = [];
-  const tree = RecipeLayers({ selection, label: "Card / Outlined / Medium", onSelect: value => selections.push(value) });
-  assert.equal(tree.type, "details");
-  assert.equal(tree.props.open, undefined);
-  assert.equal(tree.props["data-system-layers"], true);
-  assert.equal(textOf(find(tree, node => node.type === "summary")), "Layers");
-  const buttons = nodes(tree).filter(node => node.type === "button");
-  assert.ok(buttons.every(node => node.props.type === "button"));
-  assert.equal(buttons.filter(node => node.props["aria-pressed"]).length, 1);
-  for (const [label, part, target] of [["Select Card frame", "root", "frame"], ["Select Title text", "title", "text"], ["Select Content text", "content", "text"], ["Select Content frame", "content", "frame"]]) {
-    find(tree, node => node.props["aria-label"] === label).props.onClick();
-    assert.deepEqual(selections.at(-1), { ...selection, part, target });
-  }
-  const focused = [], fakeButtons = buttons.map((_, index) => ({ focus() { focused.push(index); } }));
-  const list = find(tree, node => node.type === "ul");
-  for (const [key, from, to] of [["ArrowDown", 0, 1], ["ArrowUp", 0, buttons.length - 1], ["Home", 3, 0], ["End", 0, buttons.length - 1]]) {
-    list.props.onKeyDown(keyEvent(key, { currentTarget: { querySelectorAll: () => fakeButtons }, target: fakeButtons[from] }));
-    assert.equal(focused.at(-1), to);
-  }
-  assert.equal(selections.length, 4, "moving focus does not override the canvas selection");
+test("selecting another layer from the inspector keeps the Styles tab", () => {
+  const selection = selectionFor("card", "outlined.md", "title", "text");
   const tabs = [], parentSelections = [];
   const editor = SystemComponentEditor(editorProps("card", "styles", selection, { onSelectionChange: value => parentSelections.push(value), onTabChange: value => tabs.push(value) }));
   find(editor, node => node.type?.name === "RecipeStyles").props.onSelectionChange({ ...selection, part: "root", target: "frame" });
@@ -848,7 +827,6 @@ test("scope guard cleanup and explicit parent discard work without preventing na
   const cleanup = installDraftScopeGuard({ ownerDocument: document }, () => discarded.push(true));
   document.cancel(); assert.equal(discarded.length, 1);
   cleanup(); document.pointer("a[href]"); assert.equal(discarded.length, 1);
-  const tree = RecipeLayers({ selection: selectionFor("button", "primary.md", "root", "frame"), label: "Button", onSelect: noop });
-  const buttons = nodes(tree).filter(node => node.type === "button");
-  assert.ok(buttons.filter(node => !node.props["aria-pressed"]).every(node => node.props["data-inspector-discard-drafts"] === true));
+  const tree = RecipeLayerPicker({ selection: selectionFor("button", "primary.md", "root", "frame"), onSelect: noop });
+  assert.equal(find(tree, node => node.type === "select").props["data-inspector-discard-drafts"], true, "changing layer discards drafts");
 });

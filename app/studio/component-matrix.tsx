@@ -106,6 +106,17 @@ export function ComponentMatrix({ component, defaults, selection: incomingSelect
   const stateAxis = ["input", "switch", "checkbox"].includes(component);
   const activeFilters = Object.values(state.filters).some(Boolean);
 
+  // Size headers stick right below the sticky filter toolbar, whatever its wrapped height.
+  useLayoutEffect(() => {
+    const region = root.current, toolbar = region?.querySelector<HTMLElement>("[data-matrix-toolbar]");
+    if (!region || !toolbar) return;
+    const sync = () => region.style.setProperty("--matrix-toolbar-height", `${toolbar.offsetHeight}px`);
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(toolbar);
+    return () => observer.disconnect();
+  }, []);
+
   useLayoutEffect(() => {
     for (const body of root.current?.querySelectorAll<HTMLElement>("[data-recipe-body]") ?? []) disableMatrixBodyTabStops(body);
   }, [component, defaults, visible, selection]);
@@ -155,15 +166,16 @@ export function ComponentMatrix({ component, defaults, selection: incomingSelect
       : radiusView ? `Showing radius="${radiusView}". Select a frame to edit this component's ${radiusView} preset.` : "No layer selected."}</p>
     </div>
     {!visible.length && <div className={styles.empty} role="status"><h3>No combinations match these filters</h3><p>Clear filters to show all {options.length} combinations. No new layer is selected automatically.</p><button type="button" data-system-context-change="matrix-filter" onClick={() => changeFilters(emptyMatrixFilters())}>Clear filters</button></div>}
-    <div className={styles.columns} aria-hidden="true"><span>{stateAxis ? "State" : "Variant"}{axes.tone.length ? " / tone" : ""}</span>{axes.size.filter(size => !state.filters.size || size === state.filters.size).map(size => <span key={size}>{sizes[size]}</span>)}</div>
+    {visible.length > 0 && <div className={styles.board} data-matrix-board>
+    <div className={styles.columns} aria-hidden="true" data-matrix-columns><span>{stateAxis ? "State" : "Variant"}{axes.tone.length ? " / tone" : ""}</span>{axes.size.filter(size => !state.filters.size || size === state.filters.size).map(size => <span key={size}>{sizes[size]}</span>)}</div>
     <div className={styles.rows}>
-      {rows.map(row => <section key={row.key} className={styles.row} aria-label={`${title(component)} ${row.label}`}>
-        <h3>{row.label}</h3>
+      {rows.map(row => <section key={row.key} className={styles.row} aria-label={`${title(component)} ${row.label}`} data-matrix-row={row.key}>
+        <h3 className={styles.rowHeader}>{row.label}</h3>
         {row.options.map(option => {
           const selected = selection?.component === component && selection.recipe === option.key;
           return <div className={styles.example} key={option.key} data-recipe-example={option.key} data-selected={selected || undefined}>
             <button type="button" className={styles.exampleLabel} data-system-context-change="matrix-selection" aria-label={`Select ${title(component)} ${row.label} ${sizes[option.size]} ${component === "text" ? "text" : "frame"}`} aria-pressed={selected && selection.part === "root"}
-              onClick={() => onSelect(rootSelection(component, option.key))}>{sizes[option.size]}<span aria-hidden="true">↗</span></button>
+              onClick={() => onSelect(rootSelection(component, option.key))}><span className={styles.sizeName}>{sizes[option.size]}</span><span aria-hidden="true">↗</span></button>
             <div className={styles.body} data-recipe-body aria-hidden="true" data-system-context-change="matrix-selection" ref={disableMatrixBodyTabStops}
               onPointerDownCapture={event => { if (event.button === 0) event.preventDefault(); }}
               onClickCapture={event => {
@@ -190,5 +202,6 @@ export function ComponentMatrix({ component, defaults, selection: incomingSelect
         })}
       </section>)}
     </div>
+    </div>}
   </div>;
 }

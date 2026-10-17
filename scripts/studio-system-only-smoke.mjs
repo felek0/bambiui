@@ -136,6 +136,13 @@ async function chooseCard(session, recipe = 'outlined.md') {
   await key(session, 'Enter');
   await wait(session, `${q('[data-system-recipe-controls]')}?.dataset.recipe===${JSON.stringify(recipe)}`);
 }
+/** Pointer-driven layer change: press on the layer menu (moving focus away from any draft), then pick the part. */
+async function chooseLayer(session, part) {
+  const menu = q('[data-system-layer-select]');
+  await wait(session, menu, 'layer menu exists');
+  await session.evaluate(`(()=>{const e=${menu};e.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,button:0,pointerType:'mouse'}));e.focus();const set=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set;set.call(e,${JSON.stringify(part)});e.dispatchEvent(new Event('change',{bubbles:true}));return true})()`);
+  await wait(session, `${q('[data-system-recipe-controls]')}?.dataset.part===${JSON.stringify(part)}`);
+}
 async function exportTokens(session, format) {
   await click(session, q('[aria-label="Export tokens"]'));
   await click(session, named('[aria-label="Export format"] button', format));
@@ -346,7 +353,7 @@ try {
     await key(main, 'a', 4, ['selectAll']); await main.send('Input.insertText', { text: '19.375' }); await key(main, 'Enter');
     await wait(main, `JSON.parse(localStorage.getItem(${JSON.stringify(keys.systems)})).systems.find(e=>e.id===${JSON.stringify(targetId)}).system.themes.light.global.radius===19.375`);
     await click(main, q('[aria-label="Undo change"]')); await click(main, q('[aria-label="Redo change"]'));
-    await nativeConfirm(main, () => click(main, named('button', 'Reset shared dimensions')));
+    await nativeConfirm(main, () => click(main, named('button', 'Reset shape & spacing')));
     await navigate(main, '/develop/card'); await systemReady(main, 'Card documentation', 'develop');
     await navigate(main, '/'); await systemReady(main);
     const beforeReload = await main.evaluate('performance.timeOrigin');
@@ -500,7 +507,7 @@ try {
     const original = structuredClone(imported);
     const inspection = await snapshot(main), inspectionWrites = await audit(main);
     await chooseCard(main);
-    await click(main, named('[data-system-recipe-controls] button', 'Select Title text'));
+    await chooseLayer(main, 'title');
     assert.deepEqual(await snapshot(main), inspection, 'Inspecting a legacy record never harmonizes divergent same-size peers');
     assert.deepEqual(await audit(main), inspectionWrites, 'Inspection performs no storage writes');
     assert.deepEqual(await main.evaluate(`JSON.parse(localStorage.getItem(${JSON.stringify(keys.systems)})).systems.find(e=>e.id===${JSON.stringify(targetId)}).system`), original);
@@ -537,15 +544,15 @@ try {
     assert.deepEqual(await saved(), expected);
     const before = await snapshot(main), writes = await audit(main);
     await fill(main, titleSize, '77.125', false);
-    await click(main, named('[data-system-recipe-controls] button', 'Select Card frame'));
+    await chooseLayer(main, 'root');
     await wait(main, `${q('[data-system-recipe-controls]')}?.dataset.part==='root'`);
     assert.deepEqual(await snapshot(main), before, 'Pointer blur cannot commit to the old or new layer');
-    await click(main, named('[data-system-recipe-controls] button', 'Select Title text'));
+    await chooseLayer(main, 'title');
     await wait(main, `${q(titleSize)}?.value==='19.375'`);
     await fill(main, titleSize, 'invalid-draft', false); await key(main, 'Enter');
     await wait(main, `${q(titleSize)}.getAttribute('aria-invalid')==='true'`);
-    await click(main, named('[data-system-recipe-controls] button', 'Select Card frame'));
-    await click(main, named('[data-system-recipe-controls] button', 'Select Title text'));
+    await chooseLayer(main, 'root');
+    await chooseLayer(main, 'title');
     assert.equal(await main.evaluate(`${q(titleSize)}.value`), '19.375');
     assert.deepEqual(await snapshot(main), before); assert.deepEqual(await audit(main), writes);
     await noProjectMutation(main, entries);

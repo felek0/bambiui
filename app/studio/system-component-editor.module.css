@@ -29,16 +29,6 @@
 .targetPicker button[aria-pressed="true"] { border-color: var(--studio-color-selection-border); background: var(--studio-color-selection); color: var(--studio-color-on-selection); }
 .targetPicker button:focus-visible { outline: var(--studio-focus-ring); outline-offset: 1px; }
 .emptySelection { padding: 16px 0 10px; }
-.layers { padding-block: 6px; }
-.layerList { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
-.layerList li { display: flex; gap: 3px; min-width: 0; }
-.layerList li[data-child] { padding-inline-start: 12px; }
-.layerList button { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 28px; padding: 4px 7px; border: 1px solid transparent; border-radius: 4px; color: var(--studio-color-text-subtle); font: 11px/1.5 var(--studio-font-family); text-align: left; }
-.layerList button:hover { background: var(--studio-color-surface-hover); }
-.layerList button[aria-pressed="true"] { border-color: var(--studio-color-selection-border); background: var(--studio-color-selection); color: var(--studio-color-on-selection); }
-.layerList button:focus-visible { outline: var(--studio-focus-ring); outline-offset: 1px; }
-.layerKind { flex: none; font-size: 9px; }
-.layerList .alternateTarget { flex: none; justify-content: center; width: 42px; font-size: 9px; }
 .editor select[aria-invalid="true"] { border-color: var(--studio-color-warning); }
 .section { padding: 12px 0; }
 .section h3 { margin: 0 0 10px; font-size: 11px; font-weight: 600; }

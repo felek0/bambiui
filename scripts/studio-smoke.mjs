@@ -296,6 +296,16 @@ async function fill(selector, value) {
   if(value) await send('Input.insertText',{text:value}); else await key('Backspace');
   await wait(`${q(selector)}.value === ${JSON.stringify(value)}`);
 }
+/** Inspector layer choice: the layer menu (labelled "Part · Target") plus the Frame/Text target toggle. */
+async function chooseLayer(label, target) {
+  const menu = q('[data-system-layer-select]');
+  const value = await evaluate(`[...${menu}.options].find(o=>o.textContent.startsWith(${JSON.stringify(`${label} ·`)}))?.value`);
+  assert.ok(value, `layer ${label} is listed`);
+  if (await evaluate(`${menu}.value`) !== value) await select('[data-system-layer-select]', value);
+  const button = `[data-system-target-picker] [data-system-style-target="${target}"]`;
+  await wait(`!!${q(button)}`);
+  if (await evaluate(`${q(button)}.getAttribute('aria-pressed')`) !== 'true') await click(q(button));
+}
 async function check(label, run) {
   if (timedOut) throw new Error('Smoke watchdog expired');
   currentCheck = label;
@@ -508,7 +518,7 @@ try {
     for(const role of roles) assert.equal(role.value,await evaluate(`${q('#token-' + role.key)}.value`));
     await evaluate(`${q('[data-semantic-role="primary"]')}.click()`);
     await wait(`document.activeElement?.id==='token-primary'`);
-    assert.ok(await evaluate(`${q('#token-editor')}.textContent.includes('Semantic roles') && ${q('#token-editor')}.textContent.includes('Palette scales')`));
+    assert.ok(await evaluate(`${q('#token-editor')}.textContent.includes('Surfaces') && ${q('#token-editor')}.textContent.includes('Status') && ${q('#token-editor')}.textContent.includes('Palette scales')`));
     assert.deepEqual(await stored(),before);
   });
   await check('Typography is a foundation page: canvas scale selects styles and Text links to it without saving',async()=>{
@@ -607,7 +617,7 @@ try {
     await navigate('design','input');
     await click(q(`${example('input','invalid.md')} > button`));
     for(const [part,target] of [['error','text'],['control','text'],['control','frame']]) {
-      await click(q(`[data-system-recipe-controls] [aria-label="Select ${part==='error'?'Error':'Control'} ${target}"]`));
+      await chooseLayer(part==='error'?'Error':'Control', target);
       await assertMeasuredRecipe('input','invalid.md',part,target,target==='text'?textFields:['paddingTop','paddingRight','paddingBottom','paddingLeft','background','borderColor','shadow']);
     }
     await navigate('design','card'); await click(q(recipePart('card','outlined.md','title')));
@@ -641,7 +651,7 @@ try {
     await assertRecipeSelection('card','outlined.sm','title','text');
     assert.equal(await evaluate(`${q(details)}.open`),false);
     await navigate('design','input'); await click(q(`${example('input','invalid.md')} > button`));
-    await click(q('[data-system-recipe-controls] [aria-label="Select Error text"]'));
+    await chooseLayer('Error','text');
     await click(q(`${details} > summary`));
     assert.equal(await evaluate(`${q(row('color'))}.dataset.styleSource`),'fallback');
     assert.ok(await evaluate(`${q(row('color'))}.textContent.includes('Light') && ${q(row('fontSize'))}.textContent.includes('Both themes')`));
@@ -717,7 +727,7 @@ try {
     await wait(`${q(preview+' [data-live-preview-recipe]')}.dataset.livePreviewRecipe==='readonly.md'`);
     await assertRecipeSelection('input','invalid.md','root','frame');
     assert.equal(await evaluate(`${q(`${example('input','invalid.md')} [data-recipe-body] input`)}.readOnly`),false);
-    await click(q('[data-system-recipe-controls] [aria-label="Select Control text"]'));
+    await chooseLayer('Control','text');
     await assertMeasuredRecipe('input','invalid.md','control','text',textFields);
     assert.equal(await evaluate(`${q(preview)}.open`),true,'changing layer in the same recipe preserves the live session');
     for(const mode of ['Dark','Light']) {
@@ -827,7 +837,7 @@ try {
       ['root','frame','shadow','lg','boxShadow'],
       ['text','text','fontSize',23.625,'fontSize'],
     ]) {
-      await click(q(`[data-system-recipe-controls] [aria-label="Select ${part==='root' ? 'Button frame' : 'Label text'}"]`));
+      await chooseLayer(part==='root' ? 'Button' : 'Label', part==='root' ? 'frame' : 'text');
       await assertRecipeSelection('button','outline.sm',part,target);
       const previous = expected, previousPaint = painted;
       if(field==='shadow') await select(recipeField('button','outline.sm',part,target,field),value);
@@ -846,7 +856,7 @@ try {
       assert.deepEqual(await stored(),expected,'one redo reapplies the whole group');
       await assertPaint();
     }
-    await click(q('[data-system-recipe-controls] [aria-label="Select Button frame"]'));
+    await chooseLayer('Button','frame');
     for(const [field,property,value,rgb] of [
       ['background','backgroundColor','#123456','rgb(18, 52, 86)'],
       ['borderColor','borderTopColor','#345678','rgb(52, 86, 120)'],
@@ -864,7 +874,7 @@ try {
       await click(q('[aria-label="Undo change"]')); assert.deepEqual(await stored(),expected);
       await assertSettledRecipePaint('button',[property],originalColors,'cleanup undo restores every frame color');
     }
-    await click(q('[data-system-recipe-controls] [aria-label="Select Label text"]'));
+    await chooseLayer('Label','text');
     await resetRecipeField('button','outline.sm','text','text','fontSize');
     const resetFont = structuredClone(expected);
     for(const mode of ['light','dark']) for(const recipe of peers) {
@@ -995,35 +1005,21 @@ try {
     await key('Enter');
     await assertRecipeSelection('card','outlined.md','root','frame');
     assert.equal(await evaluate(`document.activeElement===${label}`),true);
-    assert.equal(await evaluate(`${q('[data-system-layers]')}.open`),false,'full Layers start collapsed');
+    assert.equal(await evaluate(`!!${q('[data-system-layers]')}`),false,'one layer control, no duplicate list');
     assert.equal(await evaluate(`${q('[data-system-layer-select]')}.getAttribute('aria-label')`),'Selected layer');
     await select('[data-system-layer-select]','title');
     await assertRecipeSelection('card','outlined.md','title','text');
-    assert.equal(await evaluate(`${q('[data-system-layers]')}.open`),false,'compact selection does not expand full Layers');
     await evaluate(`${q('[data-system-style-target="frame"]')}.focus({preventScroll:true})`); await key(' ','Space');
     await assertRecipeSelection('card','outlined.md','title','frame');
     await evaluate(`${q('[data-system-style-target="text"]')}.focus({preventScroll:true})`); await key('Enter');
     await assertRecipeSelection('card','outlined.md','title','text');
     await select('[data-system-layer-select]','root');
     await assertRecipeSelection('card','outlined.md','root','frame');
-    await reveal(q('[data-system-recipe-controls] [aria-label="Select Card frame"]'));
     const {nodes}=await send('Accessibility.getFullAXTree');
-    for(const name of ['Select Card Outlined Medium frame','Selected layer','Select Title text','Select Title frame']) assert.ok(nodes.some(node=>!node.ignored && node.name?.value===name),`matrix/layer AX name: ${name}`);
-    const first = q('[data-system-recipe-controls] [aria-label="Select Card frame"]');
-    await evaluate(`${first}.focus({preventScroll:true})`);
-    await key('ArrowDown');
-    assert.equal(await evaluate('document.activeElement.getAttribute("aria-label")'),'Select Header frame');
-    await key('ArrowDown');
-    assert.equal(await evaluate('document.activeElement.getAttribute("aria-label")'),'Select Title text');
-    await assertRecipeSelection('card','outlined.md','root','frame');
-    await key('Enter');
-    await assertRecipeSelection('card','outlined.md','title','text');
-    await reveal(q('[data-system-recipe-controls] [aria-label="Select Title text"]'));
-    await evaluate(`${q('[data-system-recipe-controls] [aria-label="Select Title text"]')}.focus({preventScroll:true})`);
-    await key('ArrowDown');
-    assert.equal(await evaluate('document.activeElement.getAttribute("aria-label")'),'Select Title frame');
-    await key(' ','Space');
-    await assertRecipeSelection('card','outlined.md','title','frame');
+    for(const name of ['Select Card Outlined Medium frame','Selected layer','Card style target']) assert.ok(nodes.some(node=>!node.ignored && node.name?.value===name),`matrix/layer AX name: ${name}`);
+    assert.deepEqual(await evaluate(`[...${q('[data-system-layer-select]')}.options].slice(0,3).map(o=>o.textContent)`),['Card · Frame','Header · Frame','Title · Text'],'the layer menu names each part and its default target');
+    await select('[data-system-layer-select]','header');
+    await assertRecipeSelection('card','outlined.md','header','frame');
   });
   await check('Button and Badge label hits differ from their frames; design clicks never activate native controls',async()=>{
     for(const [id,recipe] of [['button','primary.md'],['badge','outline.info.md']]) {
@@ -1059,7 +1055,7 @@ try {
         const invalid = state.startsWith('invalid');
         await click(q(`${example(id,recipe)} > button`));
         await assertRecipeSelection(id,recipe,'root','frame');
-        assert.deepEqual(await evaluate(`[...document.querySelectorAll('[data-system-recipe-controls] [aria-label^="Select Error "]')].map(e=>e.getAttribute('aria-label')).sort()`),invalid ? ['Select Error frame','Select Error text'] : [],`${id}/${recipe}: only reachable Error targets appear`);
+        assert.deepEqual(await evaluate(`[...${q('[data-system-layer-select]')}.options].filter(o=>o.value==='error').map(o=>o.textContent)`),invalid ? ['Error · Text'] : [],`${id}/${recipe}: only reachable Error targets appear`);
         assert.equal(await evaluate(`document.querySelectorAll(${JSON.stringify(recipePart(id,recipe,'error'))}).length`),invalid ? 1 : 0,`${id}/${recipe}: layer list matches actual message anatomy`);
         if(invalid) {
           await click(q(recipePart(id,recipe,'error')));
@@ -1101,9 +1097,9 @@ try {
     const value = await evaluate(`${q(native)}.value`);
     await click(q(`${example('input',recipe)} > button`));
     await assertRecipeSelection('input',recipe,'root','frame');
-    assert.deepEqual(await evaluate(`[...document.querySelectorAll('[data-system-recipe-controls] [aria-label^="Select Error "]')].map(e=>e.getAttribute('aria-label')).sort()`),['Select Error frame','Select Error text'],'readonly takes precedence over invalid, so its optional Error layer is reachable');
+    assert.deepEqual(await evaluate(`[...${q('[data-system-layer-select]')}.options].filter(o=>o.value==='error').map(o=>o.textContent)`),['Error · Text'],'readonly takes precedence over invalid, so its optional Error layer is reachable');
     assert.equal(await evaluate(`document.querySelectorAll(${JSON.stringify(readonlyErrors)}).length`),0,'readonly messages stay absent until their Error layer is selected');
-    await click(q('[data-system-recipe-controls] [aria-label="Select Error text"]'));
+    await chooseLayer('Error','text');
     await assertRecipeSelection('input',recipe,'error','text');
     const assertReadonlyError = async () => {
       await wait(`${q(error)}?.dataset.systemSelectedPart==='text'`);
@@ -1125,7 +1121,7 @@ try {
     assert.deepEqual(await stored(),before,'revealing optional anatomy does not mutate insertion defaults');
     await commitRecipe('input',recipe,'error','text','color','#234567');
     assert.equal(await evaluate(`getComputedStyle(${q(error)}).color`),'rgb(35, 69, 103)','accepted readonly Error token is consumed by the visible message');
-    await click(q('[data-system-recipe-controls] [aria-label="Select Label text"]'));
+    await chooseLayer('Label','text');
     await assertRecipeSelection('input',recipe,'label','text');
     assert.equal(await evaluate(`document.querySelectorAll(${JSON.stringify(readonlyErrors)}).length`),0,'leaving Error hides its optional message even when its recipe has an authored token');
     assert.equal(await evaluate(`${q(native)}.readOnly`),true);
@@ -1139,7 +1135,7 @@ try {
     await capture('studio-matrix-input-readonly-error');
     await click(q('[aria-label="Undo change"]'));
     assert.deepEqual(await stored(),before);
-    await click(q('[data-system-recipe-controls] [aria-label="Select Label text"]'));
+    await chooseLayer('Label','text');
     await assertRecipeSelection('input',recipe,'label','text');
     assert.equal(await evaluate(`document.querySelectorAll(${JSON.stringify(readonlyErrors)}).length`),0);
   });
@@ -1158,7 +1154,7 @@ try {
     assert.notEqual(await evaluate(`getComputedStyle(${q(recipePart('card','outlined.md','title'))}).color`),'rgb(18, 52, 86)');
     await commitRecipe('card','outlined.md','title','text','color','#abcdef');
     await commitRecipe('card','outlined.md','title','text','fontSize',29);
-    await click(q('[data-system-recipe-controls] [aria-label="Select Card frame"]'));
+    await chooseLayer('Card','frame');
     await commitRecipe('card','outlined.md','root','frame','paddingLeft',23);
     const customized = await stored();
     let expected = expectedRecipePatch(before,'card',['outlined.md'],'title',{color:'#123456'},['light']);
@@ -2110,6 +2106,27 @@ try {
     await navigate('design','switch');
     assert.equal(await evaluate(`!!${q('[data-radius-view]')} || !!${q('[data-radius-preset-editor]')}`),false,'Switch keeps its pill and offers no presets');
   });
+  await check('inspector reads top-down: selected layer, its variant colors, presets, shared layer, tokens, then reset',async()=>{
+    await navigate('design','button');
+    await click(q(`${example('button','ghost.md')} > button`));
+    const order=['[data-system-recipe-controls]','[data-system-variant-colors]','[data-system-radius-presets]','[data-system-shared-defaults]','[data-system-base-tokens]','#token-editor .reset-button'];
+    const tops=await evaluate(`${JSON.stringify(order)}.map(s=>{const e=document.querySelector(s);return e?e.getBoundingClientRect().top:null})`);
+    assert.ok(tops.every(Boolean),`all sections exist ${JSON.stringify(tops)}`);
+    assert.deepEqual([...tops].sort((a,b)=>a-b),tops,'sections follow the documented order');
+    assert.equal(await evaluate(`${q('[data-system-variant-colors] > summary')}.textContent`),'Variant colors · Ghost','variant colors follow the selected example');
+    assert.equal(await evaluate(`${q('#component-variant-style')}.value`),'ghost');
+    for(const selector of ['[data-system-variant-colors]','[data-system-radius-presets]','[data-system-shared-defaults]','[data-system-base-tokens]']) assert.equal(await evaluate(`${q(selector)}.open`),false,`${selector} starts collapsed`);
+    assert.equal(await evaluate(`${q('#token-editor .reset-button')}.closest('details')`),null,'component reset is always reachable');
+    await chooseLayer('Button','frame');
+    assert.match(await evaluate(`${q('[data-system-group-note="radius"]')}.textContent`),/Default shape.*Radius presets/);
+    await navigate('design','text');
+    await click(q(`${example('text','paragraph.neutral.md')} > button`));
+    assert.equal(await evaluate(`${q('[data-typography-link]')}.closest('details')`),null,'shared typography pointer sits beside the selection');
+    await navigate('design','colors');
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('#token-editor .token-section h3')].map(e=>e.textContent).slice(0,3)`),['Surfaces','Brand','Status']);
+    const mode=await evaluate('document.documentElement.dataset.studioTheme');
+    assert.equal(await evaluate(`${q('#token-editor .reset-button')}.textContent.trim()`),`Reset ${mode==='dark'?'Dark':'Light'} colors`,'reset names exactly what it resets');
+  });
   await check('direct tools fit narrow viewports with usable hit targets',async()=>{
     try {
       for(const width of [700,390]) {
@@ -2587,17 +2604,17 @@ try {
       await delay(100);
       assert.deepEqual(await scrollState(),beforeRepeat,'selecting an already visible example does not center it again');
       const beforePart = await scrollState();
-      await click(q('[data-system-recipe-controls] [aria-label="Select Label text"]'));
+      await chooseLayer('Label','text');
       await assertRecipeSelection('button','link.lg','text','text');
       await delay(100);
       assert.deepEqual(await scrollState(),beforePart,'part selection does not reframe an already visible example');
       await evaluate(`${q(matrixScroll)}.scrollTop=0`);
       assert.ok(await evaluate(`${q(target)}.getBoundingClientRect().top>${q(matrixScroll)}.getBoundingClientRect().bottom`));
       const offscreen = await scrollState();
-      await click(q('[data-system-recipe-controls] [aria-label="Select Button frame"]'));
+      await chooseLayer('Button','frame');
       await delay(100);
       assert.deepEqual(await scrollState(),offscreen,'changing part must not reveal an offscreen selected recipe');
-      await click(q('[data-system-recipe-controls] [aria-label="Select Label text"]'));
+      await chooseLayer('Label','text');
       const mode = await evaluate('document.documentElement.dataset.studioTheme');
       await click(named(themeControl+' button',mode==='light'?'Dark':'Light'));
       await delay(100);
