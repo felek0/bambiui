@@ -813,6 +813,13 @@ button:disabled {
   padding-top: 27px;
 }
 
+.foundation-shortcut { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 12px; border: 0; border-radius: 6px; background: transparent; color: var(--studio-color-text); text-align: left; font: inherit; cursor: pointer; }
+.foundation-shortcut:hover { background: var(--studio-color-surface-hover); }
+.foundation-shortcut:focus-visible { outline: var(--studio-focus-ring); outline-offset: -2px; }
+.foundation-shortcut:disabled { opacity: .5; cursor: default; }
+.foundation-shortcut small { display: block; color: var(--studio-color-text-secondary); font-size: 10px; }
+.foundation-scope { margin: 8px 0 12px; color: var(--studio-color-text-secondary); font-size: 11px; line-height: 1.6; }
+
 .foundation-editor {
   display: grid;
   gap: 12px;

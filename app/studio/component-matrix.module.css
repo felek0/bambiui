@@ -25,7 +25,11 @@
 .rows { display: grid; gap: 32px; }
 .row { align-items: start; padding-block: 16px 20px; border-top: 1px solid var(--studio-color-border-subtle); }
 .row > h3 { grid-column: 1 / -1; color: var(--studio-color-text); font: 600 13px/1.6 var(--studio-font-family); overflow-wrap: anywhere; }
-.example { min-width: 0; }
+.example { position: relative; min-width: 0; }
+.frameSpacingAction { position: absolute; top: 0; right: 0; z-index: 2; min-height: 28px; padding: 4px 8px; border: 1px solid var(--studio-color-border); border-radius: 4px; background: var(--studio-color-surface); color: var(--studio-color-text); font: 10px/1.5 var(--studio-font-family); cursor: pointer; }
+.frameSpacingAction:focus-visible { outline: var(--studio-focus-ring); outline-offset: 2px; }
+.example:has([data-frame-spacing-editor], .frameSpacingAction) .exampleLabel { padding-right: 120px; }
+.example:has([data-frame-spacing-editor], .frameSpacingAction) .exampleLabel > span { visibility: hidden; }
 .exampleLabel { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 28px; margin-bottom: 12px; padding: 4px 6px; border: 1px solid transparent; border-radius: 4px; color: var(--studio-color-text-muted); font: 11px/1.5 var(--studio-font-family); text-align: left; cursor: pointer; }
 .exampleLabel > span { opacity: 0; }
 .exampleLabel:hover, .example[data-selected] .exampleLabel { border-color: var(--studio-color-selection-border); background: var(--studio-color-selection); color: var(--studio-color-on-selection); }

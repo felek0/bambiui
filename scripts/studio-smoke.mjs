@@ -498,6 +498,32 @@ try {
     assert.equal(await evaluate(`${q('[id="system-shared-button-root-paddingLeft"]')}.closest('[data-system-shared-defaults]')!==null`),true);
     await click(q('[data-system-shared-defaults] > summary'));
   });
+  await check('semantic roles show current values and focus their own token without changing the saved system',async()=>{
+    await navigate('design','colors');
+    const before=await stored();
+    const roles=await evaluate(`[...document.querySelectorAll('[data-semantic-role]')].map(e=>({key:e.dataset.semanticRole,value:e.querySelector('code').textContent}))`);
+    assert.ok(roles.length>10);
+    for(const role of roles) assert.equal(role.value,await evaluate(`${q('#token-' + role.key)}.value`));
+    await evaluate(`${q('[data-semantic-role="primary"]')}.click()`);
+    await wait(`document.activeElement?.id==='token-primary'`);
+    assert.ok(await evaluate(`${q('#token-editor')}.textContent.includes('Semantic roles') && ${q('#token-editor')}.textContent.includes('Palette scales')`));
+    assert.deepEqual(await stored(),before);
+  });
+  await check('Typography shortcut reveals shared settings from Foundations and from Playground without saving',async()=>{
+    const before=await stored();
+    await click(q('[data-foundation-typography]'));
+    await route('design','text');
+    await wait(`document.activeElement?.id==='font-family-preset'`);
+    assert.ok(await evaluate(`${q('[data-system-base-tokens]')}.open && ${q('#font-family-preset')}.checkVisibility()`));
+    await click(q(workbenchMode('playground')));
+    await assertComponentMode('text','playground');
+    await click(q('[data-foundation-typography]'));
+    await assertComponentMode('text','variants');
+    await wait(`document.activeElement?.id==='font-family-preset'`);
+    assert.ok(await evaluate(`${q('#typography-tokens')}.textContent.includes('across sizes and tones')`));
+    assert.deepEqual(await stored(),before);
+  });
+
   for(const [id,count] of Object.entries(matrixCounts)) await check(`${id} matrix renders all ${count} exact combinations and no other component board`,async()=>{
     await navigate('design',id);
     const expected = matrixVariants[id].flatMap(variant=>(['badge','text'].includes(id) ? tones : [null]).flatMap(tone=>['sm','md','lg'].map(size=>[variant,tone,size].filter(Boolean).join('.'))));
@@ -1285,6 +1311,79 @@ try {
     assert.deepEqual((await stored()).themes.light,before.themes.light);
     await fill('#token-background',before.themes.dark.global.background);
   });
+  await check('direct frame padding drag previews without saving, commits the size group once and supports Undo',async()=>{
+    await navigate('design','button');
+    await click(q(`${example('button','outline.sm')} > button`));
+    const handle='[data-spacing-handle="paddingLeft"]';
+    await wait(`${q(handle)}?.checkVisibility()`);
+    await positionCanvas(q(handle));
+    await capture('studio-direct-frame-spacing');
+    const before=await stored();
+    const initial=Number(await evaluate(`${q(handle)}.getAttribute('aria-valuenow')`));
+    await fill(recipeField('button','outline.sm','root','frame','paddingLeft'),'83.5');
+    assert.deepEqual(await stored(),before,'uncommitted inspector draft remains transient');
+    const point=await evaluate(`(()=>{const r=${q(handle)}.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+    await send('Input.dispatchMouseEvent',{type:'mousePressed',...point,button:'left',buttons:1,clickCount:1});
+    await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x+12,y:point.y,button:'left',buttons:1});
+    await wait(`parseFloat(getComputedStyle(${q(recipePart('button','outline.sm','root','frame'))}).paddingLeft)===${initial+12}`);
+    assert.deepEqual(await stored(),before,'gesture preview must not save intermediate values');
+    await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:point.x+12,y:point.y,button:'left',buttons:0,clickCount:1});
+    const peers=matrixVariants.button.map(variant=>`${variant}.sm`);
+    assert.deepEqual(await stored(),expectedRecipePatch(before,'button',peers,'root',{paddingLeft:initial+12}));
+    await click(named('button','Undo change'));
+    assert.deepEqual(await stored(),before,'one Undo restores the complete pre-drag snapshot');
+    await wait(`${q(handle)}?.checkVisibility()`);
+    await positionCanvas(q(handle));
+    const cancelPoint=await evaluate(`(()=>{const r=${q(handle)}.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+    await send('Input.dispatchMouseEvent',{type:'mousePressed',...cancelPoint,button:'left',buttons:1,clickCount:1});
+    await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:cancelPoint.x+18,y:cancelPoint.y,button:'left',buttons:1});
+    await key('Escape');
+    await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:cancelPoint.x+18,y:cancelPoint.y,button:'left',buttons:0,clickCount:1});
+    assert.deepEqual(await stored(),before,'Escape cancels without creating an override');
+    await wait(`parseFloat(getComputedStyle(${q(recipePart('button','outline.sm','root','frame'))}).paddingLeft)===${initial}`);
+    await click(q(handle));
+    assert.deepEqual(await stored(),before,'click without movement does not materialize defaults');
+  });
+  await check('direct margin handles support keyboard and stay outside hidden sample bodies',async()=>{
+    const before=await stored();
+    await click(named('[data-frame-spacing-editor] button','Margin'));
+    const handle='[data-spacing-handle="marginRight"]';
+    await wait(`${q(handle)}?.checkVisibility()`);
+    assert.equal(await evaluate(`!!${q(handle)}.closest('[aria-hidden="true"]')`),false);
+    const initial=Number(await evaluate(`${q(handle)}.getAttribute('aria-valuenow')`));
+    await click(q(handle));
+    await key('ArrowRight');
+    assert.deepEqual(await stored(),expectedRecipePatch(before,'button',matrixVariants.button.map(variant=>`${variant}.sm`),'root',{marginRight:initial+1}));
+    await click(named('button','Undo change'));
+    assert.deepEqual(await stored(),before);
+    await click(q(workbenchMode('playground')));
+    assert.equal(await evaluate(`!!${q('[data-spacing-handle]')}`),false,'no hidden editing controls or draft preview survive in Playground');
+    await click(q(workbenchMode('variants')));
+  });
+
+  await check('Text frame spacing is reachable on canvas and preserves typographic variant scope',async()=>{
+    await navigate('design','text');
+    await click(q(`${example('text','paragraph.neutral.sm')} > button`));
+    await click(named(`${example('text','paragraph.neutral.sm')} button`,'Frame spacing'));
+    const handle='[data-spacing-handle="paddingLeft"]';
+    await wait(`${q(handle)}?.checkVisibility()`);
+    const before=await stored();
+    const initial=Number(await evaluate(`${q(handle)}.getAttribute('aria-valuenow')`));
+    await click(q(handle));
+    await key('ArrowRight');
+    assert.deepEqual(await stored(),expectedRecipePatch(before,'text',tones.map(tone=>`paragraph.${tone}.sm`),'root',{paddingLeft:initial+1}));
+    await click(named('button','Undo change'));
+    assert.deepEqual(await stored(),before);
+    await positionCanvas(q(handle));
+    const point=await evaluate(`(()=>{const r=${q(handle)}.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+    await send('Input.dispatchMouseEvent',{type:'mousePressed',...point,button:'left',buttons:1,clickCount:1});
+    await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x+15,y:point.y,button:'left',buttons:1});
+    await evaluate(`${q(handle)}.dispatchEvent(new PointerEvent('pointercancel',{bubbles:true}));true`);
+    await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:point.x+15,y:point.y,button:'left',buttons:0,clickCount:1});
+    assert.deepEqual(await stored(),before,'cancelled Text gesture leaves no overrides');
+    await wait(`parseFloat(getComputedStyle(${q(recipePart('text','paragraph.neutral.sm','root'))}).paddingLeft)===${initial}`);
+  });
+
   await check('scale stop edits update the live swatch, CSS and storage in only one theme',async()=>{
     await navigate('design');
     await click(named(themeControl + ' button','Light'));

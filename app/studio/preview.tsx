@@ -29,6 +29,7 @@ import {
 } from "./tokens";
 import styles from "./preview.module.css";
 import { ComponentMatrix } from "./component-matrix";
+import type { FrameSpacingCommit } from "./frame-spacing-editor";
 import type { ComponentRecipeSelection } from "./component-recipes";
 import { ComponentPlayground } from "./component-playground";
 
@@ -403,7 +404,7 @@ function ThemePane({ theme, mode, children, copy }: {
   );
 }
 
-export function Preview({ selected, system, mode, active = true, onSelectColorRole, onEditToken, recipeSelection, onSelectRecipe, onClearRecipeSelection, componentMode = "variants", playgroundControlsTarget }: {
+export function Preview({ selected, system, mode, active = true, onSelectColorRole, onEditToken, recipeSelection, onSelectRecipe, onClearRecipeSelection, componentMode = "variants", playgroundControlsTarget, onSpacingCommit, spacingContext }: {
   selected: "colors" | "spacing" | ComponentId;
   system: DesignSystem;
   mode: PaletteMode;
@@ -411,6 +412,8 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
   onSelectColorRole?: (role: ColorScaleRole) => void;
   onEditToken?: (selection: "colors" | "spacing", inputId: string) => void;
   onClearRecipeSelection?: () => void;
+  onSpacingCommit?: FrameSpacingCommit;
+  spacingContext?: string;
   componentMode?: "variants" | "playground";
   playgroundControlsTarget?: HTMLElement | null;
   recipeSelection: ComponentRecipeSelection | null;
@@ -649,7 +652,8 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
           <div ref={matrixScroll} key={selected} className={styles.matrixScroll} data-matrix-scroll role="region" aria-label="Component examples" tabIndex={0}>
             <div className={styles.matrixContent} data-matrix-content>
               <section key={selected} className={styles.componentBoard} data-specimen={selected} data-selected aria-label={`${selected} preview`}>
-                <ComponentMatrix component={selected} defaults={system.componentDefaults} selection={recipeSelection} onSelect={onSelectRecipe} onClearSelection={onClearRecipeSelection} />
+                <ComponentMatrix component={selected} defaults={system.componentDefaults} selection={recipeSelection} onSelect={onSelectRecipe} onClearSelection={onClearRecipeSelection}
+                                  onSpacingCommit={active && componentMode === "variants" ? onSpacingCommit : undefined} spacingContext={`${mode}-${spacingContext}`} />
                 {selected !== "text" && <details className={styles.interactions} data-interaction-examples>
                   <summary>Interaction &amp; state previews</summary>
                   <p>Try keyboard and pointer behavior here. Disabled, loading and radius examples inherit the same recipes; they are not separate style scopes.</p>
@@ -773,7 +777,18 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
             <section data-foundation="colors" data-canvas-unit="colors" data-selected={selected === "colors" || undefined} aria-labelledby="canvas-colors-title" className={styles.foundation}
               onClickCapture={(event) => { if (!(event.target instanceof Element && event.target.closest("a, button, input, select"))) selectFoundation("colors"); }}>
               <h2 id="canvas-colors-title"><Link href="/colors" aria-current={selected === "colors" ? "page" : undefined}>Colors</Link></h2>
-              <p>Generated from the current theme. Select a role to edit its 50–1000 tokens.</p>
+              <h3>Semantic roles</h3>
+              <p>These colors supply component defaults in {mode === "light" ? "Light" : "Dark"}. Select a role to edit it; component and layer overrides take precedence.</p>
+              <div className={styles.semanticRoles} data-semantic-roles>
+                {tokenFields.filter((field) => field.type === "color").map((field) => <Link key={field.key} href="/colors"
+                  data-semantic-role={field.key} onClick={() => onEditToken?.("colors", `token-${field.key}`)}
+                  aria-label={`Edit ${field.label} semantic color: ${system.themes[mode].global[field.key]}`}>
+                  <span className={styles.semanticSwatch} aria-hidden="true" style={{ backgroundColor: String(system.themes[mode].global[field.key]) }} />
+                  <span>{field.label}<code>{system.themes[mode].global[field.key]}</code></span>
+                </Link>)}
+              </div>
+              <h3>Palette scales</h3>
+              <p>50–1000 shades derived from each role until overridden. Editing a shade updates the palette reference and CSS export, not the semantic role or component colors.</p>
               <div className={styles.scaleRegion} role="region" aria-label="Color scale reference" tabIndex={0}>
                 <div className={styles.scaleTable}>
                   <div className={styles.scaleRow} aria-hidden="true"><span />{colorScaleStops.map((stop) => <span key={stop}>{stop}</span>)}</div>

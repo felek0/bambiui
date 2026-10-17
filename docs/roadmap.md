@@ -192,6 +192,12 @@ Done: değişiklik özeti, değişen dosyalar, test komutları/sonuçları, manu
 
 ## 8. Güncel uygulama kanıtı ve açık kapılar
 
+**Foundations anlaşılabilirlik dilimi · 2026-10-17:** Colors'ta gerçek değerleri gösteren, mevcut token alanına odaklayan Semantic roles kartları ve ayrı Palette scales açıklaması uygulandı. Foundations Typography kısayolu Text'in ortak ayarlarını açar; ayrı route/editör eklenmedi. Shape/spacing grupları gerçek tüketim ve override kapsamını açıklar. Schema, token çözümlemesi, public komponentler ve dağıtım kaynakları değişmedi. 659 unit, 102 Studio browser, 22 Playground browser kontrolü; lint/TypeScript/build/catalog freshness geçti. Detay ve manuel görevler: `studio-ux-review-2026-10-17.md`.
+
+**Doğrudan düzenleme · 2026-10-17:** Kullanıcı talebiyle Variants frame'lerine dört kenarlı padding/margin sürükleme eklendi. Desteklenen alt katmanlar dahil yedi komponent mevcut metadata'yı kullanır. Geçici önizleme yalnız seçili örnektedir; bırakma aynı-size politikasını iki temaya tek Undo hareketiyle uygular. Escape/pointercancel/bağlam değişimi iptal eder; hareket olmadan tıklama yazmaz. Text hedefinden Frame spacing ile doğrudan geçiş mümkündür. Şema ve registry değişmedi. İlk kapsam padding/margin; radius/gap/resize henüz eklenmedi.
+
+**Sonraki sıra:** Gerçek Figma kullanıcı oturumu şu an mümkün değil; açık kabul kapısı olarak tutulur, ürün iyileştirmelerinin önkoşulu sayılmaz. (1) Doğrudan düzenlemede gerçek mobil dokunma, VoiceOver ve native %200 zoom kontrolünü tamamla. (2) Kullanıcı geri bildirimine göre radius/gap/resize gibi sonraki geometrik düzenlemeleri değerlendir. (3) SF5 stale-tab/quota veri güvenliğini ele al. Yeni komponent ve Project kapsamı şimdilik genişletilmez.
+
 **Size-scope amendment · 2026-10-16:** UI-only `recipe-edit-scope.ts` mevcut exact kayıtlar üzerinde color/exact ve non-color/size-group yazım/reset kapsamını uygular. Tüm yedi komponent ve her consumed field/recipe/part/target için üyelik testi; Text variant koruması ve conditional error kapsamı mevcut. Inspector seçili örneğin gerçek değerini ve ayrı write scope'u gösterir. Seçili kayıtta override yokken yalnız peer override'ı için de reset/clear çalışır; inspection/import tarihi farkları normalize etmez. Tek callback/Undo grubu kullanılır.
 
 - 637 app unit/SSR/source + 26 CLI/arşiv testi; build/TypeScript/lint ve catalog/registry freshness geçti. Yeni size token/schema/pure resolver/public API değişmedi; registry source release aynı kaldı.

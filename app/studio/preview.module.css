@@ -304,6 +304,16 @@
   color: var(--ds-muted-foreground);
 }
 
+.foundation h3 { margin-top: 20px; font: 600 13px/1.5 var(--studio-font-family); }
+.semanticRoles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 24px; }
+.semanticRoles a { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px; border: 1px solid var(--studio-color-border); border-radius: 6px; background: var(--studio-color-surface); color: var(--studio-color-text); font: 12px/1.5 var(--studio-font-family); text-decoration: none; }
+.semanticRoles a:hover { background: var(--studio-color-surface-hover); }
+.semanticRoles a:focus-visible { outline: var(--studio-focus-ring); outline-offset: 2px; }
+.semanticRoles a > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.semanticRoles code { display: block; color: var(--studio-color-text-secondary); font-size: 10px; }
+.semanticSwatch { flex: none; width: 28px; height: 32px; border: 1px solid var(--studio-color-border); border-radius: 4px; }
+@container (max-width: 600px) { .semanticRoles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
 .scaleRegion {
   width: 100%;
   max-width: 100%;

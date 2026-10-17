@@ -57,11 +57,32 @@ Tarih: 2026-10-17. Kapsam: System-first Studio yerleşimi ve etkileşim hiyerar�
 
 Kalıcı yan yana matrix/Playground karşılaştırması kaldırıldı. Karşılığında her ana iş merkez alanın tamamını kazanır ve yanlış bağlama yazma beklentisi azalır. Modlar arası bir tıklama maliyeti vardır; selection ve geçici state korunarak bu maliyet azaltılır. Varsayılan olarak ikinci bir split-view tercihi eklenmez.
 
-Foundations Colors/Shape & spacing kamera ve token akışları korunur; yalnız ortak araç çubuğuna uyumlandırılır. Bu değişiklik yeni Typography route'u, token modeli, public prop veya schema migration eklemez. Foundations'ta semantic renkler ile skalaların ayrımının ve shared typography keşfedilebilirliğinin insan oturumunda ayrıca değerlendirilmesi gerekir; bu belge onları çözülmüş saymaz.
+Foundations Colors/Shape & spacing kamera ve token akışları korunur. Bu değişiklik yeni Typography route'u, token modeli, public prop veya schema migration eklemez. Aşağıdaki takip dilimi semantic renkler ile skalaların ayrımını ve shared typography erişimini iyileştirir; gerçek kullanıcı oturumu olmadan keşfedilebilirlik sorununun tamamen çözüldüğünü iddia etmez.
 
 Project authoring askıda kalır. Recovery, System silme korumaları, localStorage sınırları, fraction/sparse override davranışı, size-based edit/reset kapsamı ve bir hareket/Undo grubu değişmez. CLI/source/registry içeriği bu yerleşim değişikliğinden etkilenmez. Ek API, ağ servisi veya bağımlılık eklenmez.
 
-## Doğrulama ve açık kapılar
+## Foundations takip dilimi
+
+- Colors önizlemesinde **Semantic roles**, skala tablosundan önce gerçek tema değerleriyle gösterilir. Bir role tıklamak karşılık gelen mevcut token kontrolünü açar/odaklar; seçim tek başına kayıt yapmaz.
+- **Palette scales** ayrı başlık taşır. 50–1000 duraklarının referans/CSS çıktısını değiştirdiği, komponent renklerinin ise semantic rollerden geldiği hem önizlemede hem inspector'da açıkça anlatılır.
+- Foundations altında **Typography / Shared settings in Text** kısayolu, mevcut Text ortak ayarlarını açar, gerekiyorsa Playground'dan Variants'a geçer ve font ailesi alanına odaklanır. Ayrı route veya ikinci bir editör değildir; Text komponenti Library'de kalır.
+- System font family'nin tüm komponentler için varsayılan olduğu; named text styles'ın iki temada size/tone boyunca varsayılan sağladığı ve layer override'larının bunları maskeleyebildiği görünürdür.
+- Shape & spacing grupları gerçek tüketim kapsamını açıklar. Özellikle spacing sm/md/lg'nin Card.Content öğe aralıklarına ait olduğu, tüm padding/gap değerlerini topluca ölçeklemediği belirtilir.
+- Bu dilimde 659 unit testi, 102 Studio browser kontrolü, 22 Playground browser kontrolü, TypeScript, lint, production build ve source catalog freshness geçti. Yeni browser kontrolleri rol-değer eşleşmesi, doğru alana focus, kapalı ortak ayarların açılması, aynı Text Playground'undan dönüş ve gezinmenin storage'a yazmamasını kapsar. CLI/System-only testleri bu dilimde yeniden çalıştırılmadı; dağıtılan kaynaklar değişmedi.
+- Manuel görev: kullanıcıdan primary rengini ve primary 500 skalasını ayrı ayrı değiştirmesini, ardından global font ile yalnız small katman tipografisini ayırt etmesini iste. Görev tamamlama, yanlış kapsam beklentisi ve yardım ihtiyacını kaydet. Bu oturum henüz yapılmadı.
+
+## Doğrudan frame spacing düzenleme
+
+- Variants'ta seçili frame'in örnek başlığında Padding/Margin seçimi, dört dış kenarında gerçek px değerli sürükleme tutamaçları bulunur. Kontroller metadata'da desteklenen alanlardan üretilir; yedi komponentte desteklenen root/alt katmanlar aynı akışı kullanır.
+- Text gibi text hedefinden başlayan ve frame geometrisi destekleyen katmanlarda **Frame spacing**, sağ panele gitmeden aynı katmanın frame hedefine geçer. Metne tıklayarak tekrar text seçilebilir.
+- Padding içeri doğru, margin dışarı doğru sürüklenerek artırılır. Padding 0–1000px, margin −1000–1000px sınırları mevcut metadata ile aynıdır. Alt sürükleme hassasiyeti 0.1; ok tuşları 1px, Shift+ok 10px, Alt+ok 0.1px değiştirir.
+- Hareket sırasında yalnız seçili örneğe geri alınabilir DOM önizlemesi uygulanır. Bırakınca mevcut `applyScopedRecipePatch` politikası aynı component/size/part/target grubuna ve iki temaya tek history hareketinde yazar. Text tipografik variant sınırı korunur. Sağ panel ve diğer örnekler bırakma anında kaydedilen değerle güncellenir.
+- Escape, pointercancel, capture kaybı, pencere focus kaybı ve editörün bağlam değişimi/unmount'u geçici stilleri geri alır. Hareket olmadan tıklamak override üretmez. Playground/Develop'da aktif tutamaç bulunmaz; geçici görünüm export/storage'a yazılmaz.
+- Tutamaçlar `aria-hidden` örnek gövdelerinin dışındadır ve klavyeyle kullanılabilir. Küçük yazıları örtmemek için frame dışında konumlanır; araçlar seçili örneğin boyutunu veya satır yüksekliğini değiştirmez.
+- Doğrulama: 667 unit testi, 105 Studio browser kontrolü, 22 Playground kontrolü ve kaynak indirme/JSON/ZIP kontrolleri geçti; dilim sırasında 17 System-only kontrolü de geçti. TypeScript, lint, production build, catalog freshness ve diff whitespace kontrolü başarılı. Browser senaryoları sürüklemede storage izolasyonu, size-group commit, tek Undo, Escape/pointercancel, Text variant sınırı, keyboard margin ve sağ panelden kalan taslağın sürükleme başlangıcında iptal edilmesini kapsar.
+- İlk kapsam yalnız padding/margin'dir; width/height, gap, radius veya font sürükleme bu dilimde eklenmedi. Mevcut token/schema/komponent API/registry kaynakları değişmedi. Gerçek mobil dokunma ve VoiceOver kabulü açık kalır.
+
+## Önceki yerleşim diliminin doğrulaması ve açık kapılar
 
 - 659 app unit/SSR/source testi: geçti.
 - 100 Studio browser kontrolü: geçti.

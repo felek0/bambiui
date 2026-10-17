@@ -56,6 +56,7 @@ import shell from "./composer/workspace-shell.module.css";
 import { SystemComponentEditor, type ComponentEditorTab } from "./system-component-editor";
 import type { ComponentStylePart } from "./component-styles";
 import type { ComponentRecipeSelection } from "./component-recipes";
+import { applyScopedRecipePatch } from "./recipe-edit-scope";
 
 const compactQuery = "(max-width: 800px)";
 function subscribeCompact(listener: () => void) {
@@ -69,11 +70,11 @@ const getServerCompact = () => false;
 type Selection = "colors" | "spacing" | ComponentId;
 type View = "design" | "develop";
 
-const spacingGroups: { label: string; keys: readonly (keyof TokenValues)[] }[] = [
-  { label: "Shape", keys: ["radiusSm", "radius", "radiusLg", "borderWidth"] },
-  { label: "Layout spacing", keys: ["paddingX", "paddingY", "gap", "margin"] },
-  { label: "Spacing scale", keys: ["spacingSm", "spacingMd", "spacingLg"] },
-  { label: "Type & control sizing", keys: ["fontSize", "controlHeightSm", "controlHeightMd", "controlHeightLg"] },
+const spacingGroups: { label: string; hint: string; keys: readonly (keyof TokenValues)[] }[] = [
+  { label: "Shape", hint: "Shared corner scale and default border width. Component overrides take precedence.", keys: ["radiusSm", "radius", "radiusLg", "borderWidth"] },
+  { label: "Layout spacing", hint: "Default padding, gap and margin; these are independent of the spacing scale below.", keys: ["paddingX", "paddingY", "gap", "margin"] },
+  { label: "Spacing scale", hint: "Small, medium and large gaps between Card.Content items. This does not rescale all component spacing.", keys: ["spacingSm", "spacingMd", "spacingLg"] },
+  { label: "Type & control sizing", hint: "Base font size and control heights. Named text styles are managed in Typography.", keys: ["fontSize", "controlHeightSm", "controlHeightMd", "controlHeightLg"] },
 ];
 
 const componentGroups: { label: string; ids: readonly ComponentId[] }[] = [
@@ -1020,6 +1021,12 @@ export default function Studio() {
             end={ready && globalIssueCount > 0 && <span className="nav-indicators"><span className="nav-contrast-warning" title={t.sidebarContrastWarning(globalIssueCount, activeTheme)}><Icon name="warning" size={14} /></span></span>}
           >Colors</NavItem>
           <NavItem icon={<Icon name="sliders" />} href={workspaceHref(view, "spacing")} current={selection === "spacing"}>Shape &amp; spacing</NavItem>
+          <button type="button" className="foundation-shortcut" data-foundation-typography disabled={!ready}
+            aria-label="Edit shared typography in Text" onClick={() => {
+              setComponentMode("variants"); setComponentEditorTab("styles");
+              showInspector(); setEditTarget({ selection: "text", inputId: "font-family-preset" });
+              router.push("/text", { scroll: false });
+            }}><Icon name="text" /><span>Typography<small>Shared settings in Text</small></span></button>
           <div className="sidebar-divider" />
           <div className="sidebar-section-label">
             {t.components.toUpperCase()}
@@ -1126,7 +1133,13 @@ export default function Studio() {
             <section hidden={view !== "design"} aria-label={t.design} className="workspace-panel workspace-panel--design preview-canvas">
               <div className="preview-frame">
                 <Preview key={`${collection.activeId}-${importRevision}`} selected={selection} system={system} mode={activeTheme} active={view === "design"} onSelectColorRole={setScaleRole} onEditToken={(nextSelection, inputId) => { showInspector(); setEditTarget({ selection: nextSelection, inputId }); }}
-                  recipeSelection={recipeSelection} onSelectRecipe={editComponentRecipe} onClearRecipeSelection={clearRecipeSelection} componentMode={componentMode} playgroundControlsTarget={playgroundHost} />
+                  recipeSelection={recipeSelection} onSelectRecipe={editComponentRecipe} onClearRecipeSelection={clearRecipeSelection} componentMode={componentMode} playgroundControlsTarget={playgroundHost}
+                                    spacingContext={`${collection.activeId}-${workspaceRevision}`}
+                                    onSpacingCommit={ready ? (target, patch) => {
+                                      finishEdit();
+                                      updateTheme({ ...theme, componentRecipes: applyScopedRecipePatch(theme.componentRecipes, target, patch) });
+                                      finishEdit();
+                                    } : undefined} />
               </div>
             </section>
             <section hidden={view !== "develop"} aria-label={t.develop} className="workspace-panel workspace-panel--develop">
@@ -1161,8 +1174,12 @@ export default function Studio() {
         <fieldset disabled={!ready} className={`editor-fields${!isGlobal || selection === "colors" || selection === "spacing" ? " editor-fields--compact" : ""}${!isGlobal ? " editor-fields--component" : ""}${selection === "spacing" ? " editor-fields--spacing" : ""}`}>
           <legend className="sr-only">{selection === "spacing" ? "Edit shared shape and spacing tokens" : t.editTokens(activeTheme === "light" ? t.light : t.dark)}</legend>
 
+          {isGlobal && <p className="foundation-scope" data-foundation-scope>{selection === "colors"
+            ? `Semantic roles supply component colors in ${activeTheme === "light" ? "Light" : "Dark"}. Component and layer overrides stay unchanged.`
+            : "Shared by Light and Dark. These are system defaults, not overrides for the selected component size."}</p>}
           {selection === "spacing" && spacingGroups.map((group) => <section className="token-section" key={group.label}>
             <div className="section-heading"><h3>{group.label}</h3>{group.label === "Shape" && <span>{t.sharedThemes}</span>}</div>
+            <p className="foundation-scope">{group.hint}</p>
             <div className="number-fields">{numberFields.filter((field) => group.keys.includes(field.key)).map(renderTokenField)}</div>
           </section>)}
           <SystemComponentEditor key={`${collection.activeId}-${workspaceRevision}-${component}-${activeTheme}-${view}`} component={isGlobal ? null : component} theme={theme} mode={activeTheme} defaults={system.componentDefaults}
@@ -1216,7 +1233,7 @@ export default function Studio() {
             [
               {
                 type: "color",
-                heading: t.colors,
+                heading: selection === "colors" ? "Semantic roles" : t.colors,
                 hint: t.themeOnly(activeTheme),
                 className: "color-fields",
                 items: colorFields,
@@ -1239,7 +1256,7 @@ export default function Studio() {
             </section>
           ))}
           {isGlobal && selection !== "spacing" && <section className="token-section foundation-editor" id="color-scales">
-            <div className="section-heading"><h3>Color scale</h3><span>{t.themeOnly(activeTheme)}</span></div>
+            <div className="section-heading"><h3>Palette scales</h3><span>{t.themeOnly(activeTheme)}</span></div>
             <label htmlFor="color-scale-role">Color role</label>
             <select id="color-scale-role" value={scaleRole} onChange={(event) => setScaleRole(event.target.value as ColorScaleRole)}>
               {colorScaleRoles.map((role) => <option key={role} value={role}>{role}</option>)}
@@ -1253,7 +1270,8 @@ export default function Studio() {
             </div>
           </section>}
           {selection === "text" && <section className="token-section foundation-editor" id="font-family-tokens">
-            <div className="section-heading"><h3>Font family</h3><span>{t.sharedThemes}</span></div>
+            <div className="section-heading"><h3>System font family</h3><span>{t.sharedThemes}</span></div>
+            <p>Default font for all components, not just Text or the selected example.</p>
             <div className="font-family-row"><label htmlFor="font-family-preset">Font family</label>
             <select id="font-family-preset" value={theme.fontFamily} onChange={(event) => updateTheme({ ...theme, fontFamily: event.target.value as ThemeTokens["fontFamily"] })}>
               <optgroup label="Local fonts">
@@ -1268,7 +1286,8 @@ export default function Studio() {
             {selection === "text" ? <><p>Google Fonts presets request Google when selected.</p><details className="font-family-help"><summary>About font loading</summary><p>Shared by both themes. Google Fonts load only when selected, sending a request to Google; an internet connection is required. Local presets make no font request. Exported CSS imports the selected Google font; offline viewers use its fallback.</p></details></> : <p>Shared by both themes. Google Fonts load only when selected, sending a request to Google; an internet connection is required. Local presets make no font request. Exported CSS imports the selected Google font; offline viewers use its fallback.</p>}
           </section>}
           {selection === "text" && !isGlobal && <section className="token-section foundation-editor" id="typography-tokens">
-            <div className="section-heading"><h3>Text styles</h3><span>{t.sharedThemes}</span></div>
+            <div className="section-heading"><h3>Shared text styles</h3><span>{t.sharedThemes}</span></div>
+            <p>Named typography defaults across sizes and tones in both themes. Component and layer overrides take precedence; use the selected layer above for a size-specific change.</p>
             <div className="typography-style-row"><label htmlFor="typography-variant">Style</label>
               <select id="typography-variant" value={selectedTypography} onChange={(event) => setSelectedTypography(event.target.value as TypographyVariant)}>
                 {typographyVariants.map((variant) => <option key={variant} value={variant}>{variant === "heading" ? "Legacy heading" : variant.toUpperCase()}</option>)}

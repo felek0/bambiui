@@ -1,9 +1,9 @@
-import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Badge, Button, Card, Checkbox, Input, Switch, Text } from "./components";
 import { Icon } from "./icons";
 import { resolveComponentDefaults, type ComponentDefaults } from "./component-defaults";
 import {
-  componentRecipeOptions, componentRecipeParts, componentRecipeSelectionFromElement,
+  componentRecipeOptions, componentRecipeParts, componentRecipeFields, componentRecipeSelectionFromElement,
   type ComponentRecipeOption, type ComponentRecipeSelection, type SharedComponentId,
 } from "./component-recipes";
 import { hasInteractionPreview, InteractionPreview } from "./interaction-preview";
@@ -12,6 +12,7 @@ import {
   matchesMatrixFilters, matrixSelectionKey, reconcileMatrixSelection, type MatrixFilters,
 } from "./component-matrix-state";
 import styles from "./component-matrix.module.css";
+import { FrameSpacingEditor, type FrameSpacingCommit } from "./frame-spacing-editor";
 
 const title = (value: string) => value.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, letter => letter.toUpperCase());
 const sizes = { sm: "Small", md: "Medium", lg: "Large" } as const;
@@ -51,12 +52,15 @@ function rootSelection(component: SharedComponentId, recipe: string): ComponentR
   return { component, recipe, part: "root", target: componentRecipeParts(component)[0].target };
 }
 
-export function ComponentMatrix({ component, defaults, selection: incomingSelection, onSelect, onClearSelection }: {
+export function ComponentMatrix({ component, defaults, selection: incomingSelection, onSelect, onClearSelection, onSpacingCommit, spacingContext }: {
   component: SharedComponentId; defaults?: ComponentDefaults; selection: ComponentRecipeSelection | null;
   onSelect: (selection: ComponentRecipeSelection) => void;
   onClearSelection?: () => void;
+  onSpacingCommit?: FrameSpacingCommit;
+  spacingContext?: string;
 }) {
   const root = useRef<HTMLDivElement>(null);
+  const spacingHelpId = useId();
   const [storedState, setState] = useState(() => createMatrixState(component, incomingSelection));
   // Adjust local state before children render, avoiding an effect that could race a filter's clear callback.
   const state = reconcileMatrixSelection(storedState, component, incomingSelection);
@@ -124,7 +128,7 @@ export function ComponentMatrix({ component, defaults, selection: incomingSelect
       <button type="button" disabled={!activeFilters} data-system-context-change="matrix-filter" onClick={() => changeFilters(emptyMatrixFilters())}>Clear filters</button>
     </fieldset>
     <p className={styles.context}>{selection?.component === component
-      ? `Selected: ${options.find(option => option.key === selection.recipe)?.label ?? selection.recipe} / ${componentRecipeParts(component).find(part => part.key === selection.part)?.label ?? title(selection.part)} / ${title(selection.target)}`
+      ? `Selected: ${options.find(option => option.key === selection.recipe)?.label ?? selection.recipe} / ${componentRecipeParts(component).find(part => part.key === selection.part)?.label ?? title(selection.part)} / ${title(selection.target)}${selection.target === "frame" && onSpacingCommit ? " · Drag edge values to adjust spacing; release to apply to this size." : ""}`
       : "No layer selected."}</p>
     </div>
     {!visible.length && <div className={styles.empty} role="status"><h3>No combinations match these filters</h3><p>Clear filters to show all {options.length} combinations. No new layer is selected automatically.</p><button type="button" data-system-context-change="matrix-filter" onClick={() => changeFilters(emptyMatrixFilters())}>Clear filters</button></div>}
@@ -137,6 +141,8 @@ export function ComponentMatrix({ component, defaults, selection: incomingSelect
           return <div className={styles.example} key={option.key} data-recipe-example={option.key} data-selected={selected || undefined}>
             <button type="button" className={styles.exampleLabel} data-system-context-change="matrix-selection" aria-label={`Select ${title(component)} ${row.label} ${sizes[option.size]} ${component === "text" ? "text" : "frame"}`} aria-pressed={selected && selection.part === "root"}
               onClick={() => onSelect(rootSelection(component, option.key))}>{sizes[option.size]}<span aria-hidden="true">↗</span></button>
+            {selected && selection.target === "text" && onSpacingCommit && componentRecipeFields(component, selection.part, "frame", selection.recipe).some(field => field.group === "padding" || field.group === "margin") && <button type="button" className={styles.frameSpacingAction} data-system-context-change="frame-spacing" onClick={() => onSelect({ ...selection, target: "frame" })}>Frame spacing</button>}
+            {selected && selection.target === "frame" && onSpacingCommit && <FrameSpacingEditor key={`${spacingContext}-${selection.recipe}-${selection.part}`} selection={selection} onCommit={onSpacingCommit} helpId={spacingHelpId} />}
             <div className={styles.body} data-recipe-body aria-hidden="true" data-system-context-change="matrix-selection" ref={disableMatrixBodyTabStops}
               onPointerDownCapture={event => { if (event.button === 0) event.preventDefault(); }}
               onClickCapture={event => {

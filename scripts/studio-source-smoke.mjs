@@ -94,7 +94,9 @@ try {
     await wait('!!document.querySelector("[data-system-recipe-controls]")');
     const playgroundTitle = '[data-playground-controls-for="card"] [aria-label="Playground Title"]';
     await wait(`!!document.querySelector(${JSON.stringify(playgroundTitle)})`);
+    await wait('!!document.querySelector("[data-spacing-overlay]")');
     const matrixBefore = await evaluate('document.querySelector("[data-component-matrix=card]").innerHTML');
+    const samplesBefore = await evaluate('[...document.querySelectorAll("[data-component-matrix=card] [data-recipe-body]")].map(e=>e.outerHTML)');
     const historyBefore = await evaluate('[...document.querySelectorAll(\'[aria-label="Undo change"], [aria-label="Redo change"]\')].map(e=>e.disabled)');
     await click('[data-workbench-mode="playground"]');
     await click(playgroundTitle);
@@ -104,8 +106,11 @@ try {
     await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });
     await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
     await wait('document.querySelector("[data-component-playground=card] [data-playground-preview] [data-component-part=title]").textContent === "QA transient preview — 雪 🦌"');
-    assert.equal(await evaluate('document.querySelector("[data-component-matrix=card]").innerHTML'), matrixBefore, 'Only playground copy changes; matrix saved defaults, recipes, selection and filters stay identical');
+    assert.deepEqual(await evaluate('[...document.querySelectorAll("[data-component-matrix=card] [data-recipe-body]")].map(e=>e.outerHTML)'), samplesBefore, 'Only playground copy changes; hidden matrix samples stay identical');
+    assert.equal(await evaluate('!!document.querySelector("[data-spacing-handle]")'), false, 'Inactive matrix cannot retain a spacing gesture');
     await click('[data-workbench-mode="variants"]');
+    await wait('!!document.querySelector("[data-spacing-overlay]")');
+    assert.equal(await evaluate('document.querySelector("[data-component-matrix=card]").innerHTML'), matrixBefore, 'Matrix saved defaults, recipes, selection, filters and spacing controls survive the round trip');
     assert.deepEqual(await evaluate('[...document.querySelectorAll(\'[aria-label="Undo change"], [aria-label="Redo change"]\')].map(e=>e.disabled)'), historyBefore, 'Transient controls never alter token history');
     await click('[data-workbench-mode="playground"]');
     assert.equal(await evaluate('JSON.stringify({...localStorage})'), before, 'Playground must not save defaults');
