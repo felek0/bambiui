@@ -1,0 +1,8 @@
+.overlay { position: absolute; z-index: 4; pointer-events: none; outline: 1px solid var(--studio-color-selection-border); }
+.handle { position: absolute; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 1px solid var(--studio-color-selection-border); border-radius: 4px; background: var(--studio-color-surface); color: var(--studio-color-text); pointer-events: auto; touch-action: none; user-select: none; font: 10px/1 var(--studio-font-family); }
+.handle[data-resize-handle="width"] { right: -24px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+.handle[data-resize-handle="height"] { bottom: -24px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+.handle:focus-visible { outline: var(--studio-focus-ring); outline-offset: 2px; }
+.handle:hover { background: var(--studio-color-selection); color: var(--studio-color-on-selection); }
+.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.handle[data-resize-handle="corner"] { right: -18px; bottom: -18px; width: 16px; height: 16px; cursor: nwse-resize; }

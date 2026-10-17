@@ -1,0 +1,12 @@
+.surface { position: relative; z-index: 3; display: grid; gap: 4px; margin-top: 8px; padding: 6px; border: 1px solid var(--studio-color-selection-border); border-radius: 6px; background: var(--studio-color-surface); color: var(--studio-color-text-secondary); font: 10px/1.5 var(--studio-font-family); }
+.toolbar { display: flex; flex-wrap: wrap; gap: 2px; }
+.toolbar > button { min-width: 28px; min-height: 28px; padding: 4px 8px; border: 1px solid var(--studio-color-border); border-radius: 4px; background: var(--studio-color-surface); color: var(--studio-color-text); font: inherit; cursor: pointer; }
+.toolbar > button[aria-pressed="true"], .toolbar > button[aria-expanded="true"] { background: var(--studio-color-selection); border-color: var(--studio-color-selection-border); color: var(--studio-color-on-selection); }
+.toolbar > button[data-target-switch] { margin-left: auto; }
+.toolbar > button:focus-visible { outline: var(--studio-focus-ring); outline-offset: 2px; }
+.status { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
+.status strong { color: var(--studio-color-text); font-weight: 600; }
+.hint { flex-basis: 100%; color: var(--studio-color-text-muted); }
+.status button { margin-left: auto; min-height: 24px; padding: 2px 6px; border: 1px solid var(--studio-color-border); border-radius: 4px; background: var(--studio-color-surface); color: var(--studio-color-text); font: inherit; cursor: pointer; }
+.status button:disabled { opacity: .45; cursor: default; }
+.status button:focus-visible { outline: var(--studio-focus-ring); outline-offset: 2px; }

@@ -418,7 +418,7 @@ try {
         assert.deepEqual(await evaluate('window.__playgroundWrites'),before.writes,'not even an identical storage rewrite is allowed');
         assert.ok(await evaluate('window.__qaMounted.every(e=>e.isConnected)'),'mode changes preserve mounted nodes');
         await api.mode('button','variants',invalid?'Enter':' ');
-        assert.equal(await evaluate(`${q(padding)}.value`),original);
+        await wait(`${q(padding)}.value===${JSON.stringify(original)}`);
         assert.equal(await evaluate(`${q(padding)}.getAttribute('aria-invalid')`),'false');
         assert.deepEqual(await snapshot('button'),before,'matrix selection, filters, exact markup, storage and history survive the round trip');
         assert.deepEqual(await evaluate(`[...document.querySelectorAll('[data-recipe-example][data-selected]')].map(e=>e.dataset.recipeExample)`),['outline.md']);

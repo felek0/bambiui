@@ -13,6 +13,12 @@ import {
 } from "./component-matrix-state";
 import styles from "./component-matrix.module.css";
 import { FrameSpacingEditor, type FrameSpacingCommit } from "./frame-spacing-editor";
+import type { ThemeTokens } from "./tokens";
+import { TextToolsEditor } from "./text-tools-editor";
+import { textToolFields } from "./text-tools-model";
+import { ToolStatus, toolbarKeyDown } from "./tool-status";
+import surface from "./tool-status.module.css";
+import { editScopeLabel, textTargetFor } from "./tool-scope";
 
 const title = (value: string) => value.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, letter => letter.toUpperCase());
 const sizes = { sm: "Small", md: "Medium", lg: "Large" } as const;
@@ -52,12 +58,14 @@ function rootSelection(component: SharedComponentId, recipe: string): ComponentR
   return { component, recipe, part: "root", target: componentRecipeParts(component)[0].target };
 }
 
-export function ComponentMatrix({ component, defaults, selection: incomingSelection, onSelect, onClearSelection, onSpacingCommit, spacingContext }: {
+export function ComponentMatrix({ component, defaults, selection: incomingSelection, onSelect, onClearSelection, onSpacingCommit, spacingContext, theme, themeLabel = "this theme" }: {
   component: SharedComponentId; defaults?: ComponentDefaults; selection: ComponentRecipeSelection | null;
   onSelect: (selection: ComponentRecipeSelection) => void;
   onClearSelection?: () => void;
   onSpacingCommit?: FrameSpacingCommit;
   spacingContext?: string;
+  theme?: ThemeTokens;
+  themeLabel?: string;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const spacingHelpId = useId();
@@ -128,7 +136,7 @@ export function ComponentMatrix({ component, defaults, selection: incomingSelect
       <button type="button" disabled={!activeFilters} data-system-context-change="matrix-filter" onClick={() => changeFilters(emptyMatrixFilters())}>Clear filters</button>
     </fieldset>
     <p className={styles.context}>{selection?.component === component
-      ? `Selected: ${options.find(option => option.key === selection.recipe)?.label ?? selection.recipe} / ${componentRecipeParts(component).find(part => part.key === selection.part)?.label ?? title(selection.part)} / ${title(selection.target)}${selection.target === "frame" && onSpacingCommit ? " · Drag edge values to adjust spacing; release to apply to this size." : ""}`
+      ? `Selected: ${options.find(option => option.key === selection.recipe)?.label ?? selection.recipe} / ${componentRecipeParts(component).find(part => part.key === selection.part)?.label ?? title(selection.part)} / ${title(selection.target)}${selection.target === "frame" && onSpacingCommit ? " · Frame tools edit this size across supported combinations in both themes." : ""}`
       : "No layer selected."}</p>
     </div>
     {!visible.length && <div className={styles.empty} role="status"><h3>No combinations match these filters</h3><p>Clear filters to show all {options.length} combinations. No new layer is selected automatically.</p><button type="button" data-system-context-change="matrix-filter" onClick={() => changeFilters(emptyMatrixFilters())}>Clear filters</button></div>}
@@ -141,8 +149,6 @@ export function ComponentMatrix({ component, defaults, selection: incomingSelect
           return <div className={styles.example} key={option.key} data-recipe-example={option.key} data-selected={selected || undefined}>
             <button type="button" className={styles.exampleLabel} data-system-context-change="matrix-selection" aria-label={`Select ${title(component)} ${row.label} ${sizes[option.size]} ${component === "text" ? "text" : "frame"}`} aria-pressed={selected && selection.part === "root"}
               onClick={() => onSelect(rootSelection(component, option.key))}>{sizes[option.size]}<span aria-hidden="true">↗</span></button>
-            {selected && selection.target === "text" && onSpacingCommit && componentRecipeFields(component, selection.part, "frame", selection.recipe).some(field => field.group === "padding" || field.group === "margin") && <button type="button" className={styles.frameSpacingAction} data-system-context-change="frame-spacing" onClick={() => onSelect({ ...selection, target: "frame" })}>Frame spacing</button>}
-            {selected && selection.target === "frame" && onSpacingCommit && <FrameSpacingEditor key={`${spacingContext}-${selection.recipe}-${selection.part}`} selection={selection} onCommit={onSpacingCommit} helpId={spacingHelpId} />}
             <div className={styles.body} data-recipe-body aria-hidden="true" data-system-context-change="matrix-selection" ref={disableMatrixBodyTabStops}
               onPointerDownCapture={event => { if (event.button === 0) event.preventDefault(); }}
               onClickCapture={event => {
@@ -152,6 +158,17 @@ export function ComponentMatrix({ component, defaults, selection: incomingSelect
               }}>
               <RecipeExample component={component} option={option} defaults={defaults} showError={selected && selection.part === "error"} />
             </div>
+            {selected && selection.target === "text" && onSpacingCommit && <>
+              <div className={surface.surface} data-tool-surface="text" data-system-context-change="text-tools">
+                <div role="toolbar" aria-label="Text tools" className={surface.toolbar} onKeyDown={toolbarKeyDown}>
+                  {theme && <TextToolsEditor key={`${spacingContext}-${selection.recipe}-${selection.part}`} selection={selection} theme={theme} themeLabel={themeLabel} onCommit={onSpacingCommit} id={`${spacingHelpId}-text`} />}
+                  {componentRecipeFields(component, selection.part, "frame", selection.recipe).some(field => field.group === "padding" || field.group === "margin") && <button type="button" data-target-switch="frame" title="Edit this layer's size, spacing, corners and gap" onClick={() => onSelect({ ...selection, target: "frame" })}>Frame</button>}
+                </div>
+                {textToolFields(selection).length > 0 && <ToolStatus tool="Text" scope={`${editScopeLabel(selection, "fontSize", themeLabel)} · color: this combination, ${themeLabel}`} hint="Open Text to type values or drag a label; Enter applies, Escape cancels." />}
+              </div>
+            </>}
+            {selected && selection.target === "frame" && onSpacingCommit && <FrameSpacingEditor key={`${spacingContext}-${selection.recipe}-${selection.part}`} selection={selection} onCommit={onSpacingCommit} helpId={spacingHelpId} theme={theme} themeLabel={themeLabel}
+              onTextTarget={(text => text ? () => onSelect(text) : undefined)(textTargetFor(selection))} />}
             {selected && hasInteractionPreview(component) && <InteractionPreview key={option.key} component={component} option={option} defaults={defaults} showError={selection.part === "error"} />}
           </div>;
         })}

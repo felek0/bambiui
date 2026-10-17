@@ -652,7 +652,7 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
           <div ref={matrixScroll} key={selected} className={styles.matrixScroll} data-matrix-scroll role="region" aria-label="Component examples" tabIndex={0}>
             <div className={styles.matrixContent} data-matrix-content>
               <section key={selected} className={styles.componentBoard} data-specimen={selected} data-selected aria-label={`${selected} preview`}>
-                <ComponentMatrix component={selected} defaults={system.componentDefaults} selection={recipeSelection} onSelect={onSelectRecipe} onClearSelection={onClearRecipeSelection}
+                <ComponentMatrix component={selected} theme={system.themes[mode]} themeLabel={mode === "light" ? "Light" : "Dark"} defaults={system.componentDefaults} selection={recipeSelection} onSelect={onSelectRecipe} onClearSelection={onClearRecipeSelection}
                                   onSpacingCommit={active && componentMode === "variants" ? onSpacingCommit : undefined} spacingContext={`${mode}-${spacingContext}`} />
                 {selected !== "text" && <details className={styles.interactions} data-interaction-examples>
                   <summary>Interaction &amp; state previews</summary>

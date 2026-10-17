@@ -18,10 +18,10 @@ const pending = new Map(), failures = [], errors = [];
 let server, chrome, profile, socket, sequence = 0, passes = 0, acceptImportDialog = false, timedOut = false, currentCheck = 'startup', pressedPointer = null;
 const watchdog = setTimeout(() => {
   timedOut = true;
-  console.error(`Smoke test exceeded 180 seconds during ${currentCheck}`);
+  console.error(`Smoke test exceeded 300 seconds during ${currentCheck}`);
   for (const task of pending.values()) { clearTimeout(task.timer); task.reject(new Error('Smoke watchdog expired')); }
   pending.clear(); socket?.close(); chrome?.kill('SIGKILL');
-}, 180000);
+}, 300000);
 const ids = ['button', 'input', 'card', 'badge', 'switch', 'checkbox', 'text'];
 const foundations = ['colors', 'spacing'];
 const matrixCounts = { button:18, input:9, switch:12, checkbox:12, badge:54, card:9, text:180 };
@@ -278,6 +278,7 @@ async function click(expression, preparePanel = true, exact = false) {
   const destination = await evaluate(`(${expression}).closest('a')?.getAttribute('href') || null`);
   if (!await evaluate(`!!(${expression}).closest('[data-matrix-scroll]')`)) await evaluate(`(${expression}).scrollIntoView({block:'center',inline:'center',behavior:'instant'})`);
   await evaluate('new Promise(resolve => requestAnimationFrame(resolve))');
+  if (await evaluate(`!!(${expression}).closest('[data-frame-size-editor]')`)) await evaluate(`(${expression}).scrollIntoView({block:'nearest',inline:'nearest',behavior:'instant'})`);
   await positionCanvas(expression);
   const point = await evaluate(`(() => {const e=(${expression}),r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;const candidates=[{x,y},...[0.25,0.5,1,2,4,8].flatMap(inset=>[{x:r.left+inset,y},{x:r.right-inset,y},{x,y:r.top+inset},{x,y:r.bottom-inset}])];for(const point of candidates){const hit=document.elementFromPoint(point.x,point.y);if(${exact ? 'hit===e' : 'e.contains(hit)'})return point;}throw Error('No ${exact ? 'exact frame' : 'visible'} hit: '+e.outerHTML+'; rect: '+JSON.stringify(r.toJSON())+'; hit: '+document.elementFromPoint(x,y)?.outerHTML.slice(0,250));})()`);
   await send('Input.dispatchMouseEvent', { type:'mousePressed', ...point, button:'left', clickCount:1 });
@@ -1328,6 +1329,7 @@ try {
     await wait(`parseFloat(getComputedStyle(${q(recipePart('button','outline.sm','root','frame'))}).paddingLeft)===${initial+12}`);
     assert.deepEqual(await stored(),before,'gesture preview must not save intermediate values');
     await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:point.x+12,y:point.y,button:'left',buttons:0,clickCount:1});
+    assert.equal(await evaluate(`!!${q('[data-spacing-value-editor]')}`),false,'drag release must not open the numeric editor');
     const peers=matrixVariants.button.map(variant=>`${variant}.sm`);
     assert.deepEqual(await stored(),expectedRecipePatch(before,'button',peers,'root',{paddingLeft:initial+12}));
     await click(named('button','Undo change'));
@@ -1343,6 +1345,97 @@ try {
     await wait(`parseFloat(getComputedStyle(${q(recipePart('button','outline.sm','root','frame'))}).paddingLeft)===${initial}`);
     await click(q(handle));
     assert.deepEqual(await stored(),before,'click without movement does not materialize defaults');
+    await wait(`${q('[data-spacing-value-editor] input[aria-label="Edit padding left"]')}?.checkVisibility()`);
+    await key('Escape');
+    await wait(`!${q('[data-spacing-value-editor]')}`);
+  });
+  await check('direct spacing numeric Apply and Enter preserve fractions, size scope and one Undo',async()=>{
+    const handle='[data-spacing-handle="paddingLeft"]';
+    const editor='[data-spacing-value-editor]';
+    const input=`${editor} input[aria-label="Edit padding left"]`;
+    const before=await stored();
+    const peers=matrixVariants.button.map(variant=>`${variant}.sm`);
+    for(const [activation,commit,value] of [['click','Apply',27.375],['Enter','Enter',31.625],['Space','Apply',19.125]]) {
+      await wait(`${q(handle)}?.checkVisibility()`);
+      if(activation==='click') await click(q(handle));
+      else { await evaluate(`${q(handle)}.focus();true`); await key(activation==='Space' ? ' ' : 'Enter',activation==='Space' ? 'Space' : 'Enter'); }
+      await wait(`${q(input)}?.checkVisibility() && document.activeElement===${q(input)}`);
+      await fill(input,String(value));
+      assert.deepEqual(await stored(),before,'typing a number is transient');
+      if(commit==='Enter') await key('Enter'); else await click(named(`${editor} button`,'Apply'));
+      await wait(`!${q(editor)}`);
+      assert.deepEqual(await stored(),expectedRecipePatch(before,'button',peers,'root',{paddingLeft:value}),'only sm peers change, with identical geometry in both themes');
+      await wait(`parseFloat(getComputedStyle(${q(recipePart('button','outline.sm','root','frame'))}).paddingLeft)===${value}`);
+      await click(named('button','Undo change'));
+      assert.deepEqual(await stored(),before,`${activation}/${commit}: one Undo restores the entire pre-entry snapshot`);
+    }
+  });
+  await check('direct spacing unchanged, invalid and cancelled numbers never write or add history',async()=>{
+    const handle='[data-spacing-handle="paddingLeft"]';
+    const editor='[data-spacing-value-editor]';
+    const input=`${editor} input[aria-label="Edit padding left"]`;
+    const before=await stored();
+    await click(q(handle)); await wait(`${q(input)}?.checkVisibility()`);
+    await fill(input,'24.375'); await key('Enter'); await wait(`!${q(editor)}`);
+    const authored=expectedRecipePatch(before,'button',matrixVariants.button.map(variant=>`${variant}.sm`),'root',{paddingLeft:24.375});
+    assert.deepEqual(await stored(),authored);
+    const bytes=await evaluate(`localStorage.getItem('bambiui.design-system.v1')`);
+    const unchanged=async message=>{
+      assert.deepEqual(await stored(),authored,message);
+      assert.equal(await evaluate(`localStorage.getItem('bambiui.design-system.v1')`),bytes,message);
+    };
+    const open=async()=>{ await click(q(handle)); await wait(`${q(input)}?.checkVisibility()`); };
+    for(const commit of ['Apply','Enter']) {
+      await open();
+      assert.equal(Number(await evaluate(`${q(input)}.value`)),24.375,'editor starts from the current fractional value');
+      if(commit==='Enter') await key('Enter'); else await click(named(`${editor} button`,'Apply'));
+      await wait(`!${q(editor)}`);
+      await unchanged('unchanged submission is a no-op');
+    }
+    for(const value of ['', 'not-a-number', '-0.125', '1000.125']) {
+      await open(); await fill(input,'');
+      // A native numeric input may reject nonnumeric text; either rejection or validation must leave storage untouched.
+      if(value) await send('Input.insertText',{text:value});
+      await key('Enter');
+      await unchanged(`invalid draft ${JSON.stringify(value)} cannot commit via Enter`);
+      if(await evaluate(`!!${q(editor)}`)) {
+        const apply=named(`${editor} button`,'Apply');
+        if(await evaluate(`!!(${apply}) && !(${apply}).disabled`)) await click(apply);
+        await unchanged(`invalid draft ${JSON.stringify(value)} cannot commit via Apply`);
+        if(await evaluate(`!!${q(editor)}`)) await key('Escape');
+      }
+      await wait(`!${q(editor)}`);
+    }
+    for(const cancel of ['Escape','Cancel','blur']) {
+      await open(); await fill(input,'72.625');
+      if(cancel==='Escape') await key('Escape');
+      else if(cancel==='Cancel') await click(named(`${editor} button`,'Cancel'));
+      else await evaluate(`${q('[aria-label="Undo change"]')}.focus();true`);
+      await wait(`!${q(editor)}`);
+      await unchanged(`${cancel} discards the pending number`);
+    }
+    await click(named('button','Undo change'));
+    assert.deepEqual(await stored(),before,'all no-op, invalid and cancel attempts leave exactly the single authored edit to undo');
+  });
+  await check('direct spacing context changes discard pending numeric drafts',async()=>{
+    const handle='[data-spacing-handle="paddingLeft"]';
+    const editor='[data-spacing-value-editor]';
+    const input=`${editor} input[aria-label="Edit padding left"]`;
+    const before=await stored();
+    for(const context of ['selection','playground']) {
+      await click(q(`${example('button','outline.sm')} > button`));
+      await wait(`${q(handle)}?.checkVisibility()`);
+      await click(q(handle)); await wait(`${q(input)}?.checkVisibility()`);
+      await fill(input,'86.375');
+      if(context==='selection') await click(q(`${example('button','primary.md')} > button`));
+      else await click(q(workbenchMode('playground')));
+      await wait(`!${q(editor)}`);
+      assert.deepEqual(await stored(),before,`${context} discards rather than blur-committing a draft`);
+      if(context==='playground') await click(q(workbenchMode('variants')));
+    }
+    await click(q(`${example('button','outline.sm')} > button`));
+    await wait(`${q(handle)}?.checkVisibility()`);
+    assert.equal(await evaluate(`!!${q(editor)}`),false,'returning to the selected frame does not revive the draft');
   });
   await check('direct margin handles support keyboard and stay outside hidden sample bodies',async()=>{
     const before=await stored();
@@ -1351,7 +1444,7 @@ try {
     await wait(`${q(handle)}?.checkVisibility()`);
     assert.equal(await evaluate(`!!${q(handle)}.closest('[aria-hidden="true"]')`),false);
     const initial=Number(await evaluate(`${q(handle)}.getAttribute('aria-valuenow')`));
-    await click(q(handle));
+    await evaluate(`${q(handle)}.focus();true`);
     await key('ArrowRight');
     assert.deepEqual(await stored(),expectedRecipePatch(before,'button',matrixVariants.button.map(variant=>`${variant}.sm`),'root',{marginRight:initial+1}));
     await click(named('button','Undo change'));
@@ -1361,15 +1454,596 @@ try {
     await click(q(workbenchMode('variants')));
   });
 
+  await check('direct corners default to independent and numeric edits preserve every other corner, size and part',async()=>{
+    await navigate('design','button');
+    await click(q(`${example('button','outline.sm')} > button`));
+    const before=await stored();
+    const bytes=await evaluate(`localStorage.getItem('bambiui.design-system.v1')`);
+    await click(named('[data-frame-spacing-editor] button','Corners'));
+    await wait(`${q('[data-spacing-overlay="radius"]')}?.checkVisibility()`);
+    const link=named('[data-frame-spacing-editor] button','Link corners');
+    assert.equal(await evaluate(`(${link}).getAttribute('aria-pressed')`),'false','corners are independent by default');
+    const fields=['borderTopLeftRadius','borderTopRightRadius','borderBottomRightRadius','borderBottomLeftRadius'];
+    const labels=['top left','top right','bottom right','bottom left'];
+    const editor='[data-spacing-value-editor]';
+    const original=await recipePaint('button',fields);
+    for(const [index,field] of fields.entries()) {
+      const handle=`[data-spacing-overlay="radius"] [data-spacing-handle="${field}"]`;
+      const input=`${editor} input[aria-label="Edit ${labels[index]} radius"]`;
+      await wait(`${q(handle)}?.checkVisibility()`);
+      if(index%2===0) await click(q(handle));
+      else { await evaluate(`${q(handle)}.focus();true`); await key('Enter'); }
+      await wait(`${q(input)}?.checkVisibility() && document.activeElement===${q(input)}`);
+      assert.equal(await evaluate(`localStorage.getItem('bambiui.design-system.v1')`),bytes,'opening a corner does not write defaults');
+      const value=23.375+index;
+      await fill(input,String(value));
+      assert.deepEqual(await stored(),before,'numeric drafts do not save');
+      if(index%2===0) await click(named(`${editor} button`,'Apply')); else await key('Enter');
+      await wait(`!${q(editor)}`);
+      assert.deepEqual(await stored(),expectedRecipePatch(before,'button',matrixVariants.button.map(variant=>`${variant}.sm`),'root',{[field]:value}),'only the selected corner changes across all sm variants in both themes');
+      const painted=original.map(entry=>entry.component==='button' && entry.part==='root' && entry.recipe.endsWith('.sm') ? {...entry,values:{...entry.values,[field]:`${value}px`}} : entry);
+      await assertSettledRecipePaint('button',fields,painted,'other corners, parts and sizes retain their paint');
+      await click(named('button','Undo change'));
+      // Undo changes workspaceRevision and remounts the contextual editor.
+      await click(named('[data-frame-spacing-editor] button','Corners'));
+      if((await evaluate(`(${link}).getAttribute('aria-pressed')`))!=='false') await click(link);
+      assert.deepEqual(await stored(),before,'one Undo restores the entire independent edit');
+      await assertSettledRecipePaint('button',fields,original,'Undo restores radius paint');
+    }
+  });
+  await check('linked corners preserve divergent values on toggle and unchanged submission, cancel drafts and commit once',async()=>{
+    await navigate('design','card');
+    await click(q(recipePart('card','outlined.md','root','frame')),true,true);
+    await select('[data-system-layer-select]','header');
+    await assertRecipeSelection('card','outlined.md','header','frame');
+    await click(named('[data-frame-spacing-editor] button','Corners'));
+    const link=named('[data-frame-spacing-editor] button','Link corners');
+    assert.equal(await evaluate(`(${link}).getAttribute('aria-pressed')`),'false');
+    const handle='[data-spacing-overlay="radius"] [data-spacing-handle="borderTopLeftRadius"]';
+    const editor='[data-spacing-value-editor]';
+    const input=`${editor} input[aria-label="Edit top left radius"]`;
+    const fields=['borderTopLeftRadius','borderTopRightRadius','borderBottomRightRadius','borderBottomLeftRadius'];
+    const peers=matrixVariants.card.map(variant=>`${variant}.md`);
+    const before=await stored();
+    await click(q(handle)); await wait(`${q(input)}?.checkVisibility()`);
+    await fill(input,'37.375'); await key('Enter'); await wait(`!${q(editor)}`);
+    const authored=expectedRecipePatch(before,'card',peers,'header',{borderTopLeftRadius:37.375});
+    assert.deepEqual(await stored(),authored);
+    await wait(`parseFloat(getComputedStyle(${q(recipePart('card','outlined.md','header','frame'))}).borderTopLeftRadius)===37.375`);
+    const original=await recipePaint('card',fields);
+    assert.ok(original.some(entry=>entry.recipe==='outlined.md' && entry.component==='card' && entry.part==='header' && entry.values.borderTopLeftRadius!==entry.values.borderTopRightRadius),'fixture has divergent corners');
+    const bytes=await evaluate(`localStorage.getItem('bambiui.design-system.v1')`);
+    const unchanged=async message=>{
+      assert.deepEqual(await stored(),authored,message);
+      assert.equal(await evaluate(`localStorage.getItem('bambiui.design-system.v1')`),bytes,message);
+      await assertSettledRecipePaint('card',fields,original,message);
+    };
+    for(const pressed of ['true','false','true']) {
+      await click(link);
+      assert.equal(await evaluate(`(${link}).getAttribute('aria-pressed')`),pressed);
+      await unchanged('link toggle alone never normalizes divergent corners');
+    }
+    for(const commit of ['Apply','Enter']) {
+      await click(q(handle)); await wait(`${q(input)}?.checkVisibility()`);
+      assert.equal(Number(await evaluate(`${q(input)}.value`)),37.375);
+      if(commit==='Enter') await key('Enter'); else await click(named(`${editor} button`,'Apply'));
+      await wait(`!${q(editor)}`);
+      await unchanged('unchanged linked submission preserves divergent corners');
+    }
+    for(const cancel of ['Cancel','Escape']) {
+      await click(q(handle)); await wait(`${q(input)}?.checkVisibility()`);
+      await fill(input,'54.625');
+      assert.deepEqual(await stored(),authored,'linked numeric preview is not persisted');
+      if(cancel==='Escape') await key('Escape'); else await click(named(`${editor} button`,'Cancel'));
+      await wait(`!${q(editor)}`);
+      await unchanged(`${cancel} discards all linked corner drafts`);
+    }
+    for(const commit of ['Apply','Enter']) {
+      await click(q(handle)); await wait(`${q(input)}?.checkVisibility()`);
+      await fill(input,'18.625');
+      if(commit==='Enter') await key('Enter'); else await click(named(`${editor} button`,'Apply'));
+      await wait(`!${q(editor)}`);
+      const patch=Object.fromEntries(fields.map(field=>[field,18.625]));
+      assert.deepEqual(await stored(),expectedRecipePatch(authored,'card',peers,'header',patch),'linked edit changes only md Card headers, all variants and both themes');
+      const painted=original.map(entry=>entry.component==='card' && entry.part==='header' && entry.recipe.endsWith('.md') ? {...entry,values:Object.fromEntries(fields.map(field=>[field,'18.625px']))} : entry);
+      await assertSettledRecipePaint('card',fields,painted,'linked paint leaves other Card parts, nested components and sizes intact');
+      await click(named('button','Undo change'));
+      await click(named('[data-frame-spacing-editor] button','Corners'));
+      if((await evaluate(`(${link}).getAttribute('aria-pressed')`))!=='true') await click(link);
+      await unchanged(`${commit} is one history entry and Undo restores divergent corners`);
+    }
+    await click(link);
+    await unchanged('unlinking does not write');
+    await click(named('button','Undo change'));
+    assert.deepEqual(await stored(),before,'no-op submissions, toggles and cancellations add no history above the seed edit');
+  });
+  await check('corner pointer drags preview only the selection, commit once and cancel without writes',async()=>{
+    await navigate('design','button');
+    await click(q(`${example('button','outline.sm')} > button`));
+    await click(named('[data-frame-spacing-editor] button','Corners'));
+    const link=named('[data-frame-spacing-editor] button','Link corners');
+    const fields=['borderTopLeftRadius','borderTopRightRadius','borderBottomRightRadius','borderBottomLeftRadius'];
+    const handle='[data-spacing-overlay="radius"] [data-spacing-handle="borderTopLeftRadius"]';
+    const before=await stored();
+    const original=await recipePaint('button',fields);
+    for(const linked of [false,true]) {
+      if((await evaluate(`(${link}).getAttribute('aria-pressed')`))!==String(linked)) await click(link);
+      for(const finish of ['commit','Escape','pointercancel']) {
+        await wait(`${q(handle)}?.checkVisibility()`);
+        await positionCanvas(q(handle));
+        const initial=Number(await evaluate(`${q(handle)}.getAttribute('aria-valuenow')`));
+        const point=await evaluate(`(()=>{const r=${q(handle)}.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+        await send('Input.dispatchMouseEvent',{type:'mousePressed',...point,button:'left',buttons:1,clickCount:1});
+        await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x+12,y:point.y+12,button:'left',buttons:1});
+        await wait(`Number(${q(handle)}.getAttribute('aria-valuenow'))>${initial}`);
+        const value=Number(await evaluate(`${q(handle)}.getAttribute('aria-valuenow')`));
+        const changed=linked ? fields : ['borderTopLeftRadius'];
+        const values=Object.fromEntries(changed.map(field=>[field,`${value}px`]));
+        const preview=original.map(entry=>entry.component==='button' && entry.part==='root' && entry.recipe==='outline.sm' ? {...entry,values:{...entry.values,...values}} : entry);
+        await assertSettledRecipePaint('button',fields,preview,'drag preview affects only the selected frame, not sibling recipes');
+        assert.deepEqual(await stored(),before,'actual pointer movement is transient');
+        if(finish==='Escape') await key('Escape');
+        else if(finish==='pointercancel') await evaluate(`${q(handle)}.dispatchEvent(new PointerEvent('pointercancel',{bubbles:true}));true`);
+        await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:point.x+12,y:point.y+12,button:'left',buttons:0,clickCount:1});
+        assert.equal(await evaluate(`!!${q('[data-spacing-value-editor]')}`),false,'drag release never opens numeric entry');
+        if(finish==='commit') {
+          const patch=Object.fromEntries(changed.map(field=>[field,value]));
+          assert.deepEqual(await stored(),expectedRecipePatch(before,'button',matrixVariants.button.map(variant=>`${variant}.sm`),'root',patch),'pointer commit respects linked state, size, part and both themes');
+          const painted=original.map(entry=>entry.component==='button' && entry.part==='root' && entry.recipe.endsWith('.sm') ? {...entry,values:{...entry.values,...values}} : entry);
+          await assertSettledRecipePaint('button',fields,painted,'committed drag updates only same-size peers');
+          await click(named('button','Undo change'));
+          await click(named('[data-frame-spacing-editor] button','Corners'));
+          if((await evaluate(`(${link}).getAttribute('aria-pressed')`))!==String(linked)) await click(link);
+        }
+        assert.deepEqual(await stored(),before,`${linked ? 'linked' : 'independent'} ${finish}: restore the complete snapshot`);
+        await assertSettledRecipePaint('button',fields,original,'cancel or one Undo restores all corners');
+      }
+    }
+    await click(link);
+  });
+
+  await check('Size modes preserve source intent, fractional values and same-size scope with one Undo',async()=>{
+    await navigate('design','button');
+    await click(q(`${example('button','outline.sm')} > button`));
+    const open=async()=>{ await click(named('[data-frame-spacing-editor] button','Size')); await wait(`${q('[data-frame-size-editor]')}?.checkVisibility()`); };
+    const before=await stored();
+    const peers=matrixVariants.button.map(variant=>`${variant}.sm`);
+    for(const mode of ['fixed','hug','fill']) {
+      await open();
+      assert.ok(await evaluate(`${q('[data-size-measured="width"]')}.textContent.startsWith('Rendered:')`));
+      await select('[aria-label="Width mode"]',mode);
+      if(mode==='fixed') await fill('[aria-label="Fixed width"]','143.125');
+      assert.deepEqual(await stored(),before,'mode and pixel drafts do not save');
+      await click(named('[data-frame-size-editor] button','Apply width'));
+      const value=mode==='fixed'?143.125:mode;
+      assert.deepEqual(await stored(),expectedRecipePatch(before,'button',peers,'root',{width:value}));
+      await wait(`getComputedStyle(${q(recipePart('button','outline.sm','root','frame'))}).width !== ''`);
+      if(mode==='fixed') await wait(`parseFloat(getComputedStyle(${q(recipePart('button','outline.sm','root','frame'))}).width)===143.125`);
+      if(mode==='fill') assert.ok(await evaluate(`(()=>{const e=${q(recipePart('button','outline.sm','root','frame'))},p=e.parentElement,s=getComputedStyle(p);return Math.abs(e.getBoundingClientRect().width-(p.clientWidth-parseFloat(s.paddingLeft)-parseFloat(s.paddingRight)))<1})()`));
+      await click(named('button','Undo change'));
+      assert.deepEqual(await stored(),before);
+    }
+    await open();
+    await select('[aria-label="Width mode"]','fixed');
+    for(const invalid of ['', '-1', '10001', 'NaN']) {
+      await fill('[aria-label="Fixed width"]',invalid);
+      assert.equal(await evaluate(`${q('[aria-label="Fixed width"]')}.getAttribute('aria-invalid')`),'true');
+      await key('Enter');
+      assert.deepEqual(await stored(),before);
+    }
+    await fill('[aria-label="Fixed width"]','190.875');
+    await key('Escape');
+    await wait(`!${q('[data-frame-size-editor]')}`);
+    assert.deepEqual(await stored(),before);
+    await open();
+    await select('[aria-label="Width mode"]','fill');
+    await click(q(workbenchMode('playground')));
+    assert.deepEqual(await stored(),before,'leaving Size discards mode drafts');
+    assert.equal(await evaluate(`!!${q('[data-frame-size-editor]')}`),false);
+    await click(q(workbenchMode('variants')));
+  });
+  await check('Size reset clears only its scoped axis and Text retains typography variant scope',async()=>{
+    await navigate('design','text');
+    await click(q(`${example('text','paragraph.neutral.sm')} > button`));
+    await click(named(`${example('text','paragraph.neutral.sm')} button`,'Frame'));
+    const open=async()=>{ if(!await evaluate(`!!${q('[data-frame-size-editor]')}`)) await click(named('[data-frame-spacing-editor] button','Size')); await wait(`${q('[data-frame-size-editor]')}?.checkVisibility()`); };
+    const before=await stored();
+    const peers=tones.map(tone=>`paragraph.${tone}.sm`);
+    await open();
+    await select('[aria-label="Width mode"]','fixed'); await fill('[aria-label="Fixed width"]','160.625'); await key('Enter');
+    const widthSystem=expectedRecipePatch(before,'text',peers,'root',{width:160.625});
+    assert.deepEqual(await stored(),widthSystem);
+    await open();
+    await select('[aria-label="Height mode"]','fixed'); await fill('[aria-label="Fixed height"]','61.125'); await key('Enter');
+    const both=expectedRecipePatch(widthSystem,'text',peers,'root',{height:61.125});
+    assert.deepEqual(await stored(),both);
+    await open();
+    assert.match(await evaluate(`${q('[data-size-source="width"]')}.textContent`),/Fixed 160.625px/);
+    await select('[aria-label="Width mode"]','fixed'); await fill('[aria-label="Fixed width"]','160.625'); await key('Enter');
+    assert.deepEqual(await stored(),both,'unchanged explicit mode/value is a no-op');
+    await open();
+    await click(named('[data-frame-size-editor] button','Reset height'));
+    const expected=structuredClone(both);
+    for(const mode of ['light','dark']) for(const recipe of peers) delete expected.themes[mode].componentRecipes.text[recipe].root.height;
+    assert.deepEqual(await stored(),expected,'height reset preserves width, colors, layers, other sizes and variants');
+    await click(named('button','Undo change'));
+    assert.deepEqual(await stored(),both,'reset is one undo step');
+    await click(named('button','Undo change'));
+    assert.deepEqual(await stored(),widthSystem,'unchanged submission creates no extra undo');
+    await click(named('button','Undo change'));
+    assert.deepEqual(await stored(),before);
+  });
+
+  await check('gap mode exposes a drag only for a visible single-axis gap; drag and numeric entry commit once per size',async()=>{
+    const settle=(id,recipe)=>wait(`${q(example(id,recipe)+' [data-recipe-body]')}.getAnimations({subtree:true}).every(animation=>animation.playState!=='running')`);
+    const openGap=async(id,recipe,part)=>{
+      await navigate('design',id);
+      await click(q(`${example(id,recipe)} > button`));
+      if(part!=='root') await select('[data-system-layer-select]',part);
+      // Text-first layers (e.g. Error) reach their frame through the canvas action.
+      if(!await evaluate(`!!${q('[data-frame-spacing-editor]')}`)) await click(named(`${example(id,recipe)} button`,'Frame'));
+      await click(named('[data-frame-spacing-editor] button','Gap'));
+      await wait(`${q('[data-spacing-handle="gap"]')}?.checkVisibility()`);
+      return evaluate(`${q('[data-spacing-handle="gap"]')}.dataset.gapAxis`);
+    };
+    const layers=[['button','outline.sm','root'],['badge','outline.primary.sm','root'],['input','invalid.sm','root'],['input','invalid.sm','control'],['input','invalid.sm','error'],['switch','checked.sm','root'],['switch','checked.sm','row'],['checkbox','unchecked.sm','row'],['card','filled.md','root'],['card','filled.md','header'],['card','filled.md','content'],['card','filled.md','footer']];
+    const axes={};
+    for(const [id,recipe,part] of layers) axes[`${id}/${part}`]=await openGap(id,recipe,part);
+    for(const [layer,axis] of Object.entries(axes)) assert.ok(['x','y','none'].includes(axis),`${layer} has a gap handle`);
+    assert.equal(axes['card/header'],'y','Card header stacks title and description');
+    assert.equal(axes['switch/row'],'x','choice row places control and label side by side');
+    assert.equal(axes['button/root'],'none','a text-only Button has one visible item inside its content wrapper');
+    assert.match(await (async()=>{ await openGap('card','filled.md','footer'); return evaluate(`${q('[data-spacing-handle="gap"]')}.title`); })(),/Wrapping layout/,'a nested Button is an item of Card footer, not its content wrapper');
+    await navigate('design','text');
+    await click(q(`${example('text','paragraph.neutral.sm')} > button`));
+    await click(named(`${example('text','paragraph.neutral.sm')} button`,'Frame'));
+    assert.equal(await evaluate(`!!${named('[data-frame-spacing-editor] button','Gap')}`),false,'Text has no gap tool');
+
+    // Drag along the visible axis: preview only on the selection, release writes once.
+    for(const [id,recipe,part,dx,dy] of [['card','filled.md','header',0,10],['switch','checked.sm','row',9,0]]) {
+      await openGap(id,recipe,part);
+      const before=await stored();
+      const handle='[data-spacing-handle="gap"]';
+      const initial=Number(await evaluate(`${q(handle)}.getAttribute('aria-valuenow')`));
+      await positionCanvas(q(handle));
+      const element=recipePart(id,recipe,part,'frame');
+      const spacing=()=>evaluate(`(()=>{const items=[...${q(element)}.children].filter(e=>!['fixed','absolute'].includes(getComputedStyle(e).position)&&e.getBoundingClientRect().width>0).map(e=>e.getBoundingClientRect()).sort((a,b)=>${dy?'a.top-b.top':'a.left-b.left'});const root=${q(element)},scale=root.getBoundingClientRect().width/root.offsetWidth;return (${dy?'items[1].top-items[0].bottom':'items[1].left-items[0].right'})/scale})()`);
+      const distance=await spacing();
+      const point=await evaluate(`(()=>{const r=${q(handle)}.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+      await send('Input.dispatchMouseEvent',{type:'mousePressed',...point,button:'left',buttons:1,clickCount:1});
+      await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x+dx,y:point.y+dy,button:'left',buttons:1});
+      await wait(`parseFloat(getComputedStyle(${q(element)}).gap)===${initial+dx+dy}`);
+      const grown=await spacing(); assert.ok(Math.abs(grown-distance-(dx+dy))<0.02,`${id}/${part} painted item distance grows by the drag delta`);
+      assert.deepEqual(await stored(),before,`${id}/${part} gap preview never saves`);
+      await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:point.x+dx,y:point.y+dy,button:'left',buttons:0,clickCount:1});
+      await settle(id,recipe);
+      const peers=await evaluate(`[...document.querySelectorAll('${matrix(id)} [data-recipe-example]')].map(e=>e.dataset.recipeExample).filter(key=>key.endsWith('.${recipe.split('.').at(-1)}'))`);
+      assert.deepEqual(await stored(),expectedRecipePatch(before,id,peers,part,{gap:initial+dx+dy}),`${id}/${part} gap applies to the same size in both themes`);
+      assert.equal(parseFloat(await evaluate(`getComputedStyle(${q(element)}).gap`)),initial+dx+dy,'committed CSS consumes the gap');
+      assert.ok(Math.abs(await spacing()-distance-(dx+dy))<0.02,'committed paint equals the preview');
+      assert.equal(await evaluate(`!!${q('[data-spacing-value-editor]')}`),false,'drag release does not open the numeric editor');
+      await click(named('button','Undo change'));
+      assert.deepEqual(await stored(),before,'gap drag is one undo step');
+    }
+
+    // Numeric entry works on every gap layer, including ones without a draggable gap.
+    const [id,recipe,part]=layers.find(([id,,part])=>axes[`${id}/${part}`]==='none') ?? ['card','filled.md','header'];
+    await openGap(id,recipe,part);
+    const before=await stored();
+    const handle='[data-spacing-handle="gap"]';
+    if(await evaluate(`${q(handle)}.dataset.gapAxis`)==='none') {
+      assert.match(await evaluate(`${q(handle)}.title`),/enter the gap value/i,'unavailable drag is explained');
+      await positionCanvas(q(handle));
+      const point=await evaluate(`(()=>{const r=${q(handle)}.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+      await send('Input.dispatchMouseEvent',{type:'mousePressed',...point,button:'left',buttons:1,clickCount:1});
+      await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x+20,y:point.y,button:'left',buttons:1});
+      await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:point.x+20,y:point.y,button:'left',buttons:0,clickCount:1});
+      assert.deepEqual(await stored(),before,'no drag without a visible gap');
+      await key('Escape'); await wait(`!${q('[data-spacing-value-editor]')}`);
+    }
+    const input='[data-spacing-value-editor] input[aria-label="Edit gap"]';
+    await evaluate(`${q(handle)}.focus();true`); await key('Enter');
+    await wait(`${q(input)}?.checkVisibility()`);
+    await fill(input,'13.375'); await key('Enter');
+    await wait(`!${q('[data-spacing-value-editor]')}`);
+    const peers=await evaluate(`[...document.querySelectorAll('${matrix(id)} [data-recipe-example]')].map(e=>e.dataset.recipeExample).filter(key=>key.endsWith('.${recipe.split('.').at(-1)}'))`);
+    assert.deepEqual(await stored(),expectedRecipePatch(before,id,peers,part,{gap:13.375}),`${id}/${part} numeric gap keeps fractions and size scope`);
+    await click(named('button','Undo change'));
+    assert.deepEqual(await stored(),before);
+  });
+  await check('right and bottom resize preview matches committed CSS across all seven components',async()=>{
+    for(const [id,recipe,part] of [['button','outline.sm','root'],['input','invalid.sm','control'],['switch','checked.sm','control'],['checkbox','unchecked.sm','control'],['badge','outline.primary.sm','root'],['card','filled.md','header'],['text','paragraph.neutral.sm','root']]) {
+      await navigate('design',id);
+      await click(q(`${example(id,recipe)} > button`));
+      if(part!=='root') await select('[data-system-layer-select]',part);
+      if(id==='text') await click(named(`${example(id,recipe)} button`,'Frame'));
+      const before=await stored();
+      const paint=()=>evaluate(`(()=>{const root=${q(example(id,recipe)+' [data-recipe-body]')},r=root.getBoundingClientRect();return [...root.querySelectorAll('*')].map(e=>{const s=getComputedStyle(e),b=e.getBoundingClientRect();return {tag:e.tagName,part:e.dataset.componentPart,w:b.width,h:b.height,x:b.x-r.x,y:b.y-r.y,minHeight:s.minHeight,boxSizing:s.boxSizing,display:s.display,transform:s.transform,margin:s.margin}})})()`);
+      await wait(`${q(example(id,recipe)+' [data-recipe-body]')}.getAnimations({subtree:true}).every(animation=>animation.playState!=='running')`);
+      const original=await paint();
+      for(const axis of ['width','height']) {
+        await click(named('[data-frame-spacing-editor] button','Size'));
+        await click(named('[data-frame-size-editor] button','Resize on frame'));
+        const handle=`[data-resize-handle="${axis}"]`;
+        await wait(`${q(handle)}?.checkVisibility()`);
+        await positionCanvas(q(handle));
+        if(id==='button' && axis==='width') await capture('studio-frame-resize');
+        const point=await evaluate(`(()=>{const r=${q(handle)}.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+        await send('Input.dispatchMouseEvent',{type:'mousePressed',...point,button:'left',buttons:1,clickCount:1});
+        await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x+(axis==='width'?12:0),y:point.y+(axis==='height'?12:0),button:'left',buttons:1});
+        await wait(`${q('[data-frame-resize-editor]')}.hasAttribute('data-resize-pending-value')`);
+        const value=Number(await evaluate(`${q('[data-frame-resize-editor]')}.dataset.resizePendingValue`));
+        await wait(`${q(example(id,recipe)+' [data-recipe-body]')}.getAnimations({subtree:true}).every(animation=>animation.playState!=='running')`);
+        const preview=await paint();
+        assert.deepEqual(await stored(),before,`${id} ${axis} preview never saves`);
+        await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:point.x+(axis==='width'?12:0),y:point.y+(axis==='height'?12:0),button:'left',buttons:0,clickCount:1});
+        await wait(`${q(example(id,recipe)+' [data-recipe-body]')}.getAnimations({subtree:true}).every(animation=>animation.playState!=='running')`);
+        assert.deepEqual(await paint(),preview,`${id}/${part}/${axis}: preview and commit include layout helpers and descendants`);
+        const peers=await evaluate(`[...document.querySelectorAll('${matrix(id)} [data-recipe-example]')].map(e=>e.dataset.recipeExample).filter(key=>key.endsWith('.${recipe.split('.').at(-1)}')${id==='text'?" && key.startsWith('paragraph.')":""})`);
+        assert.deepEqual(await stored(),expectedRecipePatch(before,id,peers,part,{[axis]:value}));
+        await click(named('button','Undo change'));
+        assert.deepEqual(await stored(),before,`${id} ${axis} is one undo step`);
+        await wait(`${q(example(id,recipe)+' [data-recipe-body]')}.getAnimations({subtree:true}).every(animation=>animation.playState!=='running')`);
+        assert.deepEqual(await paint(),original);
+      }
+    }
+  });
+  await check('corner resize fixes only moved axes, previews like commit and is one undo step',async()=>{
+    await navigate('design','button');
+    await click(q(`${example('button','outline.sm')} > button`));
+    await click(named('[data-frame-spacing-editor] button','Size'));
+    await select('[aria-label="Height mode"]','hug'); await click(named('[data-frame-size-editor] button','Apply height'));
+    const before=await stored();
+    const peers=await evaluate(`[...document.querySelectorAll('${matrix('button')} [data-recipe-example]')].map(e=>e.dataset.recipeExample).filter(key=>key.endsWith('.sm'))`);
+    const body=q(example('button','outline.sm')+' [data-recipe-body]');
+    const settle=()=>wait(`${body}.getAnimations({subtree:true}).every(animation=>animation.playState!=='running')`);
+    const paint=()=>evaluate(`[...${body}.querySelectorAll('*')].map(e=>{const b=e.getBoundingClientRect();return [e.tagName,b.width,b.height]})`);
+    const handle='[data-resize-handle="corner"]';
+    for(const [dx,dy,axes] of [[14,0,['width']],[0,10,['height']],[16,9,['width','height']]]) {
+      await click(named('[data-frame-spacing-editor] button','Size'));
+      await click(named('[data-frame-size-editor] button','Resize on frame'));
+      await wait(`${q(handle)}?.checkVisibility()`);
+      assert.equal(await evaluate(`${q(handle)}.tabIndex`),-1,'corner is a pointer shortcut outside the tab order');
+      await positionCanvas(q(handle));
+      const point=await evaluate(`(()=>{const r=${q(handle)}.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+      await send('Input.dispatchMouseEvent',{type:'mousePressed',...point,button:'left',buttons:1,clickCount:1});
+      await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x+dx,y:point.y+dy,button:'left',buttons:1});
+      await wait(`${q('[data-frame-resize-editor]')}.dataset.resizePendingAxis===${JSON.stringify(axes.join(' '))}`);
+      const values=Object.fromEntries(axes.map(axis=>[axis,0]));
+      for(const axis of axes) values[axis]=Number(await evaluate(`${q('[data-frame-resize-editor]')}.dataset.resizePending${axis==='width'?'Width':'Height'}`));
+      await settle(); const preview=await paint();
+      assert.deepEqual(await stored(),before,'corner preview never saves');
+      await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:point.x+dx,y:point.y+dy,button:'left',buttons:0,clickCount:1});
+      await settle();
+      assert.deepEqual(await paint(),preview,`corner ${axes} preview equals commit`);
+      assert.deepEqual(await stored(),expectedRecipePatch(before,'button',peers,'root',values),`corner ${axes} writes only moved axes; untouched Hug height is preserved`);
+      await click(named('button','Undo change'));
+      assert.deepEqual(await stored(),before,'corner gesture is one undo step');
+    }
+    await click(named('button','Undo change'));
+  });
+  await check('resize preserves Hug/Fill on click, Escape, pointercancel and mode exit; keyboard explicitly fixes an axis',async()=>{
+    await navigate('design','button');
+    await click(q(`${example('button','outline.sm')} > button`));
+    await click(named('[data-frame-spacing-editor] button','Size'));
+    await select('[aria-label="Width mode"]','hug'); await click(named('[data-frame-size-editor] button','Apply width'));
+    const before=await stored();
+    const open=async()=>{ await click(named('[data-frame-spacing-editor] button','Size')); await click(named('[data-frame-size-editor] button','Resize on frame')); await wait(`${q('[data-resize-handle="width"]')}?.checkVisibility()`); };
+    for(const finish of ['click','Escape','pointercancel','mode']) {
+      await open();
+      const handle='[data-resize-handle="width"]';
+      await positionCanvas(q(handle));
+      const element=recipePart('button','outline.sm','root','frame');
+      const originalStyle=await evaluate(`${q(element)}.getAttribute('style')`);
+      const point=await evaluate(`(()=>{const r=${q(handle)}.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+      await send('Input.dispatchMouseEvent',{type:'mousePressed',...point,button:'left',buttons:1,clickCount:1});
+      if(finish!=='click') {
+        await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x+15,y:point.y,button:'left',buttons:1});
+        await wait(`${q('[data-frame-resize-editor]')}.hasAttribute('data-resize-pending-value')`);
+        if(finish==='Escape') await key('Escape');
+        if(finish==='pointercancel') await evaluate(`${q(handle)}.dispatchEvent(new PointerEvent('pointercancel',{bubbles:true}));true`);
+        if(finish==='mode') await evaluate(`${q(workbenchMode('playground'))}.click();true`);
+      }
+      await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:point.x+15,y:point.y,button:'left',buttons:0,clickCount:1});
+      assert.deepEqual(await stored(),before,finish+' does not convert Hug to Fixed');
+      assert.equal(await evaluate(`${q(element)}.getAttribute('style')`),originalStyle,'all temporary recipe variables are restored');
+      if(finish==='mode') await click(q(workbenchMode('variants')));
+    }
+    await open();
+    const handle='[data-resize-handle="height"]';
+    const initial=Number(await evaluate(`${q(handle)}.getAttribute('aria-valuenow')`));
+    await evaluate(`${q(handle)}.focus();true`); await key('ArrowUp');
+    const after=await stored();
+    assert.equal(typeof after.themes.light.componentRecipes.button['outline.sm'].root.height,'number');
+    assert.ok(Math.abs(after.themes.light.componentRecipes.button['outline.sm'].root.height-initial-1)<0.02);
+    await click(named('button','Undo change')); assert.deepEqual(await stored(),before);
+    await click(named('button','Undo change'));
+  });
+
+  await check('text tools: numeric, scrub, align, color and reset keep typography size-scoped and color exact/theme-only',async()=>{
+    const recipe='paragraph.neutral.sm', peers=tones.map(tone=>`paragraph.${tone}.sm`);
+    const element=recipePart('text',recipe,'root','text');
+    const tool=key=>`[data-text-tools] [data-text-tool="${key}"]`;
+    const open=async()=>{
+      await wait(`${named(`${example('text',recipe)} button`,'Text')}?.checkVisibility()`);
+      if(await evaluate(`${named(`${example('text',recipe)} button`,'Text')}.getAttribute('aria-expanded')`)!=='true') await click(named(`${example('text',recipe)} button`,'Text'));
+      await wait(`${q(tool('fontSize'))}?.checkVisibility()`);
+    };
+    await navigate('design','text');
+    await click(q(`${example('text',recipe)} > button`));
+    const before=await stored();
+    assert.equal(await evaluate(`${named(`${example('text',recipe)} button`,'Text')}.getAttribute('aria-expanded')`),'false','text tools start collapsed so the specimen stays selectable');
+    await open();
+    assert.deepEqual(await stored(),before,'opening text tools writes nothing');
+    const mode=await evaluate('document.documentElement.dataset.studioTheme');
+    assert.match(await evaluate(`${q('[data-text-tools]')}.textContent`),new RegExp(`6 combinations at sm · both themes.*color: this combination, ${mode==='dark'?'Dark':'Light'}`));
+    assert.doesNotMatch(await evaluate(`${q(tool('textAlign'))}.textContent`),/leftpx/,'choices carry no unit');
+
+    // Numeric entry: invalid and cancelled drafts never write; Enter writes once for the size/variant group.
+    const size=`${tool('fontSize')} input[type="text"]`;
+    await fill(size,'12px'); await key('Enter');
+    assert.equal(await evaluate(`${q(size)}.getAttribute('aria-invalid')`),'true');
+    await key('Escape');
+    assert.equal(await evaluate(`${q(size)}.getAttribute('aria-invalid')`),'false','Escape discards an invalid draft');
+    await fill(size,'15.375');
+    assert.deepEqual(await stored(),before,'typing is transient');
+    await key('Enter');
+    assert.deepEqual(await stored(),expectedRecipePatch(before,'text',peers,'root',{fontSize:15.375}),'font size: same size and Text variant, both themes');
+    await wait(`getComputedStyle(${q(element)}).fontSize==='15.375px'`);
+    await click(named('button','Undo change'));
+    assert.deepEqual(await stored(),before,'numeric entry is one undo step');
+
+    // Label scrubbing previews only the selected sample and commits once on release; Escape cancels.
+    await open();
+    const label=`${tool('fontSize')} label`;
+    await positionCanvas(q(label));
+    const initial=parseFloat(await evaluate(`getComputedStyle(${q(element)}).fontSize`));
+    const neighbour=recipePart('text','paragraph.primary.sm','root','text');
+    const neighbourSize=await evaluate(`getComputedStyle(${q(neighbour)}).fontSize`);
+    for(const finish of ['Escape','release']) {
+      const point=await evaluate(`(()=>{const r=${q(label)}.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+      await send('Input.dispatchMouseEvent',{type:'mousePressed',...point,button:'left',buttons:1,clickCount:1});
+      await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x+10,y:point.y,button:'left',buttons:1});
+      await wait(`${q(tool('fontSize'))}.dataset.scrubValue==='${initial+5}'`);
+      await wait(`getComputedStyle(${q(element)}).fontSize==='${initial+5}px'`);
+      assert.equal(await evaluate(`getComputedStyle(${q(neighbour)}).fontSize`),neighbourSize,'preview stays on the selected sample');
+      assert.deepEqual(await stored(),before,'scrub preview never saves');
+      if(finish==='Escape') await key('Escape');
+      await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:point.x+10,y:point.y,button:'left',buttons:0,clickCount:1});
+      if(finish==='Escape') {
+        assert.deepEqual(await stored(),before,'Escape cancels the scrub');
+        await wait(`getComputedStyle(${q(element)}).fontSize==='${initial}px'`);
+      }
+    }
+    assert.deepEqual(await stored(),expectedRecipePatch(before,'text',peers,'root',{fontSize:initial+5}));
+    await wait(`getComputedStyle(${q(neighbour)}).fontSize==='${initial+5}px'`);
+    await click(named('button','Undo change'));
+    assert.deepEqual(await stored(),before,'scrub is one undo step');
+
+    // Choices apply immediately; reset removes only that field.
+    await open();
+    await click(named(`${tool('textAlign')} button`,'Center'));
+    assert.deepEqual(await stored(),expectedRecipePatch(before,'text',peers,'root',{textAlign:'center'}));
+    await click(q(`${tool('textAlign')} [aria-label="Reset align"]`));
+    assert.deepEqual(await stored(),before,'reset removes the override from the whole group without copying inherited values');
+
+    // Color: exact combination, active theme only.
+    const color=`${tool('color')} input[type="text"]`;
+    await fill(color,'#123456'); await key('Enter');
+    assert.deepEqual(await stored(),expectedRecipePatch(before,'text',[recipe],'root',{color:'#123456'},[mode]),'color writes only this combination in the active theme');
+    await wait(`getComputedStyle(${q(element)}).color==='rgb(18, 52, 86)'`);
+    await click(named('button','Undo change'));
+    assert.deepEqual(await stored(),before);
+
+    // Nested text layer: Card title weight keeps Card size scope.
+    await navigate('design','card');
+    await click(q(`${example('card','filled.md')} > button`));
+    await select('[data-system-layer-select]','title');
+    const cardBefore=await stored();
+    await click(named(`${example('card','filled.md')} button`,'Text'));
+    await fill(`${tool('fontWeight')} input[type="text"]`,'700'); await key('Enter');
+    const cardPeers=await evaluate(`[...document.querySelectorAll('${matrix('card')} [data-recipe-example]')].map(e=>e.dataset.recipeExample).filter(key=>key.endsWith('.md'))`);
+    assert.deepEqual(await stored(),expectedRecipePatch(cardBefore,'card',cardPeers,'title',{fontWeight:700}));
+    await click(named('button','Undo change'));
+    assert.deepEqual(await stored(),cardBefore);
+  });
+  await check('one contextual tool surface: toolbar keys, status scope below the specimen, group reset and target switch',async()=>{
+    await navigate('design','button');
+    await click(q(`${example('button','outline.sm')} > button`));
+    const toolbar='[data-frame-spacing-editor] [role="toolbar"]';
+    const status=q(`${example('button','outline.sm')} [data-tool-status]`);
+    await wait(`${status}?.dataset.toolStatus==='Padding'`);
+    assert.match(await evaluate(`${status}.textContent`),/6 combinations at sm · both themes/);
+    assert.ok(await evaluate(`(()=>{const s=${status}.getBoundingClientRect(),b=${q(example('button','outline.sm')+' [data-recipe-body]')}.getBoundingClientRect();return s.top>=b.bottom-0.5 && s.left>=b.left-0.5 && s.right<=b.right+0.5})()`),'status sits under the specimen, never over it');
+    for(const [tool,name] of [['Corners','Corners'],['Gap','Gap'],['Margin','Margin']]) {
+      await click(named(`${toolbar} button`,tool));
+      await wait(`${status}?.dataset.toolStatus===${JSON.stringify(name)}`);
+    }
+    assert.match(await evaluate(`${status}.textContent`),/negative/i,'mode hints follow the active tool');
+
+    // Arrow/Home/End move between toolbar buttons only.
+    await evaluate(`${named(`${toolbar} button`,'Size')}.focus();true`);
+    await key('ArrowRight');
+    assert.equal(await evaluate('document.activeElement.textContent'),'Padding');
+    await key('End');
+    assert.equal(await evaluate('document.activeElement.textContent'),'Text','Button root switches to its label text');
+    await key('Home');
+    assert.equal(await evaluate('document.activeElement.textContent'),'Size');
+    await key('ArrowLeft');
+    assert.equal(await evaluate('document.activeElement.textContent'),'Text','arrows wrap');
+
+    // Group reset removes the group's overrides in the size group; it is disabled when nothing is stored and is one Undo step.
+    await click(named(`${toolbar} button`,'Padding'));
+    const before=await stored();
+    const reset=named(`${example('button','outline.sm')} [data-tool-status] button`,'Reset padding');
+    assert.equal(await evaluate(`${reset}.disabled`),true,'nothing to reset');
+    const handle='[data-spacing-handle="paddingLeft"]';
+    await evaluate(`${q(handle)}.focus();true`); await key('ArrowRight');
+    const edited=await stored();
+    assert.notDeepEqual(edited,before);
+    await wait(`!${reset}.disabled`);
+    await click(reset);
+    assert.deepEqual(await stored(),before,'reset restores the defaults without copying inherited values');
+    await click(named('button','Undo change'));
+    assert.deepEqual(await stored(),edited,'reset is one undo step');
+    await click(named('button','Undo change'));
+    assert.deepEqual(await stored(),before);
+
+    // Resize hints live in the status line and describe the handles.
+    await click(q(`${example('button','outline.sm')} > button`));
+    await click(named(`${toolbar} button`,'Size'));
+    await click(named('[data-frame-size-editor] button','Resize on frame'));
+    await wait(`${q('[data-resize-handle="width"]')}?.checkVisibility()`);
+    const described=await evaluate(`document.getElementById(${q('[data-resize-handle="width"]')}.getAttribute('aria-describedby'))?.textContent`);
+    assert.match(described ?? '',/Drag right \/ bottom \/ corner/,'resize handles are described by the visible status hint');
+    assert.equal(await evaluate(`${status}.dataset.toolStatus`),'Resize');
+
+    // Frame ↔ Text switch on the same layer.
+    await navigate('design','text');
+    await click(q(`${example('text','paragraph.neutral.sm')} > button`));
+    const textStatus=q(`${example('text','paragraph.neutral.sm')} [data-tool-status]`);
+    await wait(`${textStatus}?.dataset.toolStatus==='Text'`);
+    assert.match(await evaluate(`${textStatus}.textContent`),/6 combinations at sm · both themes · color: this combination/);
+    await click(named(`${example('text','paragraph.neutral.sm')} [role="toolbar"] button`,'Frame'));
+    await wait(`${textStatus}?.dataset.toolStatus==='Padding'`);
+    await click(named('[data-frame-spacing-editor] [role="toolbar"] button','Text'));
+    await wait(`${textStatus}?.dataset.toolStatus==='Text' && !!${named(`${example('text','paragraph.neutral.sm')} button`,'Text')}`);
+  });
+  await check('direct tools fit narrow viewports with usable hit targets',async()=>{
+    try {
+      for(const width of [700,390]) {
+        await send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});
+        await navigate('design','button');
+        await click(q(`${example('button','outline.sm')} > button`));
+        const toolbar='[data-frame-spacing-editor] [role="toolbar"]';
+        await wait(`${q(toolbar)}?.checkVisibility()`);
+        await positionCanvas(q(toolbar));
+        console.log('NARROWDBG',width,await evaluate(`JSON.stringify({toolbar:!!${q(toolbar)},status:document.querySelectorAll('[data-tool-status]').length,handle:!!${q('[data-spacing-handle="paddingLeft"]')},selected:[...document.querySelectorAll('[data-recipe-example][data-selected]')].map(e=>e.dataset.recipeExample)})`));//DEBUG
+        const report=await evaluate(`(()=>{const buttons=[...${q(toolbar)}.querySelectorAll(':scope > button')].map(b=>b.getBoundingClientRect());const status=${q('[data-tool-status]')}.getBoundingClientRect();return {overflow:document.documentElement.scrollWidth-innerWidth,minHeight:Math.min(...buttons.map(r=>r.height)),minWidth:Math.min(...buttons.map(r=>r.width)),left:Math.min(...buttons.map(r=>r.left),status.left),right:Math.max(...buttons.map(r=>r.right),status.right)}})()`);
+        assert.ok(report.overflow<=0,`${width}px: no document overflow ${JSON.stringify(report)}`);
+        assert.ok(report.minHeight>=24 && report.minWidth>=24,`${width}px: toolbar targets at least 24px ${JSON.stringify(report)}`);
+        assert.ok(report.left>=0 && report.right<=width,`${width}px: toolbar and status stay inside the viewport ${JSON.stringify(report)}`);
+        const handle='[data-spacing-handle="paddingLeft"]';
+        assert.ok(await evaluate(`(()=>{const r=${q(handle)}.getBoundingClientRect();return r.width>=20 && r.height>=20})()`),`${width}px: spacing handles stay usable`);
+        await click(named(`${toolbar} button`,'Size'));
+        await wait(`${q('[data-frame-size-editor]')}?.checkVisibility()`);
+        assert.ok(await evaluate(`(()=>{const r=${q('[data-frame-size-editor]')}.getBoundingClientRect();return r.left>=0 && r.right<=innerWidth})()`),`${width}px: size panel stays inside the viewport`);
+        await key('Escape');
+        if(width===390) await capture('studio-390-direct-tools');
+      }
+    } finally {
+      await send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
+    }
+  });
   await check('Text frame spacing is reachable on canvas and preserves typographic variant scope',async()=>{
     await navigate('design','text');
     await click(q(`${example('text','paragraph.neutral.sm')} > button`));
-    await click(named(`${example('text','paragraph.neutral.sm')} button`,'Frame spacing'));
+    await click(named(`${example('text','paragraph.neutral.sm')} button`,'Frame'));
     const handle='[data-spacing-handle="paddingLeft"]';
     await wait(`${q(handle)}?.checkVisibility()`);
     const before=await stored();
     const initial=Number(await evaluate(`${q(handle)}.getAttribute('aria-valuenow')`));
-    await click(q(handle));
+    await evaluate(`${q(handle)}.focus();true`);
     await key('ArrowRight');
     assert.deepEqual(await stored(),expectedRecipePatch(before,'text',tones.map(tone=>`paragraph.${tone}.sm`),'root',{paddingLeft:initial+1}));
     await click(named('button','Undo change'));
