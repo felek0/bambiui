@@ -4,17 +4,18 @@ import { useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "./controls";
 import { componentIds, type ComponentId, type DesignSystem } from "./tokens";
 import styles from "./developer.module.css";
+import { isFoundation, type FoundationId } from "./foundations";
 
 const subscribeOrigin = () => () => {};
 const browserOrigin = () => window.location.origin;
 const serverOrigin = () => "";
 
-export function SourceDownloadPanel({ selected, system, ready }: { selected: "colors" | "spacing" | ComponentId; system: DesignSystem; ready: boolean }) {
+export function SourceDownloadPanel({ selected, system, ready }: { selected: FoundationId | ComponentId; system: DesignSystem; ready: boolean }) {
   const [status, setStatus] = useState<{ busy: boolean; text: string; error: boolean }>({ busy: false, text: "", error: false });
   const pending = useRef(false);
   const origin = useSyncExternalStore(subscribeOrigin, browserOrigin, serverOrigin);
   const [copyStatus, setCopyStatus] = useState("");
-  const component = selected === "colors" || selected === "spacing" ? null : selected;
+  const component = isFoundation(selected) ? null : selected;
   async function download(ids: readonly ComponentId[]) {
     if (pending.current || !ready) return;
     pending.current = true;

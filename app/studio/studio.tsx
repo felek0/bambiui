@@ -57,6 +57,10 @@ import { SystemComponentEditor, type ComponentEditorTab } from "./system-compone
 import type { ComponentStylePart } from "./component-styles";
 import type { ComponentRecipeSelection } from "./component-recipes";
 import { applyScopedRecipePatch } from "./recipe-edit-scope";
+import { foundationLabels, isFoundation, spacingTokenOrder, typographyStyleLabel, type FoundationId } from "./foundations";
+import { applyComponentRadiusPatch, isRadiusComponent, type RadiusComponentId } from "./component-radii";
+import { RadiusPresetEditor } from "./radius-preset-editor";
+import type { Radius } from "./components/types";
 
 const compactQuery = "(max-width: 800px)";
 function subscribeCompact(listener: () => void) {
@@ -67,19 +71,29 @@ function subscribeCompact(listener: () => void) {
 const getCompact = () => window.matchMedia(compactQuery).matches;
 const getServerCompact = () => false;
 
-type Selection = "colors" | "spacing" | ComponentId;
+type Selection = FoundationId | ComponentId;
 type View = "design" | "develop";
 
 const spacingGroups: { label: string; hint: string; keys: readonly (keyof TokenValues)[] }[] = [
   { label: "Shape", hint: "Shared corner scale and default border width. Component overrides take precedence.", keys: ["radiusSm", "radius", "radiusLg", "borderWidth"] },
   { label: "Layout spacing", hint: "Default padding, gap and margin; these are independent of the spacing scale below.", keys: ["paddingX", "paddingY", "gap", "margin"] },
   { label: "Spacing scale", hint: "Small, medium and large gaps between Card.Content items. This does not rescale all component spacing.", keys: ["spacingSm", "spacingMd", "spacingLg"] },
-  { label: "Type & control sizing", hint: "Base font size and control heights. Named text styles are managed in Typography.", keys: ["fontSize", "controlHeightSm", "controlHeightMd", "controlHeightLg"] },
+  { label: "Control sizing", hint: "Shared sm/md/lg heights for buttons, inputs and other controls. Font sizes live in Typography.", keys: ["controlHeightSm", "controlHeightMd", "controlHeightLg"] },
 ];
 
+// Grouped by job so the list scales; order inside a group follows typical usage.
 const componentGroups: { label: string; ids: readonly ComponentId[] }[] = [
-  { label: "Components", ids: ["button", "input", "switch", "checkbox", "card", "badge", "text"] },
+  { label: "Actions", ids: ["button"] },
+  { label: "Forms", ids: ["input", "checkbox", "switch"] },
+  { label: "Content", ids: ["text", "card", "badge"] },
 ];
+
+/** Empty radius presets are absent, never stored as `{}`. */
+function withComponentRadii(theme: ThemeTokens, radii: ThemeTokens["componentRadii"]): ThemeTokens {
+  const { componentRadii: _previous, ...rest } = theme;
+  void _previous;
+  return radii && Object.keys(radii).length ? { ...rest, componentRadii: radii } : rest;
+}
 
 function workspaceHref(view: View, selection: Selection) {
   const prefix = view === "develop" ? "/develop" : "";
@@ -338,15 +352,15 @@ export default function Studio() {
   const segments = pathname.split("/").filter(Boolean);
   const view: View = segments[0] === "develop" ? "develop" : "design";
   const routeComponent = segments[view === "develop" ? 1 : 0];
-  const selection: Selection = routeComponent === "spacing"
-    ? "spacing"
+  const selection: Selection = routeComponent && isFoundation(routeComponent)
+    ? routeComponent
     : componentIds.find((id) => id === routeComponent) ?? "colors";
   const [query, setQuery] = useState("");
   const [activeTheme, setActiveTheme] = useState<PaletteMode>("light");
   const compact = useSyncExternalStore(subscribeCompact, getCompact, getServerCompact);
   const [componentMode, setComponentMode] = useState<"variants" | "playground">("variants");
   const [playgroundHost, setPlaygroundHost] = useState<HTMLDivElement | null>(null);
-  const playgroundMode = selection !== "colors" && selection !== "spacing" && componentMode === "playground";
+  const playgroundMode = !isFoundation(selection) && componentMode === "playground";
   const [leftHidden, setLeftHidden] = useState(false);
   const [rightHidden, setRightHidden] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"left" | "right" | null>(null);
@@ -374,7 +388,9 @@ export default function Studio() {
     return () => { delete root.dataset.studioTheme; };
   }, [activeTheme]);
   const [scaleRole, setScaleRole] = useState<ColorScaleRole>("primary");
-  const [selectedTypography, setSelectedTypography] = useState<TypographyVariant>("heading");
+  const [selectedTypography, setSelectedTypography] = useState<TypographyVariant>("h1");
+  // View state only: which radius preset the matrix renders per shape-bearing component.
+  const [radiusViews, setRadiusViews] = useState<Partial<Record<RadiusComponentId, Radius>>>({});
   const [selectedVariantColor, setSelectedVariantColor] = useState<string>(componentVariantKeys.button[0]);
   const [componentEditorTab, setComponentEditorTab] = useState<ComponentEditorTab>("styles");
   const [recipeSelection, setRecipeSelection] = useState<ComponentRecipeSelection | null>(null);
@@ -666,16 +682,17 @@ export default function Studio() {
   const previewColors = {
     "--preview-grid-dot": mixColors(theme.global.foreground, theme.global.background, 0.18),
   } as CSSProperties;
-  const isGlobal = selection === "colors" || selection === "spacing";
+  const isGlobal = isFoundation(selection);
   const component: ComponentId = isGlobal ? "button" : selection;
   const values = isGlobal ? theme.global : resolveComponent(theme, component);
   const fields = tokenFields.filter(
     ({ key, type }) => isGlobal
-      ? (selection !== "colors" || type === "color") && (selection !== "spacing" || type === "number")
+      ? selection === "colors" ? type === "color" : selection === "typography" ? key === "fontSize" : type === "number" && key !== "fontSize"
       : isComponentKey(key) && (componentEditableTokenKeys(component).includes(key)),
   );
   const colorFields = fields.filter((field) => field.type === "color");
-  const numberFields = fields.filter((field) => field.type === "number");
+  const numberFields = fields.filter((field) => field.type === "number")
+    .sort((a, b) => selection === "spacing" ? spacingTokenOrder.indexOf(a.key as typeof spacingTokenOrder[number]) - spacingTokenOrder.indexOf(b.key as typeof spacingTokenOrder[number]) : 0);
 
   const cssOutput = useMemo(() => exportCSS({ themes: system.themes }), [system.themes]);
   const output = format === "css" ? cssOutput : JSON.stringify(system, null, 2);
@@ -807,7 +824,7 @@ export default function Studio() {
     return <TokenControl
       key={`${workspaceRevision}-${activeTheme}-${selection}-${field.key}`}
       field={field}
-      compact={!isGlobal || selection === "spacing"}
+      compact={!isGlobal || selection !== "colors"}
       value={values[field.key as keyof typeof values]}
       impact={isGlobal ? undefined : tokenImpact(component, field.key as keyof ComponentTokens)}
       highlighted={highlightedTarget?.selection === selection && highlightedTarget.inputId === `token-${field.key}`}
@@ -1020,13 +1037,8 @@ export default function Studio() {
             ariaLabel={ready && globalIssueCount ? `Colors, ${t.sidebarContrastWarning(globalIssueCount, activeTheme)}` : undefined}
             end={ready && globalIssueCount > 0 && <span className="nav-indicators"><span className="nav-contrast-warning" title={t.sidebarContrastWarning(globalIssueCount, activeTheme)}><Icon name="warning" size={14} /></span></span>}
           >Colors</NavItem>
+          <NavItem icon={<Icon name="text" />} href={workspaceHref(view, "typography")} current={selection === "typography"}>Typography</NavItem>
           <NavItem icon={<Icon name="sliders" />} href={workspaceHref(view, "spacing")} current={selection === "spacing"}>Shape &amp; spacing</NavItem>
-          <button type="button" className="foundation-shortcut" data-foundation-typography disabled={!ready}
-            aria-label="Edit shared typography in Text" onClick={() => {
-              setComponentMode("variants"); setComponentEditorTab("styles");
-              showInspector(); setEditTarget({ selection: "text", inputId: "font-family-preset" });
-              router.push("/text", { scroll: false });
-            }}><Icon name="text" /><span>Typography<small>Shared settings in Text</small></span></button>
           <div className="sidebar-divider" />
           <div className="sidebar-section-label">
             {t.components.toUpperCase()}
@@ -1045,7 +1057,7 @@ export default function Studio() {
               const matches = group.ids.filter((id) => t.componentNames[id].toLowerCase().includes(query.toLowerCase().trim()));
               if (!matches.length) return null;
               return <div className="component-group" role="group" aria-label={group.label} key={group.label}>
-
+                <div className="component-group-label" aria-hidden="true">{group.label}</div>
                 {matches.map((id) => {
                   const overridden = Object.keys(theme.components[id]).length > 0;
                   const issues = ready ? componentIssueCount(id) : 0;
@@ -1089,7 +1101,7 @@ export default function Studio() {
         <div className={shell.workbenchToolbar} data-workbench-toolbar>
           <div className={shell.workbenchHeading}>
             <Button variant="ghost" iconOnly aria-label={leftVisible ? "Hide left panel" : "Show left panel"} title="Library" aria-expanded={leftVisible} aria-controls="workspace-sidebar" onClick={() => { if (compact) setMobilePanel(leftVisible ? null : "left"); else setLeftHidden(leftVisible); }}><Icon name="box" size={16} /></Button>
-            <h1>{selection === "colors" ? "Colors" : selection === "spacing" ? "Shape & spacing" : t.componentNames[selection]}</h1>
+            <h1>{isFoundation(selection) ? foundationLabels[selection] : t.componentNames[selection]}</h1>
           </div>
           {view === "design" && !isGlobal && <div className={shell.workbenchModes} role="group" aria-label="Component workspace">
             {(["variants", "playground"] as const).map(next => <button type="button" key={next} aria-pressed={componentMode === next} aria-controls={next === "variants" ? "component-variants" : "component-playground"} data-workbench-mode={next} data-system-context-change="workbench-mode" onClick={() => { setComponentMode(next); setRightHidden(false); setMobilePanel(null); }}>{next === "variants" ? "Variants" : "Playground"}</button>)}
@@ -1132,12 +1144,19 @@ export default function Studio() {
 
             <section hidden={view !== "design"} aria-label={t.design} className="workspace-panel workspace-panel--design preview-canvas">
               <div className="preview-frame">
-                <Preview key={`${collection.activeId}-${importRevision}`} selected={selection} system={system} mode={activeTheme} active={view === "design"} onSelectColorRole={setScaleRole} onEditToken={(nextSelection, inputId) => { showInspector(); setEditTarget({ selection: nextSelection, inputId }); }}
+                <Preview key={`${collection.activeId}-${importRevision}`} selected={selection} system={system} mode={activeTheme} active={view === "design"} onSelectColorRole={setScaleRole} onSelectTypography={setSelectedTypography} onEditToken={(nextSelection, inputId) => { showInspector(); setEditTarget({ selection: nextSelection, inputId }); }}
                   recipeSelection={recipeSelection} onSelectRecipe={editComponentRecipe} onClearRecipeSelection={clearRecipeSelection} componentMode={componentMode} playgroundControlsTarget={playgroundHost}
                                     spacingContext={`${collection.activeId}-${workspaceRevision}`}
                                     onSpacingCommit={ready ? (target, patch) => {
                                       finishEdit();
                                       updateTheme({ ...theme, componentRecipes: applyScopedRecipePatch(theme.componentRecipes, target, patch) });
+                                      finishEdit();
+                                    } : undefined}
+                                    radiusView={isRadiusComponent(selection) ? radiusViews[selection] : undefined}
+                                    onRadiusViewChange={isRadiusComponent(selection) ? (radius) => setRadiusViews(views => ({ ...views, [selection]: radius })) : undefined}
+                                    onRadiusPresetCommit={ready ? (id, preset, size, patch) => {
+                                      finishEdit();
+                                      updateTheme(withComponentRadii(theme, applyComponentRadiusPatch(theme.componentRadii, id, preset, size, patch)));
                                       finishEdit();
                                     } : undefined} />
               </div>
@@ -1162,8 +1181,8 @@ export default function Studio() {
         aria-label={t.editor}
       >
         <div className="editor-title">
-          <Icon name={selection === "colors" ? "colors" : isGlobal ? "sliders" : component} />
-          <h2>{selection === "spacing" ? "Shape & spacing" : `${selection === "colors" ? "Global colors" : isGlobal ? t.inspector : t.componentNames[component]} · ${activeTheme === "light" ? t.light : t.dark}`}</h2>
+          <Icon name={selection === "colors" ? "colors" : selection === "typography" ? "text" : isGlobal ? "sliders" : component} />
+          <h2>{selection === "spacing" || selection === "typography" ? foundationLabels[selection] : `${selection === "colors" ? "Global colors" : t.componentNames[component]} · ${activeTheme === "light" ? t.light : t.dark}`}</h2>
           {ready && (selection === "colors" || !isGlobal) && <div className="editor-title-actions">
             <ColorPairDialog key={`${collection.activeId}-${activeTheme}-${selection}`} checks={auditChecks} mode={activeTheme} component={isGlobal ? undefined : component} onNavigate={navigateToColorToken} />
             {selection === "colors" && <ColorBuilderDialog key={`${collection.activeId}-${workspaceRevision}`} system={system} onFinish={finishEdit} onApply={applyPalette} />}
@@ -1171,11 +1190,12 @@ export default function Studio() {
           <a className="mobile-preview-link" href="#workspace-content">{view === "design" ? t.backToPreview : t.backToCode}</a>
         </div>
 
-        <fieldset disabled={!ready} className={`editor-fields${!isGlobal || selection === "colors" || selection === "spacing" ? " editor-fields--compact" : ""}${!isGlobal ? " editor-fields--component" : ""}${selection === "spacing" ? " editor-fields--spacing" : ""}`}>
-          <legend className="sr-only">{selection === "spacing" ? "Edit shared shape and spacing tokens" : t.editTokens(activeTheme === "light" ? t.light : t.dark)}</legend>
+        <fieldset disabled={!ready} className={`editor-fields editor-fields--compact${!isGlobal ? " editor-fields--component" : ""}${selection === "spacing" ? " editor-fields--spacing" : ""}${selection === "typography" ? " editor-fields--typography" : ""}`}>
+          <legend className="sr-only">{selection === "spacing" ? "Edit shared shape and spacing tokens" : selection === "typography" ? "Edit shared typography" : t.editTokens(activeTheme === "light" ? t.light : t.dark)}</legend>
 
           {isGlobal && <p className="foundation-scope" data-foundation-scope>{selection === "colors"
             ? `Semantic roles supply component colors in ${activeTheme === "light" ? "Light" : "Dark"}. Component and layer overrides stay unchanged.`
+            : selection === "typography" ? "Shared by Light and Dark. Font family and text styles apply to every component; component and layer overrides take precedence."
             : "Shared by Light and Dark. These are system defaults, not overrides for the selected component size."}</p>}
           {selection === "spacing" && spacingGroups.map((group) => <section className="token-section" key={group.label}>
             <div className="section-heading"><h3>{group.label}</h3>{group.label === "Shape" && <span>{t.sharedThemes}</span>}</div>
@@ -1189,6 +1209,13 @@ export default function Studio() {
             showPreview={false}
             onRecipesChange={componentRecipes => updateTheme({ ...theme, componentRecipes })}
             onStylesChange={componentStyles => updateTheme({ ...theme, componentStyles })}>
+          {!isGlobal && isRadiusComponent(component) && <RadiusPresetEditor component={component} theme={theme} view={radiusViews[component]}
+            onViewChange={(radius) => setRadiusViews(views => ({ ...views, [component]: radius }))}
+            onChange={(updates) => {
+              finishEdit();
+              updateTheme(withComponentRadii(theme, updates.reduce((radii, { preset, size, patch }) => applyComponentRadiusPatch(radii, component, preset, size, patch), theme.componentRadii)));
+              finishEdit();
+            }} />}
           {!isGlobal && variantComponent && <section className="token-section component-variant-editor" id="variant-colors">
             <div className="section-heading"><h3>Variant styles</h3><span>{t.themeOnly(activeTheme)} colors</span></div>
             <label htmlFor="component-variant-style">Variant / tone</label>
@@ -1246,7 +1273,7 @@ export default function Studio() {
                 items: numberFields,
               },
             ] as const
-          ).filter((group) => group.items.length > 0 && selection !== "spacing").map((group) => (
+          ).filter((group) => group.items.length > 0 && selection !== "spacing" && selection !== "typography").map((group) => (
             <section className="token-section" key={group.type}>
               <div className="section-heading">
                 <h3>{group.heading}</h3>
@@ -1255,7 +1282,7 @@ export default function Studio() {
               <div className={group.className}>{group.items.map(renderTokenField)}</div>
             </section>
           ))}
-          {isGlobal && selection !== "spacing" && <section className="token-section foundation-editor" id="color-scales">
+          {selection === "colors" && <section className="token-section foundation-editor" id="color-scales">
             <div className="section-heading"><h3>Palette scales</h3><span>{t.themeOnly(activeTheme)}</span></div>
             <label htmlFor="color-scale-role">Color role</label>
             <select id="color-scale-role" value={scaleRole} onChange={(event) => setScaleRole(event.target.value as ColorScaleRole)}>
@@ -1269,7 +1296,12 @@ export default function Studio() {
                 onChange={(value) => setScaleStop(stop, value)} onReset={() => resetScaleStop(stop)} onFinish={finishEdit} />)}
             </div>
           </section>}
-          {selection === "text" && <section className="token-section foundation-editor" id="font-family-tokens">
+          {selection === "text" && <section className="token-section foundation-link" data-typography-link>
+            <div className="section-heading"><h3>Font family &amp; text styles</h3><span>{t.sharedThemes}</span></div>
+            <p>Named styles (H1–H6, paragraph, label, caption) and the system font are foundations shared by every component. Edit a single layer here; edit the shared scale in Typography.</p>
+            <Link href="/typography" className="foundation-link-action">Open Typography <Icon name="arrow" size={14} /></Link>
+          </section>}
+          {selection === "typography" && <section className="token-section foundation-editor" id="font-family-tokens">
             <div className="section-heading"><h3>System font family</h3><span>{t.sharedThemes}</span></div>
             <p>Default font for all components, not just Text or the selected example.</p>
             <div className="font-family-row"><label htmlFor="font-family-preset">Font family</label>
@@ -1282,15 +1314,20 @@ export default function Studio() {
               </optgroup>
             </select></div>
             <div className="font-family-preview"><p style={{ fontFamily: resolveFontFamily(theme), fontSize: 18, lineHeight: 1.4 }}>Aa Bb 123</p>
-            {selection === "text" && theme.fontFamily !== defaultSystem.themes[activeTheme].fontFamily && <Button type="button" variant="ghost" onClick={() => updateTheme({ ...theme, fontFamily: defaultSystem.themes[activeTheme].fontFamily })}>Reset font family</Button>}</div>
-            {selection === "text" ? <><p>Google Fonts presets request Google when selected.</p><details className="font-family-help"><summary>About font loading</summary><p>Shared by both themes. Google Fonts load only when selected, sending a request to Google; an internet connection is required. Local presets make no font request. Exported CSS imports the selected Google font; offline viewers use its fallback.</p></details></> : <p>Shared by both themes. Google Fonts load only when selected, sending a request to Google; an internet connection is required. Local presets make no font request. Exported CSS imports the selected Google font; offline viewers use its fallback.</p>}
+            {theme.fontFamily !== defaultSystem.themes[activeTheme].fontFamily && <Button type="button" variant="ghost" onClick={() => updateTheme({ ...theme, fontFamily: defaultSystem.themes[activeTheme].fontFamily })}>Reset font family</Button>}</div>
+            <p>Google Fonts presets request Google when selected.</p><details className="font-family-help"><summary>About font loading</summary><p>Shared by both themes. Google Fonts load only when selected, sending a request to Google; an internet connection is required. Local presets make no font request. Exported CSS imports the selected Google font; offline viewers use its fallback.</p></details>
           </section>}
-          {selection === "text" && !isGlobal && <section className="token-section foundation-editor" id="typography-tokens">
-            <div className="section-heading"><h3>Shared text styles</h3><span>{t.sharedThemes}</span></div>
-            <p>Named typography defaults across sizes and tones in both themes. Component and layer overrides take precedence; use the selected layer above for a size-specific change.</p>
+          {selection === "typography" && <section className="token-section" id="base-font-size">
+            <div className="section-heading"><h3>Base size</h3><span>{t.sharedThemes}</span></div>
+            <p>Default font size for component labels and controls that do not use a named text style.</p>
+            <div className="number-fields">{numberFields.map(renderTokenField)}</div>
+          </section>}
+          {selection === "typography" && <section className="token-section foundation-editor" id="typography-tokens">
+            <div className="section-heading"><h3>Text styles</h3><span>{t.sharedThemes}</span></div>
+            <p>Named styles used by Text across sizes and tones in both themes. Component and layer overrides take precedence. Select a style here or on the canvas.</p>
             <div className="typography-style-row"><label htmlFor="typography-variant">Style</label>
               <select id="typography-variant" value={selectedTypography} onChange={(event) => setSelectedTypography(event.target.value as TypographyVariant)}>
-                {typographyVariants.map((variant) => <option key={variant} value={variant}>{variant === "heading" ? "Legacy heading" : variant.toUpperCase()}</option>)}
+                {typographyVariants.map((variant) => <option key={variant} value={variant}>{typographyStyleLabel(variant)}</option>)}
               </select>
             </div>
             <div className="typography-controls">
@@ -1310,15 +1347,19 @@ export default function Studio() {
               if (
                 !window.confirm(
                   isGlobal
-                    ? selection === "colors" ? `Reset ${activeTheme} global colors? Color scale and component overrides will be kept; shared dimensions and font family will not change.`
+                    ? selection === "typography" ? "Reset font family, base size and every text style in both themes? Colors, dimensions and component overrides will be kept."
+                      : selection === "colors" ? `Reset ${activeTheme} global colors? Color scale and component overrides will be kept; shared dimensions and font family will not change.`
                       : selection === "spacing" ? "Reset shared shape, spacing and sizing in both themes? Colors and component overrides will be kept."
                       : t.confirmGlobal(activeTheme === "light" ? t.light : t.dark)
-                    : `Reset ${t.componentNames[component]} styles? ${activeTheme} colors and shared geometry in both themes will reset. Saved sample defaults and existing local overrides will be kept.`,
+                    : `Reset ${t.componentNames[component]} styles? ${activeTheme} colors and shared geometry${isRadiusComponent(component) ? " (including radius presets)" : ""} in both themes will reset. Saved sample defaults and existing local overrides will be kept.`,
                 )
               )
                 return;
               updateTheme(
-                isGlobal
+                selection === "typography"
+                  ? { ...theme, fontFamily: defaultSystem.themes[activeTheme].fontFamily, typography: structuredClone(defaultTypography),
+                      global: { ...theme.global, fontSize: defaultSystem.themes[activeTheme].global.fontSize } }
+                  : isGlobal
                   ? { ...theme, source: selection === "spacing" ? theme.source : defaultSystem.themes[activeTheme].source,
                       fontFamily: theme.fontFamily,
                       global: Object.fromEntries(tokenFields.map(({ key, type }) => [key,
@@ -1326,7 +1367,7 @@ export default function Studio() {
                           ? defaultSystem.themes[activeTheme].global[key] : theme.global[key],
                       ])) as TokenValues }
                   : {
-                      ...theme,
+                      ...withComponentRadii(theme, isRadiusComponent(component) ? Object.fromEntries(Object.entries(theme.componentRadii ?? {}).filter(([id]) => id !== component)) : theme.componentRadii),
                       components: { ...theme.components, [component]: {} },
                       variantColors: { ...theme.variantColors, ...(variantComponent ? { [variantComponent]: {} } : {}) },
                       componentStyles: { ...theme.componentStyles, [component]: {} },
@@ -1334,7 +1375,7 @@ export default function Studio() {
               );
             }}
           >
-            {selection === "spacing" ? "Reset shared dimensions" : isGlobal ? t.resetGlobal : "Reset component styles"}
+            {selection === "spacing" ? "Reset shared dimensions" : selection === "typography" ? "Reset typography" : isGlobal ? t.resetGlobal : "Reset component styles"}
           </Button>
           </SystemComponentEditor>
         </fieldset>

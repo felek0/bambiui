@@ -12,7 +12,9 @@ import {
   matchesMatrixFilters, matrixSelectionKey, reconcileMatrixSelection, type MatrixFilters,
 } from "./component-matrix-state";
 import styles from "./component-matrix.module.css";
-import { FrameSpacingEditor, type FrameSpacingCommit } from "./frame-spacing-editor";
+import { FrameSpacingEditor, type FrameSpacingCommit, type RadiusPresetCommit } from "./frame-spacing-editor";
+import { isRadiusComponent, radiusPresets, radiusShapePart } from "./component-radii";
+import type { Radius } from "./components/types";
 import type { ThemeTokens } from "./tokens";
 import { TextToolsEditor } from "./text-tools-editor";
 import { textToolFields } from "./text-tools-model";
@@ -24,13 +26,15 @@ const title = (value: string) => value.replace(/([a-z])([A-Z])/g, "$1 $2").repla
 const sizes = { sm: "Small", md: "Medium", lg: "Large" } as const;
 
 /** Use the public components, not specimen-only styles, so Project and exported code agree. */
-function RecipeExample({ component, option, defaults, showError = false }: {
-  component: SharedComponentId; option: ComponentRecipeOption; defaults?: ComponentDefaults; showError?: boolean;
+function RecipeExample({ component, option, defaults, showError = false, radius }: {
+  component: SharedComponentId; option: ComponentRecipeOption; defaults?: ComponentDefaults; showError?: boolean; radius?: Radius;
 }) {
   const resolved = resolveComponentDefaults(component, defaults);
   const props = { ...resolved.props, ...option.props };
   // Content is useful here; insertion-only state choices must not hide another recipe's anatomy.
+  // The radius view is explicit: the default shape omits the prop, a preset view sets it everywhere.
   delete props.radius;
+  if (radius) props.radius = radius;
   const label = String(props.label ?? "Label");
   const description = String(props.description ?? "Helpful context for this field.");
   const error = option.variant.startsWith("invalid") || component === "input" && option.variant === "readonly" && showError ? String(resolved.props.error || "Please check this field.") : undefined;
@@ -58,7 +62,7 @@ function rootSelection(component: SharedComponentId, recipe: string): ComponentR
   return { component, recipe, part: "root", target: componentRecipeParts(component)[0].target };
 }
 
-export function ComponentMatrix({ component, defaults, selection: incomingSelection, onSelect, onClearSelection, onSpacingCommit, spacingContext, theme, themeLabel = "this theme" }: {
+export function ComponentMatrix({ component, defaults, selection: incomingSelection, onSelect, onClearSelection, onSpacingCommit, spacingContext, theme, themeLabel = "this theme", radiusView, onRadiusViewChange, onRadiusPresetCommit }: {
   component: SharedComponentId; defaults?: ComponentDefaults; selection: ComponentRecipeSelection | null;
   onSelect: (selection: ComponentRecipeSelection) => void;
   onClearSelection?: () => void;
@@ -66,6 +70,9 @@ export function ComponentMatrix({ component, defaults, selection: incomingSelect
   spacingContext?: string;
   theme?: ThemeTokens;
   themeLabel?: string;
+  radiusView?: Radius;
+  onRadiusViewChange?: (radius: Radius | undefined) => void;
+  onRadiusPresetCommit?: RadiusPresetCommit;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const spacingHelpId = useId();
@@ -134,10 +141,18 @@ export function ComponentMatrix({ component, defaults, selection: incomingSelect
         </select>
       </label>)}
       <button type="button" disabled={!activeFilters} data-system-context-change="matrix-filter" onClick={() => changeFilters(emptyMatrixFilters())}>Clear filters</button>
+      {isRadiusComponent(component) && onRadiusViewChange && <label className={styles.radiusView}>
+        <span>Radius</span>
+        <select aria-label="Radius preset view" value={radiusView ?? ""} data-system-context-change="matrix-radius" data-radius-view
+          onChange={event => onRadiusViewChange((event.target.value || undefined) as Radius | undefined)}>
+          <option value="">Default shape</option>
+          {radiusPresets.map(preset => <option key={preset} value={preset}>radius=&quot;{preset}&quot;</option>)}
+        </select>
+      </label>}
     </fieldset>
     <p className={styles.context}>{selection?.component === component
-      ? `Selected: ${options.find(option => option.key === selection.recipe)?.label ?? selection.recipe} / ${componentRecipeParts(component).find(part => part.key === selection.part)?.label ?? title(selection.part)} / ${title(selection.target)}${selection.target === "frame" && onSpacingCommit ? " · Frame tools edit this size across supported combinations in both themes." : ""}`
-      : "No layer selected."}</p>
+      ? `Selected: ${options.find(option => option.key === selection.recipe)?.label ?? selection.recipe} / ${componentRecipeParts(component).find(part => part.key === selection.part)?.label ?? title(selection.part)} / ${title(selection.target)}${selection.target === "frame" && onSpacingCommit ? " · Frame tools edit this size across supported combinations in both themes." : ""}${radiusView ? ` · Showing radius="${radiusView}": corners of the ${radiusShapePart[component as keyof typeof radiusShapePart] === "control" ? "control" : "frame"} edit this component's ${radiusView} preset.` : ""}`
+      : radiusView ? `Showing radius="${radiusView}". Select a frame to edit this component's ${radiusView} preset.` : "No layer selected."}</p>
     </div>
     {!visible.length && <div className={styles.empty} role="status"><h3>No combinations match these filters</h3><p>Clear filters to show all {options.length} combinations. No new layer is selected automatically.</p><button type="button" data-system-context-change="matrix-filter" onClick={() => changeFilters(emptyMatrixFilters())}>Clear filters</button></div>}
     <div className={styles.columns} aria-hidden="true"><span>{stateAxis ? "State" : "Variant"}{axes.tone.length ? " / tone" : ""}</span>{axes.size.filter(size => !state.filters.size || size === state.filters.size).map(size => <span key={size}>{sizes[size]}</span>)}</div>
@@ -156,7 +171,7 @@ export function ComponentMatrix({ component, defaults, selection: incomingSelect
                 const hit = event.target instanceof Element ? componentRecipeSelectionFromElement(event.target, component) : null;
                 onSelect(hit && hit.recipe === option.key ? hit : rootSelection(component, option.key));
               }}>
-              <RecipeExample component={component} option={option} defaults={defaults} showError={selected && selection.part === "error"} />
+              <RecipeExample component={component} option={option} defaults={defaults} showError={selected && selection.part === "error"} radius={radiusView} />
             </div>
             {selected && selection.target === "text" && onSpacingCommit && <>
               <div className={surface.surface} data-tool-surface="text" data-system-context-change="text-tools">
@@ -167,7 +182,8 @@ export function ComponentMatrix({ component, defaults, selection: incomingSelect
                 {textToolFields(selection).length > 0 && <ToolStatus tool="Text" scope={`${editScopeLabel(selection, "fontSize", themeLabel)} · color: this combination, ${themeLabel}`} hint="Open Text to type values or drag a label; Enter applies, Escape cancels." />}
               </div>
             </>}
-            {selected && selection.target === "frame" && onSpacingCommit && <FrameSpacingEditor key={`${spacingContext}-${selection.recipe}-${selection.part}`} selection={selection} onCommit={onSpacingCommit} helpId={spacingHelpId} theme={theme} themeLabel={themeLabel}
+            {selected && selection.target === "frame" && onSpacingCommit && <FrameSpacingEditor key={`${spacingContext}-${radiusView ?? "default"}-${selection.recipe}-${selection.part}`} selection={selection} onCommit={onSpacingCommit} helpId={spacingHelpId} theme={theme} themeLabel={themeLabel}
+              radiusPreset={radiusView && onRadiusPresetCommit && isRadiusComponent(component) && radiusShapePart[component] === selection.part ? { component, preset: radiusView, onCommit: onRadiusPresetCommit } : undefined}
               onTextTarget={(text => text ? () => onSelect(text) : undefined)(textTargetFor(selection))} />}
             {selected && hasInteractionPreview(component) && <InteractionPreview key={option.key} component={component} option={option} defaults={defaults} showError={selection.part === "error"} />}
           </div>;

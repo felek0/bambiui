@@ -24,6 +24,8 @@ import {
 } from "./tokens";
 import styles from "./developer.module.css";
 import { SourceDownloadPanel } from "./source-download-panel";
+import { foundationTokenLabels, isFoundation, type FoundationId } from "./foundations";
+import { componentRadiusVariable, isRadiusComponent, radiusCorners, radiusPresets, radiusSizes, type RadiusComponentId } from "./component-radii";
 import { developerCopy, type NoteKey } from "./developer-copy";
 import type { PaletteMode } from "./color-engine";
 import { appearanceFieldsFor, appearanceParts } from "./page-document/appearance";
@@ -33,7 +35,7 @@ import { componentRecipeFields, componentRecipeOptions, componentRecipeParts, co
 
 
 export type DeveloperViewProps = {
-  selected: "colors" | "spacing" | ComponentId;
+  selected: FoundationId | ComponentId;
   system: DesignSystem;
   mode: PaletteMode;
   cssOutput: string;
@@ -238,6 +240,7 @@ function TypographyReference({ theme, variables }: { theme: ThemeTokens; variabl
       <h3>{copy.typographyReference}</h3>
       <p>{copy.typographyDescription}</p>
       <p>{copy.fontFamily}: <code>{theme.fontFamily ?? "system"}</code> · <code>--ds-font-family</code>: <code>{variables["--ds-font-family"]}</code></p>
+      <p>Base size: <code>--ds-font-size</code>: <code>{variables["--ds-font-size"]}</code>. Shared by Light and Dark.</p>
       <ScrollRegion label={copy.typographyReference}>
         <table className={styles.table}>
           <caption>{copy.typographyReference}</caption>
@@ -250,7 +253,7 @@ function TypographyReference({ theme, variables }: { theme: ThemeTokens; variabl
               <td><span className={styles.typeSample} style={{ fontFamily: "var(--ds-font-family)", fontSize: values.fontSize, lineHeight: values.lineHeight, fontWeight: values.fontWeight, letterSpacing: values.letterSpacing }}>{copy.sampleText}</span></td>
               {(["font-size", "line-height", "font-weight", "letter-spacing"] as const).map((field) => {
                 const name = `${prefix}${field}`;
-                return <td key={field}><code>{name}</code><br /><code>{variables[name]}</code></td>;
+                return <td key={field}><code>{name}</code><CopyToken value={name} /><br /><code>{variables[name]}</code></td>;
               })}
             </tr>;
           })}</tbody>
@@ -287,7 +290,8 @@ function FoundationTokens({ theme, mode, variables, kind }: {
   kind: "colors" | "spacing";
 }) {
   const colors = kind === "colors";
-  const fields = tokenFields.filter((field) => field.type === (colors ? "color" : "number"));
+  // Base font size is documented with Typography.
+  const fields = tokenFields.filter((field) => field.type === (colors ? "color" : "number") && field.key !== "fontSize");
   const keys = componentTokenKeys.filter((key) => colors
     ? key === "background" || key === "foreground" || key === "border"
     : key !== "background" && key !== "foreground" && key !== "border");
@@ -311,7 +315,7 @@ function FoundationTokens({ theme, mode, variables, kind }: {
           <tbody>{fields.map(({ key, label }) => {
             const name = cssName(key);
             return <tr key={key}>
-              <th scope="row">{label}</th>
+              <th scope="row">{foundationTokenLabels[key] ?? label}</th>
               <td><code>{name}</code><CopyToken value={name} /></td>
               <td><span className={styles.tokenValue}>{colors && <span className={styles.inlineSwatch} style={{ backgroundColor: variables[name] }} aria-hidden="true" />}<code>{variables[name]}</code></span><CopyToken value={variables[name]} /></td>
             </tr>;
@@ -391,6 +395,29 @@ function InsertionParameters({ selected, system }: { selected: ComponentId; syst
   </details>;
 }
 
+/** Only variables a real `[data-radius]` corner consumes; unset cells show their shared-scale fallback. */
+function RadiusPresetReference({ id, variables }: { id: RadiusComponentId; variables: Record<string, string> }) {
+  return <details className={styles.reference} data-radius-preset-reference>
+    <summary>Radius presets</summary>
+    <p><code>radius=&quot;sm | md | lg&quot;</code> resolves <code>--{id}-radius-&#123;preset&#125;-&#123;size&#125;-&#123;corner&#125;</code>, then the shared <code>--ds-radius-&#123;preset&#125;</code> step. Recipe and shared-part corners style only the default shape (radius omitted); local <code>appearance</code> still wins. Shared by Light and Dark.</p>
+    <ScrollRegion label="Radius preset variables">
+      <table className={styles.table}>
+        <caption>{id} radius preset variables</caption>
+        <thead><tr><th scope="col">Preset · size</th><th scope="col">CSS variable</th><th scope="col">Resolved value</th></tr></thead>
+        <tbody>{radiusPresets.flatMap(preset => radiusSizes.flatMap(size => radiusCorners.map(corner => {
+          const name = componentRadiusVariable(id, preset, size, corner);
+          const fallback = `--ds-radius-${preset}`;
+          return <tr key={name}>
+            <th scope="row">{preset} · {size} · {corner}</th>
+            <td><code>{name}</code><CopyToken value={name} /></td>
+            <td>{variables[name] ? <><code>{variables[name]}</code> · custom</> : <><code>{variables[fallback]}</code> · from <code>{fallback}</code></>}</td>
+          </tr>;
+        })))}</tbody>
+      </table>
+    </ScrollRegion>
+  </details>;
+}
+
 function SharedPartStyles({ selected, theme, mode, variables }: {
   selected: ComponentId; theme: ThemeTokens; mode: PaletteMode; variables: Record<string, string>;
 }) {
@@ -464,11 +491,11 @@ function RecipeStyles({ selected, theme, mode, variables }: {
 
 export function DeveloperView({ selected, system, mode, cssOutput, ready }: DeveloperViewProps) {
   const copy = developerCopy;
-  const component = selected === "colors" || selected === "spacing" ? null : reference[selected];
+  const component = isFoundation(selected) ? null : reference[selected];
   const theme = system.themes[mode];
   const variables = useMemo(() => toCSSVariables(theme, mode), [theme, mode]);
-  const prefix = selected === "colors" || selected === "spacing" ? "--ds-" : `--${selected}-`;
-  const editableNames = new Set((selected === "colors" || selected === "spacing" ? [...componentTokenKeys] : componentEditableTokenKeys(selected))
+  const prefix = isFoundation(selected) ? "--ds-" : `--${selected}-`;
+  const editableNames = new Set((isFoundation(selected) ? [...componentTokenKeys] : componentEditableTokenKeys(selected))
     .map((key) => `${prefix}${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`));
   const tokens = Object.entries(variables).filter(([name]) => editableNames.has(name));
   const variantComponent = component && selected in componentVariantKeys ? selected as ComponentVariantId : null;
@@ -496,7 +523,7 @@ export function DeveloperView({ selected, system, mode, cssOutput, ready }: Deve
 
       <SourceDownloadPanel selected={selected} system={system} ready={ready} />
 
-      {selected !== "colors" && selected !== "spacing" && component && (
+      {!isFoundation(selected) && component && (
         <>
           <ReactUsage key={selected} selected={selected} />
           <details className={styles.reference}>
@@ -523,6 +550,7 @@ export function DeveloperView({ selected, system, mode, cssOutput, ready }: Deve
           <InsertionParameters selected={selected} system={system} />
           <RecipeStyles selected={selected} theme={theme} mode={mode} variables={variables} />
           <SharedPartStyles selected={selected} theme={theme} mode={mode} variables={variables} />
+          {isRadiusComponent(selected) && <RadiusPresetReference id={selected} variables={variables} />}
           <details className={styles.reference} data-instance-appearance-reference>
             <summary>Local instance appearance (not tokens)</summary>
             <p><code>appearance</code> overrides only this instance, taking precedence over System Styles. It targets the Input shell, Switch track, Checkbox box, or the component root. Unset values keep their shared part, theme, variant and state inheritance. Lengths are pixels; lineHeight is unitless. Colors are six-digit hex (background and borderColor also accept transparent); shadow uses the existing none/sm/md/lg presets.</p>
@@ -539,9 +567,9 @@ export function DeveloperView({ selected, system, mode, cssOutput, ready }: Deve
       )}
 
       {(selected === "colors" || selected === "spacing") && <FoundationTokens theme={theme} mode={mode} variables={variables} kind={selected} />}
-      {selected === "text" && <TypographyReference theme={theme} variables={variables} />}
+      {(selected === "text" || selected === "typography") && <TypographyReference theme={theme} variables={variables} />}
 
-      {selected !== "colors" && selected !== "spacing" && <details className={styles.reference}>
+      {!isFoundation(selected) && <details className={styles.reference}>
         <summary>{component ? copy.tokenInheritance : copy.globalTokenReference}</summary>
         <p>
           {component
@@ -599,7 +627,7 @@ export function DeveloperView({ selected, system, mode, cssOutput, ready }: Deve
         </details>
       )}
 
-      {selected !== "colors" && selected !== "spacing" && derived.length > 0 && (
+      {!isFoundation(selected) && derived.length > 0 && (
         <details className={styles.reference}>
           <summary>{copy.derivedColors}</summary>
           <p>{copy.derivedDescription(mode)}</p>

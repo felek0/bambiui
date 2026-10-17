@@ -4,7 +4,7 @@ import {
   componentRecipeOptions, componentRecipeParts, componentRecipeSuffixes, recipeCSSValue,
   type ComponentRecipePart,
 } from "./recipes";
-import type { SharedComponentId, Size } from "./types";
+import type { Radius, SharedComponentId, Size } from "./types";
 
 const slug = (value: string) => value.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`).replace(/\./g, "-");
 const textKeys = ["fontSize", "fontWeight", "lineHeight", "letterSpacing", "textAlign", "color"] as const;
@@ -46,10 +46,24 @@ export function fieldRecipeStyle(id: "input" | "switch" | "checkbox", size: Size
   return result as CSSProperties;
 }
 
-export function mergeRecipeStyle(id: SharedComponentId, recipe: string, style: CSSProperties | undefined, appearance?: NodeAppearance): CSSProperties;
-export function mergeRecipeStyle<State>(id: SharedComponentId, recipe: string, style: CSSProperties | ((state: State) => CSSProperties | undefined) | undefined, appearance?: NodeAppearance): CSSProperties | ((state: State) => CSSProperties);
-export function mergeRecipeStyle<State>(id: SharedComponentId, recipe: string, style: CSSProperties | ((state: State) => CSSProperties | undefined) | undefined, appearance?: NodeAppearance) {
-  const active = componentRecipeStyle(id, recipe);
+const radiusCorners = ["top-left", "top-right", "bottom-right", "bottom-left"] as const;
+
+/**
+ * An explicit `radius` preset resolves this component's preset corners for its size, then the
+ * shared `--ds-radius-{preset}` step. Recipe and shared-part corners style only the default shape;
+ * local appearance still wins because it is applied inline.
+ */
+export function radiusPresetStyle(id: "button" | "input" | "checkbox" | "badge" | "card", radius: Radius | undefined, size: Size = "md"): CSSProperties {
+  const result: Record<string, string> = {};
+  if (!radius) return result as CSSProperties;
+  for (const corner of radiusCorners) result[`--${id}-radius-preset-${corner}`] = `var(--${id}-radius-${radius}-${size}-${corner}, var(--ds-radius-${radius}))`;
+  return result as CSSProperties;
+}
+
+export function mergeRecipeStyle(id: SharedComponentId, recipe: string, style: CSSProperties | undefined, appearance?: NodeAppearance, base?: CSSProperties): CSSProperties;
+export function mergeRecipeStyle<State>(id: SharedComponentId, recipe: string, style: CSSProperties | ((state: State) => CSSProperties | undefined) | undefined, appearance?: NodeAppearance, base?: CSSProperties): CSSProperties | ((state: State) => CSSProperties);
+export function mergeRecipeStyle<State>(id: SharedComponentId, recipe: string, style: CSSProperties | ((state: State) => CSSProperties | undefined) | undefined, appearance?: NodeAppearance, base?: CSSProperties) {
+  const active = { ...componentRecipeStyle(id, recipe), ...base };
   const merge = (native?: CSSProperties): CSSProperties => {
     const local = mergeAppearanceStyle(native, appearance);
     const label: Record<string, string | number> = {};

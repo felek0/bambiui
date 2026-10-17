@@ -465,11 +465,6 @@
   background: var(--ds-primary);
 }
 
-.fontVisual {
-  font-size: var(--ds-font-size);
-  font-weight: 600;
-  line-height: 1;
-}
 
 .heightVisual {
   display: grid;
@@ -781,4 +776,73 @@
   .preview *::after {
     transition: none;
   }
+}
+
+/* Typography foundation: font, base size and the named text style scale. */
+.typeBasics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.typeBasics a,
+.typeScale a {
+  display: flex;
+  min-width: 0;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius);
+  color: var(--ds-foreground);
+  text-decoration: none;
+}
+.typeBasics a {
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+.typeBasics a > span:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.typeFontSample {
+  font: 600 24px/1.2 var(--ds-font-family);
+}
+.typeBaseSample {
+  font: 400 var(--ds-font-size)/1.4 var(--ds-font-family);
+}
+.typeScale {
+  display: grid;
+  gap: 6px;
+}
+.typeScale a {
+  align-items: baseline;
+  gap: 16px;
+  padding: 10px 12px;
+}
+.typeMeta {
+  display: grid;
+  flex: none;
+  width: 156px;
+  color: var(--ds-muted-foreground);
+  font: 11px/1.5 var(--studio-font-family);
+}
+.typeMeta strong {
+  color: var(--ds-foreground);
+  font-weight: 600;
+}
+.typeSample {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--ds-font-family);
+}
+.typeBasics a:hover,
+.typeBasics a:focus-visible,
+.typeScale a:hover,
+.typeScale a:focus-visible {
+  background: var(--ds-muted);
+}
+@container (max-width: 600px) {
+  .typeBasics { grid-template-columns: minmax(0, 1fr); }
+  .typeScale a { flex-direction: column; gap: 4px; }
+  .typeMeta { width: auto; }
 }

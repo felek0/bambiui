@@ -2,7 +2,7 @@ import type { ComponentProps, ReactNode } from "react";
 import { cx } from "../cx";
 import type { AppearanceProps } from "./appearance";
 import { componentRecipeKey } from "./recipes";
-import { componentRecipeMarkers, mergeRecipeStyle } from "./recipe-runtime";
+import { componentRecipeMarkers, mergeRecipeStyle, radiusPresetStyle } from "./recipe-runtime";
 import type { Radius, Size, Tone } from "./types";
 import styles from "./components.module.css";
 
@@ -38,7 +38,7 @@ export function Badge({
   return (
     <span
       {...props}
-      style={mergeRecipeStyle("badge", recipe, style, appearance)}
+      style={mergeRecipeStyle("badge", recipe, style, appearance, radiusPresetStyle("badge", radius, size))}
       {...componentRecipeMarkers("badge", "root")}
       data-component-recipe={recipe}
       className={cx(styles.badge, className)}

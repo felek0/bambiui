@@ -4,7 +4,7 @@ import { cx } from "../cx";
 import type { Radius, Size } from "./types";
 import styles from "./components.module.css";
 import { appearanceToStyle, type AppearanceProps, type NodeParts } from "./appearance";
-import { componentRecipeMarkers, fieldRecipeStyle } from "./recipe-runtime";
+import { componentRecipeMarkers, fieldRecipeStyle, radiusPresetStyle } from "./recipe-runtime";
 
 export type ErrorPosition = "below" | "above";
 export type ErrorIcon = "none" | "info" | "warning";
@@ -72,7 +72,7 @@ export function FieldRoot({
   return (
     <Field.Root
       className={cx(styles.field, className)}
-      style={{ ...fieldRecipeStyle(component, size), ...appearanceToStyle(parts?.root) }}
+      style={{ ...fieldRecipeStyle(component, size), ...(component === "switch" ? {} : radiusPresetStyle(component, radius, size)), ...appearanceToStyle(parts?.root) }}
       {...componentRecipeMarkers(component, "root")}
       data-appearance-part="root"
       data-page-owner={pageOwner}

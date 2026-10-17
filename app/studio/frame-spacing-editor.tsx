@@ -13,6 +13,13 @@ import { measureGapLayout, type GapLayout } from "./gap-layout";
 import { ToolStatus, toolbarKeyDown } from "./tool-status";
 import surface from "./tool-status.module.css";
 import { editScopeLabel, groupResetPatch, groupResettable } from "./tool-scope";
+import { componentRadiusResettable, componentRadiusVariable, radiusCornerField, radiusCorners, type CornerRadiiPatch, type RadiusComponentId } from "./component-radii";
+import { componentRecipeOptions } from "./component-recipes";
+import type { Radius, Size } from "./components/types";
+
+export type RadiusPresetCommit = (component: RadiusComponentId, preset: Radius, size: Size, patch: CornerRadiiPatch) => void;
+/** Corners of a preset view's shape layer write the component preset for this size, never recipe corners. */
+export type RadiusPresetTarget = { component: RadiusComponentId; preset: Radius; onCommit: RadiusPresetCommit };
 import type { ThemeTokens } from "./tokens";
 
 export type FrameSpacingCommit = (selection: ComponentRecipeSelection, patch: AppearancePatch) => void;
@@ -29,8 +36,9 @@ const toolHints = {
   layout: "Drag the gap handle along the layout direction or click it to type.",
 } as const;
 
-export function FrameSpacingEditor({ selection, onCommit, helpId: help, theme, themeLabel = "this theme", onTextTarget }: {
+export function FrameSpacingEditor({ selection, onCommit: onRecipeCommit, helpId: help, theme, themeLabel = "this theme", onTextTarget, radiusPreset }: {
   selection: ComponentRecipeSelection; onCommit: FrameSpacingCommit; helpId: string; theme?: ThemeTokens; themeLabel?: string; onTextTarget?: () => void;
+  radiusPreset?: RadiusPresetTarget;
 }) {
   const [requestedKind, setKind] = useState<SpacingKind | "size">("padding");
   const [linked, setLinked] = useState(false);
@@ -46,6 +54,14 @@ export function FrameSpacingEditor({ selection, onCommit, helpId: help, theme, t
   const gapFields = useMemo(() => spacingDragFields(scope, "layout"), [scope]);
   const kind = requestedKind === "radius" && !corners.length || requestedKind === "layout" && !gapFields.length ? "padding" : requestedKind;
   const fields = useMemo(() => kind === "size" ? frameSizeFields(scope) : spacingDragFields(scope, kind), [scope, kind]);
+  const size = componentRecipeOptions(component).find(option => option.key === recipe)?.size ?? "md";
+  const preset = kind === "radius" ? radiusPreset : undefined;
+  const cornerOf = (key: string) => radiusCorners.find(corner => radiusCornerField[corner] === key)!;
+  /** Routes corner edits in a preset view to the component preset; everything else stays a scoped recipe patch. */
+  const onCommit: FrameSpacingCommit = (target, patch) => {
+    if (!preset) { onRecipeCommit(target, patch); return; }
+    preset.onCommit(preset.component, preset.preset, size, Object.fromEntries(Object.entries(patch).map(([key, value]) => [cornerOf(key), value as number | null])));
+  };
   const [draft, setDraft] = useState<Draft | null>(null);
   const draftRef = useRef<Draft | null>(null);
   const editor = useRef<HTMLDivElement>(null);
@@ -61,8 +77,9 @@ export function FrameSpacingEditor({ selection, onCommit, helpId: help, theme, t
   function initialValue(field: AppearanceField, measured: number) {
     const element = canvasAppearanceElements(scope)[0];
     const property = field.key.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`);
+    const variable = preset ? componentRadiusVariable(preset.component, preset.preset, size, cornerOf(field.key)) : componentRecipeVariable(component, recipe, part, field.key);
     const authored = element instanceof HTMLElement
-      ? element.style.getPropertyValue(property) || getComputedStyle(element).getPropertyValue(componentRecipeVariable(component, recipe, part, field.key)) : "";
+      ? element.style.getPropertyValue(property) || getComputedStyle(element).getPropertyValue(variable) : "";
     return spacingNumericInitial(authored, measured, field);
   }
 
@@ -180,11 +197,11 @@ export function FrameSpacingEditor({ selection, onCommit, helpId: help, theme, t
       <span className={styles.srOnly} role="status">{announcement}</span>
       {(() => {
         const keys = fields.map(field => field.key);
-        const scopeText = editScopeLabel(scope, keys[0], themeLabel);
-        const name = kind === "size" && !sizePanel ? "Resize" : toolNames[kind];
+        const scopeText = preset ? `Radius ${preset.preset} preset · ${size} · all variants · both themes` : editScopeLabel(scope, keys[0], themeLabel);
+        const name = kind === "size" && !sizePanel ? "Resize" : preset ? `Corners · radius ${preset.preset}` : toolNames[kind];
         const hint = kind === "size" ? (sizePanel ? "Choose Hug, Fill or Fixed per axis; Enter or Apply saves." : resizeHint)
           : kind === "layout" && measurement?.gap && !measurement.gap.axis ? measurement.gap.reason : toolHints[kind];
-        const reset = theme && !(kind === "size" && sizePanel) ? { label: kind === "size" ? "Size" : toolNames[kind], enabled: groupResettable(theme, scope, keys), onReset: () => {
+        const reset = theme && !(kind === "size" && sizePanel) ? { label: kind === "size" ? "Size" : toolNames[kind], enabled: preset ? componentRadiusResettable(theme.componentRadii, preset.component, preset.preset, size) : groupResettable(theme, scope, keys), onReset: () => {
           restore(); closeDraft(); onCommit(scope, groupResetPatch(keys)); setAnnouncement(`${toolNames[kind]} reset. ${scopeText}.`);
         } } : undefined;
         return <ToolStatus tool={name} scope={scopeText} hint={hint} hintId={kind === "size" && !sizePanel ? `${help}-resize-help` : undefined} reset={reset} />;

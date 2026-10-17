@@ -3,7 +3,7 @@ import { cx } from "../cx";
 import { hasAppearanceBox, mergeAppearanceStyle, type AppearanceProps } from "./appearance";
 import type { Radius, Size } from "./types";
 import { componentRecipeKey } from "./recipes";
-import { cardSlotRecipeStyle, componentRecipeMarkers, mergeRecipeStyle } from "./recipe-runtime";
+import { cardSlotRecipeStyle, componentRecipeMarkers, mergeRecipeStyle, radiusPresetStyle } from "./recipe-runtime";
 import styles from "./components.module.css";
 
 export type CardProps = ComponentProps<"article"> & AppearanceProps & {
@@ -28,7 +28,7 @@ function CardRoot({
   return (
     <article
       {...props}
-      style={mergeRecipeStyle("card", recipe, style, appearance)}
+      style={mergeRecipeStyle("card", recipe, style, appearance, radiusPresetStyle("card", radius, size))}
       {...componentRecipeMarkers("card", "root")}
       data-component-recipe={recipe}
       className={cx(styles.card, className)}

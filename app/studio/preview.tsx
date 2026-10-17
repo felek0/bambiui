@@ -21,15 +21,20 @@ import {
   colorScaleStops,
   tokenFields,
   resolveColorScale,
+  resolveTypography,
+  fontFamilyLabels,
   toCSSVariables,
+  type TypographyVariant,
   type ComponentId,
   type ColorScaleRole,
   type DesignSystem,
   type ThemeTokens,
 } from "./tokens";
 import styles from "./preview.module.css";
+import { foundationLabels, foundationTokenLabels, isFoundation, spacingTokenOrder, typographyCanvasOrder, typographyStyleLabel, type FoundationId } from "./foundations";
 import { ComponentMatrix } from "./component-matrix";
-import type { FrameSpacingCommit } from "./frame-spacing-editor";
+import type { FrameSpacingCommit, RadiusPresetCommit } from "./frame-spacing-editor";
+import type { Radius } from "./components/types";
 import type { ComponentRecipeSelection } from "./component-recipes";
 import { ComponentPlayground } from "./component-playground";
 
@@ -404,16 +409,20 @@ function ThemePane({ theme, mode, children, copy }: {
   );
 }
 
-export function Preview({ selected, system, mode, active = true, onSelectColorRole, onEditToken, recipeSelection, onSelectRecipe, onClearRecipeSelection, componentMode = "variants", playgroundControlsTarget, onSpacingCommit, spacingContext }: {
-  selected: "colors" | "spacing" | ComponentId;
+export function Preview({ selected, system, mode, active = true, onSelectColorRole, onSelectTypography, onEditToken, recipeSelection, onSelectRecipe, onClearRecipeSelection, componentMode = "variants", playgroundControlsTarget, onSpacingCommit, spacingContext, radiusView, onRadiusViewChange, onRadiusPresetCommit }: {
+  selected: FoundationId | ComponentId;
   system: DesignSystem;
   mode: PaletteMode;
   active?: boolean;
   onSelectColorRole?: (role: ColorScaleRole) => void;
-  onEditToken?: (selection: "colors" | "spacing", inputId: string) => void;
+  onSelectTypography?: (variant: TypographyVariant) => void;
+  onEditToken?: (selection: FoundationId, inputId: string) => void;
   onClearRecipeSelection?: () => void;
   onSpacingCommit?: FrameSpacingCommit;
   spacingContext?: string;
+  radiusView?: Radius;
+  onRadiusViewChange?: (radius: Radius | undefined) => void;
+  onRadiusPresetCommit?: RadiusPresetCommit;
   componentMode?: "variants" | "playground";
   playgroundControlsTarget?: HTMLElement | null;
   recipeSelection: ComponentRecipeSelection | null;
@@ -422,7 +431,7 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
   const copy = previewCopy;
   const router = useRouter();
   const helpId = useId();
-  const isComponent = selected !== "colors" && selected !== "spacing";
+  const isComponent = !isFoundation(selected);
   const matrixScroll = useRef<HTMLDivElement>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLDivElement>(null);
@@ -442,7 +451,7 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
     setHoveredUnit(next);
   };
 
-  const selectFoundation = (id: "colors" | "spacing") => {
+  const selectFoundation = (id: FoundationId) => {
     if (active && selected !== id) router.push(`/${id}`, { scroll: false });
   };
 
@@ -653,7 +662,8 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
             <div className={styles.matrixContent} data-matrix-content>
               <section key={selected} className={styles.componentBoard} data-specimen={selected} data-selected aria-label={`${selected} preview`}>
                 <ComponentMatrix component={selected} theme={system.themes[mode]} themeLabel={mode === "light" ? "Light" : "Dark"} defaults={system.componentDefaults} selection={recipeSelection} onSelect={onSelectRecipe} onClearSelection={onClearRecipeSelection}
-                                  onSpacingCommit={active && componentMode === "variants" ? onSpacingCommit : undefined} spacingContext={`${mode}-${spacingContext}`} />
+                                  onSpacingCommit={active && componentMode === "variants" ? onSpacingCommit : undefined} spacingContext={`${mode}-${spacingContext}`}
+                                  radiusView={radiusView} onRadiusViewChange={onRadiusViewChange} onRadiusPresetCommit={active && componentMode === "variants" ? onRadiusPresetCommit : undefined} />
                 {selected !== "text" && <details className={styles.interactions} data-interaction-examples>
                   <summary>Interaction &amp; state previews</summary>
                   <p>Try keyboard and pointer behavior here. Disabled, loading and radius examples inherit the same recipes; they are not separate style scopes.</p>
@@ -682,7 +692,7 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
         <button type="button" onClick={() => changeZoom(1)}>Reset zoom</button>
       </div>
       <p className={styles.canvasHelp} aria-hidden="true">Drag or scroll to pan · Ctrl/⌘ + scroll to zoom</p>
-      <p className={styles.selectionHint} data-canvas-selection-hint data-visible={hoveredUnit ? true : undefined} aria-hidden="true">{hoveredUnit ? `${hoveredUnit === "colors" ? "Colors" : hoveredUnit === "spacing" ? "Shape & spacing" : hoveredUnit === "text" ? "Text" : copy.components[hoveredUnit as ShowcaseId].name} · Click to edit tokens` : ""}</p>
+      <p className={styles.selectionHint} data-canvas-selection-hint data-visible={hoveredUnit ? true : undefined} aria-hidden="true">{hoveredUnit ? `${isFoundation(hoveredUnit) ? foundationLabels[hoveredUnit] : hoveredUnit === "text" ? "Text" : copy.components[hoveredUnit as ShowcaseId].name} · Click to edit tokens` : ""}</p>
       <p id={helpId} className={styles.srOnly}>On desktop, drag empty space or use the mouse wheel to pan without bounds. Hold Control or Command while scrolling to zoom at the pointer; Shift and scroll pans horizontally. Focus the canvas and use arrow keys to pan, or use Fit and zoom buttons. On mobile, scroll the page normally. Hover over a section for a selection outline; click an empty area of that section to edit its tokens. Select an example frame or its text to edit that exact combination. Keyboard users can select an example using its size button, then choose a layer in the inspector. Interactive behavior is available in the optional state previews.</p>
       <div
         ref={viewport}
@@ -773,7 +783,7 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
         }}
       >
         <div ref={canvas} data-canvas className={styles.canvas}>
-          {(selected === "colors" || selected === "spacing") && <div className={styles.foundations}>
+          {isFoundation(selected) && <div className={styles.foundations}>
             <section data-foundation="colors" data-canvas-unit="colors" data-selected={selected === "colors" || undefined} aria-labelledby="canvas-colors-title" className={styles.foundation}
               onClickCapture={(event) => { if (!(event.target instanceof Element && event.target.closest("a, button, input, select"))) selectFoundation("colors"); }}>
               <h2 id="canvas-colors-title"><Link href="/colors" aria-current={selected === "colors" ? "page" : undefined}>Colors</Link></h2>
@@ -802,20 +812,48 @@ export function Preview({ selected, system, mode, active = true, onSelectColorRo
                 </div>
               </div>
             </section>
+            <section data-foundation="typography" data-canvas-unit="typography" data-selected={selected === "typography" || undefined} aria-labelledby="canvas-typography-title" className={styles.foundation}
+              onClickCapture={(event) => { if (!(event.target instanceof Element && event.target.closest("a, button, input, select"))) selectFoundation("typography"); }}>
+              <h2 id="canvas-typography-title"><Link href="/typography" aria-current={selected === "typography" ? "page" : undefined}>Typography</Link></h2>
+              <p>Shared by Light and Dark and used by every component. Select the font, base size or a text style to edit it.</p>
+              <div className={styles.typeBasics}>
+                <Link href="/typography" data-typography-font onClick={() => onEditToken?.("typography", "font-family-preset")}>
+                  <span>Font family<strong>{fontFamilyLabels[system.themes[mode].fontFamily]}</strong></span>
+                  <span className={styles.typeFontSample} aria-hidden="true">Aa Bb Cc 0123</span>
+                </Link>
+                <Link href="/typography" data-typography-base onClick={() => onEditToken?.("typography", "token-fontSize")}>
+                  <span>Base size<strong>{system.themes[mode].global.fontSize}px</strong></span>
+                  <span className={styles.typeBaseSample} aria-hidden="true">Control label</span>
+                </Link>
+              </div>
+              <div className={styles.typeScale} data-type-scale>
+                {typographyCanvasOrder.map((variant) => {
+                  const style = resolveTypography(system.themes[mode], variant);
+                  return <Link key={variant} href="/typography" data-typography-style={variant}
+                    onClick={() => { onSelectTypography?.(variant); onEditToken?.("typography", "typography-variant"); }}
+                    aria-label={`Edit ${typographyStyleLabel(variant)} text style: ${style.fontSize}px, line height ${style.lineHeight}, weight ${style.fontWeight}`}>
+                    <span className={styles.typeMeta}><strong>{typographyStyleLabel(variant)}</strong>{style.fontSize}px · {style.lineHeight} · {style.fontWeight}{style.letterSpacing ? ` · ${style.letterSpacing}px` : ""}</span>
+                    <span className={styles.typeSample} aria-hidden="true" style={{
+                      fontSize: `var(--ds-typography-${variant}-font-size)`, lineHeight: `var(--ds-typography-${variant}-line-height)`,
+                      fontWeight: `var(--ds-typography-${variant}-font-weight)`, letterSpacing: `var(--ds-typography-${variant}-letter-spacing)`,
+                    }}>{variant === "caption" || variant === "label" ? "The quick brown fox jumps over the lazy dog" : variant === "paragraph" ? "Bring your next idea to life with a consistent, accessible design system." : "Bring your next idea to life"}</span>
+                  </Link>;
+                })}
+              </div>
+            </section>
             <section data-foundation="spacing" data-canvas-unit="spacing" data-selected={selected === "spacing" || undefined} aria-labelledby="canvas-spacing-title" className={styles.foundation}
               onClickCapture={(event) => { if (!(event.target instanceof Element && event.target.closest("a, button, input, select"))) selectFoundation("spacing"); }}>
               <h2 id="canvas-spacing-title"><Link href="/spacing" aria-current={selected === "spacing" ? "page" : undefined}>Shape &amp; spacing</Link></h2>
-              <p>Shared dimensions for both themes. Spacing sm/md/lg sets the gap between Card.Content items at matching sizes; legacy component padding and outer gap stay independent. Select a token to edit its value.</p>
+              <p>Shared dimensions for both themes: the radius scale, default padding, gap and margin, the spacing scale used between Card.Content items, and control heights. Select a token to edit its value.</p>
               <div className={styles.spacingSamples}>
-                {tokenFields.filter((field) => field.type === "number").map((field) => <Link key={field.key} href="/spacing" onClick={() => onEditToken?.("spacing", `token-${field.key}`)} className={styles.spacingSample} data-spacing-token={field.key}>
-                  <span className={styles.spacingSampleHeader}><span>{field.label}</span><strong>{system.themes[mode].global[field.key]}px</strong></span>
+                {spacingTokenOrder.map((key) => tokenFields.find((field) => field.key === key)!).map((field) => <Link key={field.key} href="/spacing" onClick={() => onEditToken?.("spacing", `token-${field.key}`)} className={styles.spacingSample} data-spacing-token={field.key}>
+                  <span className={styles.spacingSampleHeader}><span>{foundationTokenLabels[field.key] ?? field.label}</span><strong>{system.themes[mode].global[field.key]}px</strong></span>
                   <span className={styles.spacingVisual} aria-hidden="true">
                     {["radius", "radiusSm", "radiusLg", "borderWidth"].includes(field.key) ? <span className={styles.shapeVisual} />
                       : field.key === "paddingX" || field.key === "paddingY" ? <span className={styles.paddingVisual}><span>Content</span></span>
                       : field.key === "gap" ? <span className={styles.gapVisual}><i /><i /><i /></span>
                                             : field.key === "spacingSm" || field.key === "spacingMd" || field.key === "spacingLg" ? <span className={styles.spacingScaleVisual}><i /><i /></span>
                       : field.key === "margin" ? <span className={styles.marginVisual}><span /></span>
-                      : field.key === "fontSize" ? <span className={styles.fontVisual}>Ag</span>
                       : <span className={styles.heightVisual}>Control</span>}
                   </span>
                 </Link>)}

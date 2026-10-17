@@ -70,6 +70,40 @@
 .card[data-radius="md"] { --part-radius: var(--ds-radius-md); }
 .card[data-radius="lg"] { --part-radius: var(--ds-radius-lg); }
 
+/* Explicit presets resolve this component's preset corners for the instance size, then the shared
+ * step (set inline by the runtime). They outrank recipe and shared-part corners, which style the
+ * default shape only, so radius="sm" | "md" | "lg" stay distinct. Inline local appearance still wins. */
+.button[data-radius] {
+  border-top-left-radius: var(--button-radius-preset-top-left);
+  border-top-right-radius: var(--button-radius-preset-top-right);
+  border-bottom-right-radius: var(--button-radius-preset-bottom-right);
+  border-bottom-left-radius: var(--button-radius-preset-bottom-left);
+}
+.badge[data-radius] {
+  border-top-left-radius: var(--badge-radius-preset-top-left);
+  border-top-right-radius: var(--badge-radius-preset-top-right);
+  border-bottom-right-radius: var(--badge-radius-preset-bottom-right);
+  border-bottom-left-radius: var(--badge-radius-preset-bottom-left);
+}
+.card[data-radius] {
+  border-top-left-radius: var(--card-radius-preset-top-left);
+  border-top-right-radius: var(--card-radius-preset-top-right);
+  border-bottom-right-radius: var(--card-radius-preset-bottom-right);
+  border-bottom-left-radius: var(--card-radius-preset-bottom-left);
+}
+.field[data-radius] .inputControl {
+  border-top-left-radius: var(--input-radius-preset-top-left);
+  border-top-right-radius: var(--input-radius-preset-top-right);
+  border-bottom-right-radius: var(--input-radius-preset-bottom-right);
+  border-bottom-left-radius: var(--input-radius-preset-bottom-left);
+}
+.field[data-radius] .checkbox {
+  border-top-left-radius: var(--checkbox-radius-preset-top-left);
+  border-top-right-radius: var(--checkbox-radius-preset-top-right);
+  border-bottom-right-radius: var(--checkbox-radius-preset-bottom-right);
+  border-bottom-left-radius: var(--checkbox-radius-preset-bottom-left);
+}
+
 /* Button -------------------------------------------------------------------- */
 
 .button {

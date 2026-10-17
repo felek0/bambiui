@@ -1,9 +1,10 @@
 import { componentIds } from "../../../studio/tokens";
+import { foundationIds } from "../../../studio/foundations";
 
 export const dynamicParams = false;
 
 export function generateStaticParams() {
-  return [...componentIds, "colors", "spacing"].map((component) => ({ component }));
+  return [...componentIds, ...foundationIds].map((component) => ({ component }));
 }
 
 export default function ComponentDevelopPage() {

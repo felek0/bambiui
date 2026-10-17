@@ -4,7 +4,7 @@ import { cx } from "../cx";
 import { Spinner } from "./spinner";
 import type { AppearanceProps } from "./appearance";
 import { componentRecipeKey } from "./recipes";
-import { componentRecipeMarkers, mergeRecipeStyle } from "./recipe-runtime";
+import { componentRecipeMarkers, mergeRecipeStyle, radiusPresetStyle } from "./recipe-runtime";
 import type { Radius, Size } from "./types";
 import styles from "./components.module.css";
 
@@ -53,7 +53,7 @@ export function Button({
   return (
     <BaseButton
       {...props}
-      style={mergeRecipeStyle("button", recipe, style, appearance)}
+      style={mergeRecipeStyle("button", recipe, style, appearance, radiusPresetStyle("button", radius, size))}
       {...componentRecipeMarkers("button", "root")}
       data-component-recipe={recipe}
       className={cx(styles.button, className)}

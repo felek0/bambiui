@@ -563,7 +563,7 @@ try {
         assert.ok(await evaluate(`(()=>{const r=${q(`${toolbar} [aria-controls="workspace-sidebar"]`)}.getBoundingClientRect();return r.width>0 && r.left>=0 && r.right<=innerWidth})()`),'Library toggle fits');
         await api.panel('workspace-sidebar',true);
         assert.equal(await evaluate(`${q('#workspace-inspector')}.hidden`),true);
-        assert.equal(await evaluate(`document.querySelectorAll('.component-group').length`),1);
+        assert.equal(await evaluate(`document.querySelectorAll('.component-group').length`),3,'Actions, Forms and Content');
         assert.equal(await evaluate(`document.querySelectorAll('.component-group a').length`),7);
         await api.panel('workspace-sidebar',false);
         const props=`${toolbar} [aria-controls="workspace-inspector"]`;

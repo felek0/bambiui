@@ -15,6 +15,7 @@ import { brandColor } from "./brand.ts";
 import { componentStyleVariables, parseComponentStyles, shareComponentStyles, type ComponentStyles } from "./component-styles.ts";
 import { componentRecipeVariables, parseComponentRecipes, shareComponentRecipes, type ComponentRecipes } from "./component-recipes.ts";
 import { parseComponentDefaults, type ComponentDefaults } from "./component-defaults.ts";
+import { componentRadiiVariables, parseComponentRadii, type ComponentRadii } from "./component-radii.ts";
 
 export const componentIds = [
   "button",
@@ -206,6 +207,8 @@ export type ThemeTokens = {
   componentStyles?: ComponentStyles;
   /** Exact recipe colors are theme-specific; geometry, typography and effects are shared. */
   componentRecipes?: ComponentRecipes;
+  /** Component-specific radius preset corners per size; shared by Light and Dark. */
+  componentRadii?: ComponentRadii;
 };
 
 export function resolveColorScale(
@@ -264,13 +267,14 @@ export function shareNonColorTokens(system: DesignSystem, from: PaletteMode = "l
     if (Object.keys(next).length) variantColors[id] = next;
     else delete variantColors[id];
   }
-  return {
-    ...system,
-    themes: { ...system.themes, [other]: { ...target, global, components, fontFamily: source.fontFamily, typography: structuredClone(source.typography), variantColors,
-      ...(source.componentStyles || target.componentStyles ? { componentStyles: shareComponentStyles(source.componentStyles, target.componentStyles) } : {}),
-      ...(source.componentRecipes || target.componentRecipes ? { componentRecipes: shareComponentRecipes(source.componentRecipes, target.componentRecipes) } : {}),
-    } },
+  const shared: ThemeTokens = { ...target, global, components, fontFamily: source.fontFamily, typography: structuredClone(source.typography), variantColors,
+    ...(source.componentStyles || target.componentStyles ? { componentStyles: shareComponentStyles(source.componentStyles, target.componentStyles) } : {}),
+    ...(source.componentRecipes || target.componentRecipes ? { componentRecipes: shareComponentRecipes(source.componentRecipes, target.componentRecipes) } : {}),
   };
+  // Radius presets are pure geometry: the other theme mirrors them exactly, including removal.
+  if (source.componentRadii && Object.keys(source.componentRadii).length) shared.componentRadii = structuredClone(source.componentRadii);
+  else delete shared.componentRadii;
+  return { ...system, themes: { ...system.themes, [other]: shared } };
 }
 
 export const STORAGE_KEY = "bambiui.design-system.v1";
@@ -668,7 +672,7 @@ export function toCSSVariables(
   }
   variables["--card-description"] = descriptionColor(card.foreground, card.background);
   variables["--card-filled-description"] = variables["--card-variant-filled-description"];
-  Object.assign(variables, componentStyleVariables(theme.componentStyles), componentRecipeVariables(theme.componentRecipes));
+  Object.assign(variables, componentStyleVariables(theme.componentStyles), componentRecipeVariables(theme.componentRecipes), componentRadiiVariables(theme.componentRadii));
   return variables;
 }
 
@@ -682,6 +686,7 @@ export function exportCSS(workspace: Pick<DesignSystem, "themes">, scopeId?: str
   const sparseKeys = new Set((["light", "dark"] as const).flatMap(mode => [
     ...Object.keys(componentStyleVariables(workspace.themes[mode].componentStyles)),
     ...Object.keys(componentRecipeVariables(workspace.themes[mode].componentRecipes)),
+    ...Object.keys(componentRadiiVariables(workspace.themes[mode].componentRadii)),
   ]));
   const sparseResets = Object.fromEntries([...sparseKeys].map(key => [key, "initial"]));
   return (prelude ? `${prelude}\n\n` : "") + (["light", "dark"] as const).map((mode) => {
@@ -765,8 +770,9 @@ export function parseDesignSystem(text: string): DesignSystem {
       const theme = value.themes[mode];
       const path = `themes.${mode}`;
       requireObject(theme, path);
-      requireKnownKeys(theme, ["source", "fontFamily", "global", "components", "colorScales", "typography", "variantColors", "componentStyles", "componentRecipes"], path);
+      requireKnownKeys(theme, ["source", "fontFamily", "global", "components", "colorScales", "typography", "variantColors", "componentStyles", "componentRecipes", "componentRadii"], path);
       if (Object.hasOwn(theme, "componentStyles")) theme.componentStyles = parseComponentStyles(theme.componentStyles);
+      if (Object.hasOwn(theme, "componentRadii")) theme.componentRadii = parseComponentRadii(theme.componentRadii, `${path}.componentRadii`);
       if (Object.hasOwn(theme, "componentRecipes")) theme.componentRecipes = parseComponentRecipes(theme.componentRecipes);
       if (theme.fontFamily === undefined && !Object.hasOwn(theme, "fontFamily")) theme.fontFamily = "system";
       if (!fontFamilyPresets.includes(theme.fontFamily as FontFamilyPreset)) {

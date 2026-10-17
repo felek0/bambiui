@@ -23,7 +23,7 @@ const watchdog = setTimeout(() => {
   pending.clear(); socket?.close(); chrome?.kill('SIGKILL');
 }, 300000);
 const ids = ['button', 'input', 'card', 'badge', 'switch', 'checkbox', 'text'];
-const foundations = ['colors', 'spacing'];
+const foundations = ['colors', 'typography', 'spacing'];
 const matrixCounts = { button:18, input:9, switch:12, checkbox:12, badge:54, card:9, text:180 };
 const matrixVariants = {
   button:['primary','secondary','outline','ghost','destructive','link'], input:['default','invalid','readonly'],
@@ -113,7 +113,7 @@ async function route(view, id = 'colors') {
   const isFoundation = foundations.includes(id);
   assert.deepEqual(await evaluate(`[...document.querySelectorAll('[data-specimen]')].map(e=>e.dataset.specimen)`),isFoundation ? [] : [id]);
   assert.deepEqual(await evaluate(`[...document.querySelectorAll('[data-component-matrix]')].map(e=>e.dataset.componentMatrix)`),isFoundation ? [] : [id]);
-  assert.deepEqual(await evaluate(`[...document.querySelectorAll('[data-foundation]')].map(e=>e.dataset.foundation).sort()`),isFoundation ? foundations : []);
+  assert.deepEqual(await evaluate(`[...document.querySelectorAll('[data-foundation]')].map(e=>e.dataset.foundation).sort()`),isFoundation ? [...foundations].sort() : []);
   assert.equal(await evaluate(`document.querySelectorAll('[data-recipe-example]').length`),isFoundation ? 0 : matrixCounts[id]);
   assert.equal(await evaluate(`document.querySelectorAll('[data-interaction-examples]').length`),isFoundation || id==='text' ? 0 : 1);
   assert.equal(await evaluate(`!!${q('[data-system-starter]')} || /Starting component/i.test(${q('.preview-frame')}.textContent)`),false,'Starting component must not be rendered');
@@ -411,8 +411,9 @@ try {
     assert.equal(await evaluate(`!!${q('[aria-label="New project name"], [aria-label="Page canvas"], #project-inspector')}`),false,'Project authoring must not mount');
     assert.ok(await evaluate(`${q('.studio-header .system-switcher summary')}?.getClientRects().length > 0`),'active system belongs in the header');
     assert.equal(await evaluate(`!!${q('.studio-sidebar #design-system-name')}`),false);
-    assert.deepEqual(await evaluate(`[...document.querySelectorAll('.component-group')].map(e=>[e.getAttribute('aria-label'),...[...e.querySelectorAll('a')].map(a=>a.textContent.trim())])`),[['Components','Button','Input','Switch','Checkbox','Card','Badge','Text']]);
-    assert.equal(await evaluate(`document.querySelectorAll('.component-group-label').length`),0,'component Library is flat');
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('.component-group')].map(e=>[e.getAttribute('aria-label'),...[...e.querySelectorAll('a')].map(a=>a.textContent.trim())])`),[['Actions','Button'],['Forms','Input','Checkbox','Switch'],['Content','Text','Card','Badge']]);
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('.sidebar-navigation > a')].map(a=>a.textContent.trim())`),['Colors','Typography','Shape & spacing'],'foundations are real pages in design order');
+    assert.equal(await evaluate(`document.querySelectorAll('.component-group-label').length`),3,'components are grouped by job');
     assert.ok(await evaluate(`!!${q('.system-switcher-actions [aria-label="Import design system"]')} && !!${q('.header-actions input[type="file"]')}`),'replace import is in the system menu; the file input remains in header actions');
     assert.equal(await evaluate(`${q('.sidebar-foundations-label')}.textContent`),'FOUNDATIONS');
     await fill('.search-field input','badge');
@@ -510,19 +511,30 @@ try {
     assert.ok(await evaluate(`${q('#token-editor')}.textContent.includes('Semantic roles') && ${q('#token-editor')}.textContent.includes('Palette scales')`));
     assert.deepEqual(await stored(),before);
   });
-  await check('Typography shortcut reveals shared settings from Foundations and from Playground without saving',async()=>{
+  await check('Typography is a foundation page: canvas scale selects styles and Text links to it without saving',async()=>{
     const before=await stored();
-    await click(q('[data-foundation-typography]'));
-    await route('design','text');
+    await click(named('.sidebar-navigation a','Typography'));
+    await route('design','typography');
+    assert.equal(await evaluate(`${q('.studio-sidebar a[href="/typography"]')}.getAttribute('aria-current')`),'page');
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('[data-type-scale] [data-typography-style]')].map(e=>e.dataset.typographyStyle)`),['h1','h2','h3','h4','h5','h6','heading','paragraph','label','caption']);
+    assert.ok(await evaluate(`${q('#font-family-preset')}.checkVisibility() && ${q('#typography-tokens')}.textContent.includes('across sizes and tones') && !!${q('#token-fontSize')}`));
+    await click(q('[data-type-scale] [data-typography-style="h3"]'));
+    await wait(`${q('#typography-variant')}.value==='h3' && document.activeElement?.id==='typography-variant'`);
+    assert.equal(await evaluate(`getComputedStyle(${q('[data-typography-style="h3"] span[aria-hidden]')}).fontSize`),`${await evaluate(`${q('#typography-h3-fontSize')}.value`)}px`,'canvas samples consume the edited style');
+    await click(q('[data-typography-font]'));
     await wait(`document.activeElement?.id==='font-family-preset'`);
-    assert.ok(await evaluate(`${q('[data-system-base-tokens]')}.open && ${q('#font-family-preset')}.checkVisibility()`));
-    await click(q(workbenchMode('playground')));
-    await assertComponentMode('text','playground');
-    await click(q('[data-foundation-typography]'));
-    await assertComponentMode('text','variants');
-    await wait(`document.activeElement?.id==='font-family-preset'`);
-    assert.ok(await evaluate(`${q('#typography-tokens')}.textContent.includes('across sizes and tones')`));
-    assert.deepEqual(await stored(),before);
+    await capture('studio-typography');
+    assert.deepEqual(await stored(),before,'selecting styles and opening controls never writes');
+    const base=await evaluate(`${q('#token-fontSize')}.value`);
+    await fill('#token-fontSize','15');
+    await wait(`${q('[data-typography-base] strong')}.textContent==='15px'`);
+    for(const mode of ['light','dark']) assert.equal((await stored()).themes[mode].global.fontSize,15,'base size is shared');
+    await click(named('button','Undo change'));
+    for(const mode of ['light','dark']) assert.equal(String((await stored()).themes[mode].global.fontSize),base,'one undo restores the base size');
+    await navigate('design','text');
+    assert.equal(await evaluate(`!!${q('#font-family-preset')} || !!${q('#typography-variant')}`),false,'shared typography is edited once, in Typography');
+    await click(named('[data-typography-link] a','Open Typography'));
+    await route('design','typography');
   });
 
   for(const [id,count] of Object.entries(matrixCounts)) await check(`${id} matrix renders all ${count} exact combinations and no other component board`,async()=>{
@@ -2009,6 +2021,95 @@ try {
     await click(named('[data-frame-spacing-editor] [role="toolbar"] button','Text'));
     await wait(`${textStatus}?.dataset.toolStatus==='Text' && !!${named(`${example('text','paragraph.neutral.sm')} button`,'Text')}`);
   });
+  await check('radius presets stay distinct after corner edits; preset views edit component presets per size',async()=>{
+    await navigate('design','button');
+    const radiusOf=(recipe)=>evaluate(`getComputedStyle(${q(recipePart('button',recipe,'root'))}).borderTopLeftRadius`);
+    const view=async(value)=>{ await select('[data-radius-view]',value); await wait(`${q(recipePart('button','outline.sm','root'))}.dataset.radius===${JSON.stringify(value||undefined)} || (!${JSON.stringify(value)} && !${q(recipePart('button','outline.sm','root'))}.hasAttribute('data-radius'))`); };
+    const editCorner=async(value)=>{
+      await click(q(`${example('button','outline.sm')} > button`));
+      await click(named('[data-frame-spacing-editor] [role="toolbar"] button','Corners'));
+      const handle='[data-spacing-handle="borderTopLeftRadius"]';
+      await wait(`${q(handle)}?.checkVisibility()`);
+      await click(q(handle));
+      await fill('[data-spacing-value-editor] input',String(value)); await key('Enter');
+      await wait(`!${q('[data-spacing-value-editor]')}`);
+    };
+    const global=(await stored())?.themes?.light?.global ?? { radiusSm:4, radius:8, radiusLg:12 };
+    // Default shape: a corner edit writes the size recipe only.
+    await view('');
+    await editCorner(20);
+    assert.equal(await radiusOf('outline.sm'),'20px');
+    const afterRecipe=await stored();
+    assert.equal(afterRecipe.themes.light.componentRecipes.button['outline.sm'].root.borderTopLeftRadius,20);
+    assert.equal(afterRecipe.themes.light.componentRadii,undefined,'default-shape edits never write presets');
+    // Presets are not flattened by the recipe corner.
+    for(const [preset,value] of [['sm',global.radiusSm],['md',global.radius],['lg',global.radiusLg]]) {
+      await view(preset);
+      for(const recipe of ['outline.sm','ghost.sm','outline.md']) assert.equal(await radiusOf(recipe),`${value}px`,`${recipe} radius=${preset} keeps the shared ${preset} step`);
+    }
+    // Preset view: the corner edits this component's lg preset at sm, for all variants and both themes.
+    await view('lg');
+    await editCorner(22);
+    const status=q(`${example('button','outline.sm')} [data-tool-status]`);
+    assert.match(await evaluate(`${status}.textContent`),/Radius lg preset · sm · all variants · both themes/);
+    const preset=await stored();
+    for(const mode of ['light','dark']) assert.deepEqual(preset.themes[mode].componentRadii,{button:{lg:{sm:{topLeft:22}}}});
+    assert.deepEqual(preset.themes.light.componentRecipes,afterRecipe.themes.light.componentRecipes,'preset edits leave recipes untouched');
+    for(const recipe of ['outline.sm','ghost.sm','destructive.sm']) assert.equal(await radiusOf(recipe),'22px');
+    await capture('studio-radius-presets');
+    assert.equal(await radiusOf('outline.md'),`${global.radiusLg}px`,'other sizes keep their own preset');
+    await view('sm'); assert.equal(await radiusOf('outline.sm'),`${global.radiusSm}px`,'other presets stay distinct');
+    await view(''); assert.equal(await radiusOf('outline.sm'),'20px','the default shape keeps its recipe corner');
+    // Inspector overview: resolved values with sources, uniform quick edit, one Undo, reset.
+    const cell=(key)=>q(`[data-radius-preset-cell="${key}"]`);
+    assert.equal(await evaluate(`${cell('lg.sm')}.dataset.source`),'custom');
+    assert.equal(await evaluate(`${q('[data-radius-preset-cell="lg.sm"] input')}.placeholder`),'Mixed','different corners are shown as mixed, not guessed');
+    assert.equal(await evaluate(`${cell('md.lg')}.dataset.source`),'scale');
+    assert.equal(await evaluate(`${q('[data-radius-preset-cell="md.lg"] input')}.value`),String(global.radius),'unset cells show the resolved shared step');
+    await fill(`[data-radius-preset-cell="md.lg"] input`,'9.5'); await key('Enter');
+    await wait(`(()=>{const s=JSON.parse(localStorage.getItem('bambiui.design-system.v1'));return s.themes.dark.componentRadii?.button?.md?.lg?.bottomRight===9.5})()`);
+    assert.deepEqual((await stored()).themes.light.componentRadii.button.md.lg,{topLeft:9.5,topRight:9.5,bottomRight:9.5,bottomLeft:9.5});
+    await click(named('button','Undo change'));
+    assert.deepEqual((await stored()).themes.light.componentRadii,{button:{lg:{sm:{topLeft:22}}}},'quick edit is one undo step');
+    await click(named('[data-radius-preset-row="sm"] button','sm'));
+    await wait(`${q('[data-radius-view]')}.value==='sm'`);
+    // Export and Develop expose the consumed variables.
+    await click(q('[aria-label="Export tokens"]'));
+    assert.ok((await evaluate(`${q('[aria-label="Exported tokens"]')}.textContent`)).includes('--button-radius-lg-sm-top-left: 22px;'));
+    await click(q('[aria-label="Close export dialog"]'));
+    await navigate('develop','button');
+    assert.ok(await evaluate(`${q('[data-radius-preset-reference]')}.textContent.includes('--button-radius-lg-sm-top-left')`));
+    await navigate('design','button');
+    await click(q(`[aria-label="Reset radius lg at Small"]`));
+    assert.equal((await stored()).themes.light.componentRadii,undefined,'reset prunes the preset without copying the scale');
+    await view('');
+  });
+  await check('every shape-bearing component edits its own preset on its shape layer; Switch has no preset view',async()=>{
+    for(const [id,recipe,part,size] of [['input','default.lg','control','lg'],['checkbox','checked.md','control','md'],['badge','solid.primary.sm','root','sm'],['card','outlined.md','root','md']]) {
+      await navigate('design',id);
+      await select('[data-radius-view]','md');
+      await click(q(`${example(id,recipe)} > button`));
+      if(part!=='root') await select('[data-system-layer-select]',part);
+      if(!await evaluate(`!!${q('[data-frame-spacing-editor]')}`)) await click(named(`${example(id,recipe)} button`,'Frame'));
+      const before=await stored();
+      await click(named('[data-frame-spacing-editor] [role="toolbar"] button','Corners'));
+      const handle='[data-spacing-handle="borderBottomRightRadius"]';
+      await wait(`${q(handle)}?.checkVisibility()`);
+      await click(q(handle));
+      await fill('[data-spacing-value-editor] input','15.5'); await key('Enter');
+      await wait(`!${q('[data-spacing-value-editor]')}`);
+      const after=await stored();
+      for(const mode of ['light','dark']) assert.deepEqual(after.themes[mode].componentRadii?.[id],{md:{[size]:{bottomRight:15.5}}},`${id}: ${mode} preset`);
+      assert.deepEqual(after.themes.light.componentRecipes,before?.themes?.light?.componentRecipes,`${id}: recipes untouched`);
+      const shape=recipePart(id,recipe,part,'frame');
+      assert.equal(await evaluate(`getComputedStyle(${q(shape)}).borderBottomRightRadius`),'15.5px',`${id}: the real shape layer paints the preset`);
+      await click(named('button','Undo change'));
+      assert.equal((await stored()).themes.light.componentRadii,undefined,`${id}: one undo step`);
+      await select('[data-radius-view]','');
+    }
+    await navigate('design','switch');
+    assert.equal(await evaluate(`!!${q('[data-radius-view]')} || !!${q('[data-radius-preset-editor]')}`),false,'Switch keeps its pill and offers no presets');
+  });
   await check('direct tools fit narrow viewports with usable hit targets',async()=>{
     try {
       for(const width of [700,390]) {
@@ -2079,26 +2180,28 @@ try {
     assert.equal(await evaluate(`${q('[data-ds-theme="light"]')}.style.getPropertyValue('--ds-primary-500').trim()`),'#345678');
   });
   await check('font preset is shared, visible, exported and reset independently',async()=>{
-    await navigate('design','text');
+    await navigate('design','typography');
     assert.equal(await evaluate(`document.querySelectorAll('link[href^="https://fonts.googleapis.com/css2"]').length`),0,'local defaults must not fetch Google fonts');
     assert.equal(await evaluate(`${q('#font-family-preset')}.querySelectorAll('optgroup[label^="Google Fonts"] option').length`),12);
     await click(named(themeControl + ' button','Light'));
     await select('#font-family-preset','mono');
     await wait(`${q('[data-ds-theme="light"]')}.style.getPropertyValue('--ds-font-family').includes('Menlo')`);
     for(const mode of ['light','dark']) assert.equal((await stored()).themes[mode].fontFamily,'mono');
+    assert.ok((await evaluate(`getComputedStyle(${q('[data-typography-style="paragraph"] span[aria-hidden]')}).fontFamily`)).includes('Menlo'));
+    await navigate('design','text');
     assert.ok((await evaluate(`getComputedStyle(${q(recipePart('text','paragraph.neutral.md','root'))}).fontFamily`)).includes('Menlo'));
     assert.equal(await evaluate(`getComputedStyle(${q(workbenchToolbar)}).fontFamily`),await evaluate('getComputedStyle(document.body).fontFamily'),'workbench tools must not inherit the specimen font');
     await click(q('[aria-label="Export tokens"]'));
     assert.ok((await evaluate(`${q('[aria-label="Exported tokens"]')}.textContent`)).includes('--ds-font-family: ui-monospace'));
     await click(q('[aria-label="Close export dialog"]'));
-    await navigate('develop','text');
+    await navigate('develop','typography');
     assert.ok(await evaluate(`${q('.workspace-panel--develop')}.textContent.includes('--ds-font-family')`));
-    await navigate('design','text');
+    await navigate('design','typography');
     for(const [preset,firstFont] of [['sans','Arial'],['humanist','Trebuchet MS'],['editorial','Palatino'],['typewriter','Courier New']]) {
       await select('#font-family-preset',preset);
       await wait(`${q('[data-ds-theme="light"]')}.style.getPropertyValue('--ds-font-family').includes(${JSON.stringify(firstFont)})`);
       for(const mode of ['light','dark']) assert.equal((await stored()).themes[mode].fontFamily,preset);
-      assert.ok((await evaluate(`getComputedStyle(${q(recipePart('text','paragraph.neutral.md','root'))}).fontFamily`)).includes(firstFont));
+      assert.ok((await evaluate(`getComputedStyle(${q('[data-typography-style="paragraph"] span[aria-hidden]')}).fontFamily`)).includes(firstFont));
       assert.ok((await evaluate(`getComputedStyle(${q('#font-family-tokens p[style]')}).fontFamily`)).includes(firstFont));
     }
     await send('Fetch.enable',{patterns:[{urlPattern:'https://fonts.googleapis.com/*',requestStage:'Request'}]});
@@ -2114,7 +2217,8 @@ try {
     for(const mode of ['light','dark']) assert.equal((await stored()).themes[mode].fontFamily,'system');
   });
   await check('heading typography edits update Text, CSS, Docs and storage in both themes',async()=>{
-    await navigate('design','text');
+    await navigate('design','typography');
+    await select('#typography-variant','heading');
     const before=await stored();
     const field=await evaluate(`${q('#typography-heading-fontSize')}?.id`);
     assert.ok(field,'heading font size input must have an id');
@@ -2123,6 +2227,8 @@ try {
     assert.equal((await stored()).themes.light.typography.heading.fontSize,42);
     assert.equal((await stored()).themes.dark.typography.heading.fontSize,42);
     assert.deepEqual((await stored()).themes.dark.global,before.themes.dark.global);
+    assert.equal(await evaluate(`getComputedStyle(${q('[data-typography-style="heading"] span[aria-hidden]')}).fontSize`),'42px');
+    await navigate('design','text');
     assert.equal(await evaluate(`getComputedStyle(${q(recipePart('text','heading.neutral.md','root'))}).fontSize`),'42px');
     await click(q('[aria-label="Export tokens"]'));
     const css=await evaluate(`${q('[aria-label="Exported tokens"]')}.textContent`);
@@ -2138,17 +2244,19 @@ try {
     assert.equal(await evaluate(`getComputedStyle(${q(recipePart('text','heading.neutral.md','root'))}).fontSize`),'42px');
   });
   await check('H1–H6 typography controls independently update the single Text canvas unit and Develop',async()=>{
-    await navigate('design','text');
+    await navigate('design','typography');
     assert.equal(await evaluate(`${q('#typography-variant')}.options.length`),10,'all typography styles remain selectable');
     for(const [variant,size] of [['h1',54],['h2',45],['h3',36],['h4',30],['h5',25],['h6',22]]) {
       await select('#typography-variant',variant);
       await wait(`!!${q(`#typography-${variant}-fontSize`)}`);
       assert.equal(await evaluate(`document.querySelectorAll('.typography-control').length`),4,'only the selected style is editable at once');
       await fill(`#typography-${variant}-fontSize`,String(size));
-      assert.equal(await evaluate(`getComputedStyle(${q(recipePart('text',`${variant}.neutral.md`,'root'))}).fontSize`),`${size}px`);
+      assert.equal(await evaluate(`getComputedStyle(${q(`[data-typography-style="${variant}"] span[aria-hidden]`)}).fontSize`),`${size}px`);
       for(const mode of ['light','dark']) assert.equal((await stored()).themes[mode].typography[variant].fontSize,size);
       assert.equal(await evaluate(`${q('[data-ds-theme="light"]')}.style.getPropertyValue('--ds-typography-${variant}-font-size').trim()`),`${size}px`);
     }
+    await navigate('design','text');
+    for(const [variant,size] of [['h1',54],['h2',45],['h3',36],['h4',30],['h5',25],['h6',22]]) assert.equal(await evaluate(`getComputedStyle(${q(recipePart('text',`${variant}.neutral.md`,'root'))}).fontSize`),`${size}px`);
     assert.equal(await evaluate(`${q(`${matrix('text')} h2`)}.textContent`),'Text variants');
     assert.equal(await evaluate(`${q('.studio-sidebar a[href="/text"]')}.getAttribute('aria-current')`),'page');
     assert.equal(await evaluate(`!!${q('[data-foundation="text"]')}`),false);
@@ -2191,7 +2299,7 @@ try {
     await click(named(themeControl + ' button','Light'));
     assert.equal(await evaluate(`${q('#token-paddingX')}.value`),'27');
     assert.equal((await stored()).themes.light.global.radius,8);
-    await navigate('design','text');
+    await navigate('design','typography');
     await select('#typography-variant','heading');
     assert.equal(await evaluate(`${q('#typography-heading-fontSize')}.value`),'42');
     await click(named(themeControl + ' button','Dark'));
@@ -2205,7 +2313,9 @@ try {
   await check('shape and spacing specimens visualize every shared dimension live',async()=>{
     await navigate('design','spacing');
     assert.ok(await evaluate(`${q('.editor-fields--spacing .section-heading span')}.textContent.includes('BOTH THEMES')`));
-    assert.equal(await evaluate(`document.querySelectorAll('.editor-fields--spacing .number-fields .token-control').length`),15);
+    assert.equal(await evaluate(`document.querySelectorAll('.editor-fields--spacing .number-fields .token-control').length`),14,'base font size moved to Typography');
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('[data-spacing-token]')].slice(0,3).map(e=>e.dataset.spacingToken)`),['radiusSm','radius','radiusLg'],'radius scale reads sm → md → lg');
+    assert.equal(await evaluate(`document.body.textContent.includes('(legacy)')`),false,'no internal legacy labels');
     const radiusSlider=`${q('#token-radius')}.closest('.token-control').querySelector('.token-slider-trigger')`;
     assert.equal(await evaluate(`${radiusSlider}.getAttribute('aria-expanded')`),'false');
     await click(radiusSlider);
@@ -2223,7 +2333,6 @@ try {
       ['spacingSm',6,'[class*="spacingScaleVisual"]','gap'],
       ['spacingMd',12,'[class*="spacingScaleVisual"]','gap'],
       ['spacingLg',24,'[class*="spacingScaleVisual"]','gap'],
-      ['fontSize',20,'[class*="fontVisual"]','fontSize'],
       ['borderWidth',4,'[class*="shapeVisual"]','borderTopWidth'],
       ['controlHeightSm',40,'[class*="heightVisual"]','height'],
       ['controlHeightMd',48,'[class*="heightVisual"]','height'],
@@ -2695,8 +2804,8 @@ try {
     await click(q('[data-foundation="spacing"] a[class*="spacingSample"]'));
     await route('design','spacing');
     assert.ok(await evaluate(`getComputedStyle(${q('[data-foundation="spacing"] h2 a')}).backgroundColor!=='rgba(0, 0, 0, 0)'`));
-    assert.ok(await evaluate(`!!${q('#token-radius')} && !${q('#token-background')} && !${q('#scale-primary-500')}`));
-    await wait(`document.activeElement?.id === 'token-radius'`);
+    assert.ok(await evaluate(`!!${q('#token-radiusSm')} && !${q('#token-background')} && !${q('#scale-primary-500')}`));
+    await wait(`document.activeElement?.id === 'token-radiusSm'`);
     await delay(450);
     await capture('studio-spacing');
     await navigate('design','text');
@@ -2709,7 +2818,7 @@ try {
     await route('develop','text');
     await click(named(viewNav + ' a','Design'));
     await route('design','text');
-    assert.ok(await evaluate(`!!${q('#typography-heading-fontSize')}`));
+    assert.ok(await evaluate(`!!${q('[data-typography-link] a[href="/typography"]')}`),'Text links to the shared Typography foundation');
     await navigate('design','card');
     await click(q(`${example('card','outlined.md')} > button`));
     await assertRecipeSelection('card','outlined.md','root','frame');
@@ -2742,8 +2851,8 @@ try {
     for(const id of foundations) {
       await navigate('develop',id);
       assert.equal(await evaluate(`${q('.preview-canvas')}.getClientRects().length`),0);
-      assert.ok(await evaluate(`${q('.workspace-panel--develop')}.textContent.includes(${JSON.stringify(id === 'colors' ? '--ds-primary-500' : '--ds-radius')})`));
-      assert.ok(await evaluate(`${q('.workspace-panel--develop')}.textContent.includes(${JSON.stringify(id === 'colors' ? (await stored()).themes.dark.global.primary : `${(await stored()).themes.dark.global.radius}px`)})`));
+      assert.ok(await evaluate(`${q('.workspace-panel--develop')}.textContent.includes(${JSON.stringify(id === 'colors' ? '--ds-primary-500' : id === 'typography' ? '--ds-typography-h1-font-size' : '--ds-radius')})`));
+      assert.ok(await evaluate(`${q('.workspace-panel--develop')}.textContent.includes(${JSON.stringify(id === 'colors' ? (await stored()).themes.dark.global.primary : id === 'typography' ? '--ds-font-family' : `${(await stored()).themes.dark.global.radius}px`)})`));
       const firstCopy=await evaluate(`${q('.workspace-panel--develop button[aria-label^="Copy --ds-"]')}.getAttribute('aria-label').slice(5)`);
       await click(q('.workspace-panel--develop button[aria-label^="Copy --ds-"]'));
       await wait(`navigator.clipboard.readText().then(text=>text===${JSON.stringify(firstCopy)})`);
@@ -2825,7 +2934,7 @@ try {
       await panel('workspace-inspector',true);
       if(id==='colors' || ids.includes(id)) assert.ok(await evaluate(`(()=>{const h=${q('.editor-title')}.getBoundingClientRect(),a=${q('.editor-title-actions')}.getBoundingClientRect();return a.left>=h.left && a.right<=h.right && Math.abs(h.right-a.right-parseFloat(getComputedStyle(${q('.editor-title')}).paddingRight))<3})()`),`inspector actions fit the overlay: ${id}`);
       assert.equal(await evaluate(`!!${q('.mobile-preview-link')} && ${q('.mobile-preview-link')}.getClientRects().length>0`),false,'panel toggles replace the old stacked-layout anchor');
-      if(id==='text') { await reveal(q('#typography-tokens')); await evaluate(`${q('#typography-tokens')}.scrollIntoView({block:'start',behavior:'instant'})`); await capture('studio-375-text'); }
+      if(id==='typography') { await reveal(q('#typography-tokens')); await evaluate(`${q('#typography-tokens')}.scrollIntoView({block:'start',behavior:'instant'})`); await capture('studio-375-typography'); }
       if(id==='spacing') {
         await capture('studio-375-spacing-inspector'); await hideMobilePanels();
         await evaluate(`${q('[data-foundation="spacing"]')}.scrollIntoView({block:'start',behavior:'instant'})`); await capture('studio-375-spacing');

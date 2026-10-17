@@ -296,7 +296,7 @@ try {
     assert.deepEqual(await audit(main), [], 'Empty hydration must not persist defaults');
   });
   await check('direct Design/Develop routes preserve seven canonical matrices and foundations', async () => {
-    for (const [path, heading, view] of [['/colors', 'Colors', 'design'], ['/spacing', 'Shape & spacing', 'design'], ['/develop', 'Colors documentation', 'develop'], ['/develop/colors', 'Colors documentation', 'develop'], ['/develop/spacing', 'Shape & spacing documentation', 'develop'], ...Object.keys(counts).flatMap(id => [[`/${id}`, id[0].toUpperCase() + id.slice(1), 'design'], [`/develop/${id}`, id[0].toUpperCase() + id.slice(1) + ' documentation', 'develop']])]) {
+    for (const [path, heading, view] of [['/colors', 'Colors', 'design'], ['/typography', 'Typography', 'design'], ['/spacing', 'Shape & spacing', 'design'], ['/develop', 'Colors documentation', 'develop'], ['/develop/colors', 'Colors documentation', 'develop'], ['/develop/typography', 'Typography documentation', 'develop'], ['/develop/spacing', 'Shape & spacing documentation', 'develop'], ...Object.keys(counts).flatMap(id => [[`/${id}`, id[0].toUpperCase() + id.slice(1), 'design'], [`/develop/${id}`, id[0].toUpperCase() + id.slice(1) + ' documentation', 'develop']])]) {
       assert.equal((await fetch(origin + path, { signal: AbortSignal.timeout(5000) })).status, 200, path);
       await navigate(main, path); await systemReady(main, heading, view);
       if (view === 'design' && Object.hasOwn(counts, path.slice(1))) {
