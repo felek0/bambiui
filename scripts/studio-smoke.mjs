@@ -3225,19 +3225,51 @@ try {
       assert.equal(await evaluate(`document.querySelectorAll('.studio-main h1').length`),1);
     });
   }
-  await check('/ opens System Colors without Project records or a hidden authoring shell',async()=>{
-    const before=await stored(), origin=await evaluate('performance.timeOrigin');
+  await check('/ is an interactive landing: demos run on real components without touching Studio storage',async()=>{
+    const before=await stored(), keys=await evaluate('Object.keys(localStorage).sort()'), origin=await evaluate('performance.timeOrigin');
     await send('Page.navigate',{url:`http://127.0.0.1:${server.address().port}/`});
-    await wait(`performance.timeOrigin!==${origin} && ${q('.editor-fields')} && !${q('.editor-fields')}.disabled`);
-    assert.equal(await evaluate('location.pathname'),'/');
+    await wait(`performance.timeOrigin!==${origin} && !!${q('#roadmap')}`);
+    assert.equal(await evaluate(`document.querySelectorAll('.studio-shell').length`),0,'no hidden Studio shell');
+    assert.equal(await evaluate(`${q('h1')}.textContent`),'Design your system on the components you ship.');
+    for(const id of ['color','tokens','export','cli','roadmap']) assert.ok(await evaluate(`!!${q('#'+id+' h2')}`),`${id} section`);
+    // The hero redlines a real Button; its values are the 1× component pixels.
+    await wait(`${q('[data-spec-probe]')} && [...document.querySelectorAll('dl dd')].some(dd=>dd.textContent==='8px')`);
+    // Brand color → real components.
+    await evaluate(`${q('[aria-label="Use #2563eb"]')}.click();true`);
+    await wait(`getComputedStyle(${q('#color [data-ds-theme] button')}).backgroundColor==='rgb(38, 100, 236)'`);
+    assert.equal(await evaluate(`document.querySelectorAll('#color tbody tr').length`),7,'seven role scales');
+    // Token slider → live preview and export diff.
+    await evaluate(`(()=>{const r=${q('#tokens input[type="range"]')};Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(r,'20');r.dispatchEvent(new Event('input',{bubbles:true}));return true})()`);
+    await wait(`getComputedStyle(${q('#tokens [data-ds-theme] [data-ds-component="button"]')}).borderTopLeftRadius==='20px'`);
+    await wait(`${q('#export code')}.textContent.includes('--ds-radius-md: 20px;')`);
+    // CLI demo reflects component choice.
+    await wait(`${q('#cli')}.textContent.includes('add button card input')`);
+    await evaluate(`[...document.querySelectorAll('#cli [aria-label="Components to add"] button')].find(b=>b.textContent==='checkbox').click();true`);
+    await wait(`${q('#cli')}.textContent.includes('add button card input checkbox') && ${q('#cli')}.textContent.includes('ui/checkbox')`);
+    // Roadmap submission opens in a dialog, stays local, is validated and removable.
+    const dialog='[data-roadmap-dialog]';
+    await evaluate(`${q('[data-roadmap-suggest]')}.click();true`);
+    await wait(`!!${q(dialog)} && document.activeElement===${q(dialog+' input')}`);
+    await key('Escape');
+    await wait(`!${q(dialog)}`);
+    await wait(`document.activeElement===${q('[data-roadmap-suggest]')}`);
+    await evaluate(`${q('[data-roadmap-suggest]')}.click();true`);
+    await wait(`!!${q(dialog)}`);
+    await evaluate(`${q(dialog+' button[type="submit"]')}.click();true`);
+    await wait(`${q(dialog+' [role="alert"]')}.textContent==='Add a short title.'`);
+    await fill(dialog+' input','Select component');
+    await evaluate(`${q(dialog+' button[type="submit"]')}.click();true`);
+    await wait(`!${q(dialog)}`);
+    await wait(`[...document.querySelectorAll('[data-roadmap-column="new"] [data-roadmap-item] strong')].some(e=>e.textContent==='Select component')`);
+    assert.deepEqual(await evaluate('Object.keys(localStorage).sort()'),[...new Set([...keys,'bambiui.roadmap-submissions.v1'])].sort(),'only the preview submission key is written');
+    assert.deepEqual(await stored(),before,'the Studio System is untouched');
+    await evaluate(`${q('[data-roadmap-column="new"] [data-local] button')}.click();true`);
+    await wait(`!document.querySelector('[data-roadmap-column="new"] [data-local]')`);
+    // Open Studio goes to Colors.
+    await evaluate(`${q('header a[href="/colors"]')}.click();true`);
+    await wait(`location.pathname==='/colors' && ${q('.editor-fields')} && !${q('.editor-fields')}.disabled`);
     assert.equal(await evaluate(`${q('h1')}.textContent`),'Colors');
-    assert.equal(await evaluate(`${q('.studio-sidebar a[aria-current="page"]')}.getAttribute('href')`),'/colors');
-    assert.equal(await evaluate(`${q(viewNav + ' a[aria-current="page"]')}.textContent.trim()`),'Design');
-    assert.equal(await evaluate(`document.querySelectorAll('.studio-shell').length`),1);
-    assert.equal(await evaluate(`!!${q('[aria-label="New project name"], [aria-label="Page canvas"], #project-inspector')}`),false);
     assert.equal(await evaluate(`localStorage.getItem('bambiui.composer.projects.v1')`),null);
-    assert.deepEqual(await evaluate(`Object.keys(localStorage).filter(key=>key.startsWith('bambiui.composer.document.v1.'))`),[]);
-    assert.deepEqual(await stored(),before);
   });
   await check('no runtime, browser console or resource errors',async()=>{await delay(200);assert.deepEqual(errors,[]);});
 } catch(error) {failures.push('harness');console.error(`FAIL harness: ${error.stack || error}`);}

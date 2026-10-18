@@ -164,7 +164,7 @@ async function noProjectMutation(session, entries) {
   const writes = await audit(session);
   assert.deepEqual(writes.filter(({ operation, key }) => operation === 'clear' || key === keys.index || key === keys.pageEditor || key?.startsWith(keys.documents)), [], 'No Project writes, removals or clear, even if bytes were restored');
 }
-async function seed(session, entries = {}, path = '/') {
+async function seed(session, entries = {}, path = '/colors') {
   await navigate(session, fixturePath);
   await session.evaluate(`localStorage.clear();sessionStorage.clear();for(const [key,raw] of Object.entries(${JSON.stringify(entries)}))localStorage.setItem(key,raw)`);
   await navigate(session, path);
@@ -296,7 +296,14 @@ async function start() {
 
 try {
   const main = await start();
-  await check('empty root hydrates Colors with one System shell and no Project storage writes', async () => {
+  await check('root is the landing page; it mounts no Studio shell and writes no System or Project storage', async () => {
+    await seed(main, {}, '/');
+    await wait(main, `!!${q('#roadmap')} && !!${q('a[href="/colors"]')}`);
+    assert.equal(await main.evaluate('document.querySelectorAll(".studio-shell").length'), 0, 'Studio is opened explicitly');
+    await noProjectMutation(main, {});
+    assert.deepEqual(await audit(main), [], 'The landing never writes System storage');
+  });
+  await check('empty /colors hydrates Colors with one System shell and no Project storage writes', async () => {
     await seed(main); await systemReady(main);
     assert.equal(await main.evaluate(`${q('.studio-sidebar a[aria-current="page"]')}.getAttribute('href')`), '/colors');
     await noProjectMutation(main, {});
@@ -355,7 +362,7 @@ try {
     await click(main, q('[aria-label="Undo change"]')); await click(main, q('[aria-label="Redo change"]'));
     await nativeConfirm(main, () => click(main, named('button', 'Reset shape & spacing')));
     await navigate(main, '/develop/card'); await systemReady(main, 'Card documentation', 'develop');
-    await navigate(main, '/'); await systemReady(main);
+    await navigate(main, '/colors'); await systemReady(main);
     const beforeReload = await main.evaluate('performance.timeOrigin');
     await main.send('Page.reload'); await wait(main, `performance.timeOrigin !== ${beforeReload}`);
     await systemReady(main); await noProjectMutation(main, entries);

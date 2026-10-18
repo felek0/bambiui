@@ -124,7 +124,7 @@ Enter/Apply değişen geçerli ekseni tek scoped patch ile yazar. Cancel, Escape
 
 688 app unit/SSR/source testi, 113 Studio browser kontrolü, 22 Playground kontrolü, 17 System-only kontrolü ve 8 source/CLI/JSON browser grubu geçti. TypeScript, lint, production build, source catalog freshness ve diff whitespace başarılı. Browser kanıtı Button sm fractional Fixed/Hug/Fill, gerçek Fixed/Fill genişlik paint'i, iki-tema/same-size storage, invalid draft/Escape/Playground iptali, Text paragraph.sm altı tone kapsamı, bağımsız eksen reset/no-op/Undo'dur. Unit kapsamı yedi komponentin tüm desteklenen katmanları, shared/exact kaynak ayrımı ve peer-only reset'i içerir. Her komponentin bütün Hug/Fill layout kombinasyonları gerçek tarayıcıda doğrulanmış sayılmaz; özellikle Switch thumb, belirsiz parent height ve fullWidth/iconOnly resize kabulü DE4'te kalır.
 
-Dar ekran gerçek dokunma, VoiceOver/native zoom açık. CLI unit paketi ayrıca çalıştırılmadı. Dağıtılan kaynaklar ve registry değişmedi; commit/deploy/publish yok. DE4–DE7 henüz uygulanmadı.
+Bu tarihsel DE3 baseline'ında dar ekran gerçek dokunma, VoiceOver/native zoom açıktı; CLI unit paketi ayrıca çalıştırılmamıştı. Dağıtılan kaynaklar ve registry değişmedi; commit/deploy/publish yoktu. DE4–DE7 bu baseline'da henüz uygulanmamıştı; güncel uygulama kanıtları yukarıdadır.
 
 ## DE2 uygulama kanıtı
 

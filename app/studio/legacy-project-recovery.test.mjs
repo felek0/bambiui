@@ -51,7 +51,7 @@ test("suspended SSR exposes recovery and System link without reading browser sto
   const html = renderToStaticMarkup(createElement(ProjectSuspended));
   assert.equal((html.match(/<h1\b/g) ?? []).length, 1);
   assert.match(html, /Project editing is paused/);
-  assert.match(html, /href="\/"[^>]*>Open design system/);
+  assert.match(html, /href="\/colors"[^>]*>Open design system/);
   assert.match(html, /<button[^>]*>Download local recovery data<\/button>/);
   assert.match(html, /role="status"/);
   assert.match(html, /Unsaved work and history in other tabs cannot be read/);

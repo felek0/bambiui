@@ -11,6 +11,7 @@
     "registry:snapshot": "node scripts/snapshot-registry.mjs",
     "check:registry": "node scripts/build-cli.mjs && node scripts/check-registry-retention.mjs",
     "test:browser-process": "node --test scripts/disposable-browser-process.test.mjs",
+    "test:landing": "node scripts/landing-smoke.mjs",
     "test:system-only": "node scripts/studio-system-only-smoke.mjs",
         "test:playground": "node scripts/studio-playground-smoke.mjs",
     "cli:build": "node scripts/build-cli.mjs",

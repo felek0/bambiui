@@ -35,7 +35,7 @@ export function ProjectSuspended() {
       <p className={styles.brand}>bambiui</p>
       <h1 id="project-paused-title">Project editing is paused</h1>
       <p>Work on your design system in System and Develop. Existing local Project records have not been removed or migrated.</p>
-      <Link className={styles.link} href="/">Open design system</Link>
+      <Link className={styles.link} href="/colors">Open design system</Link>
       <h2>Local data recovery</h2>
       <p>Download raw stored Project, legacy page-editor and System records from this browser only. Nothing is uploaded or written to storage. This recovery file is not a supported import or portable Project bundle.</p>
       <p>Unsaved work and history in other tabs cannot be read here. Export unsaved work in old authoring tabs before reloading them. Stored-record checks are best effort, not an atomic multi-tab backup.</p>
